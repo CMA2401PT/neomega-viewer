@@ -1,0 +1,178 @@
+import * as THREE from "three";
+import type { Batch, MeshData, Surface } from "./types";
+
+const vertexShader = `
+  attribute vec3 color;
+  attribute vec3 shadeNormal;
+  // Keep atlas UV interpolation inside partially covered MSAA edge pixels.
+  centroid varying vec2 localUV;
+  varying vec3 tint;
+  varying vec3 faceNormal;
+  void main() {
+    localUV = uv;
+    tint = color;
+    faceNormal = normalize(normalMatrix * shadeNormal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const fragmentShader = `
+  uniform sampler2D atlasMap;
+  uniform vec4 region;
+  uniform vec2 atlasSize;
+  uniform float opacity;
+  uniform float cutoff;
+  uniform float unlit;
+  centroid varying vec2 localUV;
+  varying vec3 tint;
+  varying vec3 faceNormal;
+  float spriteUV(float value) {
+    // Interpolation can put a face endpoint just outside [0,1]. Wrapping that
+    // rounding error would draw the bottom texel along a transparent top edge.
+    if (value >= -0.00001 && value <= 1.00001) return clamp(value, 0.0, 1.0);
+    return fract(value);
+  }
+  void main() {
+    // Repeat within this sprite, including model UVs outside [0,1]. Keep
+    // nearest sampling inside its border rather than sampling another tile.
+    vec2 inset = vec2(0.5) / (region.zw * atlasSize);
+    vec2 uv = clamp(vec2(spriteUV(localUV.x), spriteUV(localUV.y)), inset, vec2(1.0) - inset);
+    vec4 texel = texture2D(atlasMap, region.xy + uv * region.zw);
+    float alpha = texel.a * opacity;
+    if (alpha < cutoff) discard;
+    vec3 n = normalize(faceNormal);
+    if (!gl_FrontFacing) n = -n;
+    vec3 lightDirection = normalize(mat3(viewMatrix) * vec3(0.35,0.85,0.5));
+    float light = mix(0.48 + 0.52 * max(dot(n, lightDirection), 0.0), 1.0, unlit);
+    gl_FragColor = vec4(texel.rgb * tint * light, alpha);
+    #include <colorspace_fragment>
+  }
+`;
+
+function surfaceMaterial(
+  surface: Surface,
+  atlas: THREE.Texture,
+): THREE.ShaderMaterial {
+  const image = atlas.image as { width: number; height: number };
+  return new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: {
+      atlasMap: { value: atlas },
+      region: { value: new THREE.Vector4(...surface.region) },
+      atlasSize: { value: new THREE.Vector2(image.width, image.height) },
+      opacity: { value: surface.opacity },
+      cutoff: {
+        value:
+          surface.mode === "opaque"
+            ? 0
+            : surface.mode === "cutout"
+              ? 0.1
+              : 0.001,
+      },
+      unlit: { value: surface.unlit ? 1 : 0 },
+    },
+    side: surface.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+    transparent: surface.mode === "blend",
+    depthWrite: surface.mode !== "blend",
+    forceSinglePass: true,
+    toneMapped: false,
+  });
+}
+
+function buffers(
+  batch: Batch,
+  start: number,
+  count: number,
+  indices: number[],
+): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      batch.positions.slice(start * 3, (start + count) * 3),
+      3,
+    ),
+  );
+  geometry.setAttribute(
+    "normal",
+    new THREE.Float32BufferAttribute(
+      batch.normals.slice(start * 3, (start + count) * 3),
+      3,
+    ),
+  );
+  geometry.setAttribute(
+    "color",
+    new THREE.Float32BufferAttribute(
+      batch.colors.slice(start * 3, (start + count) * 3),
+      3,
+    ),
+  );
+  geometry.setAttribute(
+    "uv",
+    new THREE.Float32BufferAttribute(
+      batch.uvs.slice(start * 2, (start + count) * 2),
+      2,
+    ),
+  );
+  geometry.setAttribute(
+    "shadeNormal",
+    new THREE.Float32BufferAttribute(
+      batch.shadeNormals.slice(start * 3, (start + count) * 3),
+      3,
+    ),
+  );
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+export interface MeshObject {
+  object: THREE.Group;
+  /** Dispose this object's buffers/materials. The shared atlas remains owned by the caller. */
+  dispose(): void;
+}
+
+/** Draw already baked geometry. This module never receives blockstates/models. */
+export function createMeshObject(
+  data: MeshData,
+  atlas: THREE.Texture,
+): MeshObject {
+  const object = new THREE.Group();
+  const geometries: THREE.BufferGeometry[] = [];
+  const materials: THREE.Material[] = [];
+  for (const batch of data.batches) {
+    const material = surfaceMaterial(batch.surface, atlas);
+    materials.push(material);
+    const count = batch.positions.length / 3;
+    if (batch.surface.mode === "blend") {
+      // Three sorts transparent objects, not triangles inside one buffer.
+      // Separate static quads make the near/far glass surfaces sortable.
+      for (let start = 0; start < count; start += 4) {
+        const geometry = buffers(batch, start, 4, [0, 1, 2, 0, 2, 3]);
+        geometries.push(geometry);
+        object.add(new THREE.Mesh(geometry, material));
+      }
+    } else {
+      const geometry = buffers(batch, 0, count, batch.indices);
+      geometries.push(geometry);
+      object.add(new THREE.Mesh(geometry, material));
+    }
+  }
+  return {
+    object,
+    dispose() {
+      geometries.forEach((g) => g.dispose());
+      materials.forEach((m) => m.dispose());
+    },
+  };
+}
+
+export async function loadAtlas(url: string): Promise<THREE.Texture> {
+  const texture = await new THREE.TextureLoader().loadAsync(url);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = false; // Go's UVs use PNG's top-left origin.
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  return texture;
+}
