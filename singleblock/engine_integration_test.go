@@ -1,13 +1,16 @@
 package singleblock_test
 
 import (
+	"maps"
 	"math"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 
 	"neomega-assets/asset"
 	"neomega-viewer/catalog"
+	"neomega-viewer/geometry"
 	"neomega-viewer/material"
 	"neomega-viewer/singleblock"
 )
@@ -29,6 +32,17 @@ func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {
 	return engine, entries
 }
 
+func stateID(t *testing.T, entries *catalog.Catalog, name string, properties map[string]string) uint32 {
+	t.Helper()
+	for _, binding := range entries.ByName["minecraft:"+name] {
+		if maps.Equal(binding.Java.Properties, properties) {
+			return binding.ID
+		}
+	}
+	t.Fatalf("state not found: %s %v", name, properties)
+	return 0
+}
+
 func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 	engine, entries := openReal(t)
 	ids := map[string]uint32{}
@@ -41,11 +55,10 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 			if !ok {
 				t.Fatal("example is absent from the real catalog")
 			}
-			properties := map[string]string{}
 			if name == "oak_slab" {
-				properties["type"] = "bottom"
+				id = stateID(t, entries, name, map[string]string{"type": "bottom"})
 			}
-			block, err := engine.Build(id, singleblock.Options{Properties: properties})
+			block, err := engine.Build(id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +76,7 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 				t.Fatalf("slab lost its half height: %+v", bounds)
 			}
 			if name == "stone" {
-				if _, exists := block.State.Properties["waterlogged"]; exists {
+				if _, exists := block.Binding.Java.Properties["waterlogged"]; exists {
 					t.Fatal("solid stone exposed a fabricated waterlogged property")
 				}
 			}
@@ -81,11 +94,11 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 				t.Fatal("leaf alpha holes became full transparency")
 			}
 			if name == "oak_fence" {
-				isolated, err := engine.Build(id, singleblock.Options{Properties: map[string]string{"north": "false", "east": "false", "south": "false", "west": "false"}})
+				isolated, err := engine.Build(stateID(t, entries, name, map[string]string{"north": "false", "east": "false", "south": "false", "west": "false"}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				connected, err := engine.Build(id, singleblock.Options{Properties: map[string]string{"north": "true", "east": "true", "south": "false", "west": "false"}})
+				connected, err := engine.Build(stateID(t, entries, name, map[string]string{"north": "true", "east": "true", "south": "false", "west": "false"}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -101,7 +114,7 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 	engine, entries := openReal(t)
 	checked, unsupported := 0, 0
 	for id, binding := range entries.ByID {
-		block, err := engine.Build(id, singleblock.Options{})
+		block, err := engine.Build(id)
 		profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
 		if profile.Kind == asset.RendererDynamic {
 			if err == nil {
@@ -124,17 +137,56 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 		}
 		checked++
 	}
-	t.Logf("baked %d palette states; %d have no fixed static shape", checked, unsupported)
+	t.Logf("rendered %d palette states; %d have no fixed static shape", checked, unsupported)
 	// The same immutable caches can serve simultaneous requests.
 	var wg sync.WaitGroup
 	for _, group := range entries.Groups[:8] {
 		wg.Add(1)
 		go func(id uint32) {
 			defer wg.Done()
-			if _, err := engine.Build(id, singleblock.Options{}); err != nil {
+			if _, err := engine.Build(id); err != nil {
 				t.Error(err)
 			}
 		}(group.ExampleID)
 	}
 	wg.Wait()
+}
+
+func TestBuildUsesSharedShapes(t *testing.T) {
+	engine, entries := openReal(t)
+	tables, err := engine.Tables()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"oak_slab", "oak_fence", "redstone_wire", "water", "air"} {
+		for _, binding := range entries.ByName["minecraft:"+name] {
+			block, err := engine.Build(binding.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids, err := tables.ModelIDs(binding.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want []geometry.Quad
+			for _, id := range ids {
+				shape, err := tables.Shape(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, shape.Quads...)
+			}
+			if !slices.Equal(block.Mesh.Quads, want) {
+				t.Fatalf("%+v differs from shared shapes", binding)
+			}
+			if len(block.Mesh.Quads) != 0 {
+				shape, _ := tables.Shape(ids[0])
+				original := shape.Quads[0]
+				block.Mesh.Quads[0].Color = [3]float32{-1, -1, -1}
+				if shape.Quads[0] != original {
+					t.Fatal("output mutation changed a shared shape")
+				}
+			}
+		}
+	}
 }

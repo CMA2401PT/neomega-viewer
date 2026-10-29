@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"neomega-viewer/catalog"
-	"neomega-viewer/model"
 	"neomega-viewer/singleblock"
 	"neomega-viewer/subchunk"
 )
@@ -24,12 +23,6 @@ type Options struct {
 
 type request struct {
 	ID uint32 `json:"id"`
-	singleblock.Options
-}
-
-type response struct {
-	singleblock.Packet
-	PropertyValues map[string][]string `json:"propertyValues"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -89,13 +82,12 @@ func New(options Options) http.Handler {
 			}
 			input.ID = uint32(id)
 		}
-		block, err := options.Engine.Build(input.ID, input.Options)
+		block, err := options.Engine.Build(input.ID)
 		if err != nil {
 			writeError(w, 422, err)
 			return
 		}
-		definition, _ := options.Engine.Assets.BlockState(block.State.Name)
-		writeJSON(w, 200, response{Packet: block.Packet(), PropertyValues: model.PropertyValues(definition, block.State.Properties)})
+		writeJSON(w, 200, block.Packet())
 	}
 	mux.HandleFunc("GET /api/block", build)
 	mux.HandleFunc("POST /api/block", build)

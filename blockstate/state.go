@@ -21,12 +21,6 @@ type Binding struct {
 	Java State  `json:"java"`
 }
 
-// Resolver looks up canonical Java block hashes independently of model selection
-// and geometry generation.
-type Resolver interface {
-	Resolve(id uint32) (Binding, error)
-}
-
 type Table struct {
 	ByID map[uint32]Binding
 }

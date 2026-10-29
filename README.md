@@ -1,8 +1,8 @@
 # neomega-viewer
 
-`neomega-viewer` 把存储中的方块 ID 转换成静态几何，并提供单方块和子区块两个网页入口。Go 解释方块状态、选择模型、处理纹理引用与网格；TypeScript 和 Three.js 显示已经生成的顶点。单方块提供带属性覆盖的静态预览。子区块读取一个 16×16×16 的 Plain，即平铺保存 Java block hash 的数组，并查询共享几何表。两者共用 `blockmesh` 的资源与材质策略。
+`neomega-viewer` 把存储中的方块 ID 转换成静态几何，并提供单方块和子区块两个网页入口。Go 解释方块状态、选择模型、处理纹理引用与网格；TypeScript 和 Three.js 显示已经生成的顶点。单方块通过切换完整状态的 Java block hash 调整属性。子区块读取一个 16×16×16 的 Plain，即平铺保存 Java block hash 的数组。两者共用 `blockmesh` 的几何表。
 
-方块 ID 本身不能说明外形。同一个名称可能因属性选择不同模型；栅栏还会同时使用多个模型。因此，解析保留资源之间的关系：**ID → Java 方块状态 → variant / multipart → model → texture → 顶点**。子区块首次使用前生成两张共享表：Java block hash 对应模型编号列表，每个模型编号对应一个 Shape。Shape 保存烘焙四边形与六方向边界覆盖。渲染时查表取得形状，再根据邻居的覆盖剔除和合并表面。
+方块 ID 本身不能说明外形。同一个名称可能因属性选择不同模型；栅栏还会同时使用多个模型。因此，解析保留资源之间的关系：**ID → Java 方块状态 → variant / multipart → model → texture → 顶点**。首次渲染前生成两张共享表：Java block hash 对应模型编号列表，每个模型编号对应一个 Shape。Shape 保存烘焙四边形与六方向边界覆盖。单方块渲染时查表拼接部件。子区块取得相同形状，再根据邻居的覆盖剔除和合并表面。
 
 ## 先运行浏览器
 
@@ -41,7 +41,7 @@ go run ./cmd/neomega-viewer
 
 | 页面 | 用途 |
 |---|---|
-| <http://127.0.0.1:2410> | 搜索方块、选择状态，检查单个模型与静态预览属性 |
+| <http://127.0.0.1:2410> | 搜索方块、选择状态，检查完整状态对应的外形 |
 | <http://127.0.0.1:2410/subchunk.html> | 观察多个形状的交界，开关剔除与合并，上传方块层、下载二进制网格 |
 
 子区块页提供石头、玻璃、半砖、草木和混合场景。勾选“三角网格”后，可以直接比较合并前后的拓扑。
@@ -59,14 +59,14 @@ go run ./cmd/neomega-viewer \
 
 ## 一个方块怎样变成几何
 
-要让单方块和子区块使用相同的解释规则，首先需要一个没有场景调度职责的解析器。`blockmesh.Resolver` 组合以下步骤，并共享只读的资源、模型继承缓存和材质库。以下流程描述单方块预览；子区块在建表时完成这些解释步骤。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
+要让单方块和子区块使用相同的解释规则，首先需要一个没有场景调度职责的解析器。`blockmesh.Resolver` 组合以下步骤，并共享只读的资源、模型继承缓存和材质库。两条入口都在首次取得 `Tables()` 时完成建表。以下解释步骤只在建表时执行。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
 
 ```text
-uint32 Java block hash
-  │ blockstate：查表取得 Java 名称与属性
+Java 状态全集
+  │ blockstate：枚举名称、属性与规范化 hash
   ▼
-Java 状态 + 静态预览属性
-  │ model.Select：选择 variant，收集命中的 multipart 部件
+完整 Java 状态
+  │ model.SelectFirst：选择 variant，收集命中的 multipart 部件
   ▼
 模型引用 + 旋转 + UV 锁定
   │ model.Resolver：解析父模型、合并纹理槽、跟随 #纹理别名
@@ -74,10 +74,12 @@ Java 状态 + 静态预览属性
 模型元素与面
   │ geometry.Bake + material.Library
   ▼
-局部四边形 geometry.Mesh
+局部四边形 → 去重为 Shape，写入两张表
 ```
 
-`variant` 按状态选择候选模型；`multipart` 分别判断条件，同时叠加命中的部件。单方块预览按种子选择一个加权候选。子区块建表使用 `SelectFirst` 固定取首项。父模型按模型 ID 缓存，共用几何的状态引用同一个 Shape。
+`variant` 按状态选择候选模型；`multipart` 分别判断条件，同时叠加命中的部件。建表使用 `SelectFirst` 固定取首项。父模型按模型 ID 缓存，共用几何的状态引用同一个 Shape。
+
+运行时两个入口都先调用 `Tables.ModelIDs(javaHash)`，再用 `Tables.Shape(modelID)` 取得部件。单方块将部件四边形复制到独立网格，子区块保留共享引用供邻域剔面使用。网页属性选项来自 catalog 的同名状态分组；每次修改属性都会选择另一个完整状态，并把它的 hash 发给 `/api/block`。
 
 几何使用一个方块为一单位的局部坐标，Y 向上，北向为 −Z。四边形保存几何法线、UV、颜色和材质。模型要求覆盖明暗方向时，另外保存光照法线，真实几何法线仍保持原义。`CullFace` 保存模型允许被邻居遮挡的方向；单方块入口保留这些面，子区块入口检查其实际覆盖情况。
 
@@ -91,13 +93,13 @@ Java 状态 + 静态预览属性
 | 镂空 `cutout` | 树叶、草 | 丢弃透明像素，其余像素写入深度 |
 | 半透明 `blend` | 玻璃、水 | 混合颜色，不写入深度，逐面参与远近排序 |
 
-`material.Library` 根据图集像素分类。`resources.PreviewPolicy` 补充玻璃等语义规则，以及固定的草木、水和红石颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
+`material.Library` 根据图集像素分类。`resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
 
 箱子、床和告示牌等方块的完整外观由游戏代码绘制，JAR 未必包含完整模型。`neomega-assets` 的 `blockRenderers.json` 说明类别并补入社区静态模板，viewer 通过同一模型接口解析它们。图集 PNG 单独加载，不随每个网格重复传输。
 
-这里的静态指**给定状态和选项后，外观保持不变**。箱子使用固定姿态，告示牌展示牌体，动画纹理使用固定帧。库不接收方块实体的实时外观或动画状态，也不计划增加这些能力。水和岩浆使用静止预览表面；子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
+这里的静态指**给定完整状态后，外观保持不变**。箱子使用固定姿态，告示牌展示牌体，动画纹理使用固定帧。库不接收方块实体的实时外观或动画状态，也不计划增加这些能力。水和岩浆使用静止预览表面；子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
 
-状态全集暂不包含 `waterlogged`，这是涉及前景、背景方块表示的历史约定。当模型条件需要它时，预览仍补为 `false`。修改该属性只影响模型选择，不会自行添加水层。`air` 等不可见类别返回空几何。`moving_piston` 缺少决定移动内容的数据，会返回无法确定静态外形的错误。
+状态全集暂不包含 `waterlogged`，这是涉及前景、背景方块表示的历史约定。当模型条件需要它时，建表补为 `false`。网页仅提供状态全集中已有的属性选项。`air` 等不可见类别返回空几何。`moving_piston` 缺少决定移动内容的数据，会返回无法确定静态外形的错误。
 
 水和岩浆的状态包含 `level=0…15`，资源的空 variant 不按 level 选择模型。流体预览使用 level 决定高度。建表时另存满高度几何，并建立原模型编号到满高度编号的映射。子区块只比较上方流体的数值消面组，再切换到满高度形状。
 
@@ -120,7 +122,7 @@ Java 状态 + 静态预览属性
 
 ## 为什么把网格传输单独分开
 
-单方块的 JSON 便于查看来源和模型。子区块则有更多顶点，数值文本解析和临时数组会产生额外开销。因此子区块通过 `meshwire` 输出 **NVMS v1 二进制**：材质表使用一小段 JSON，顶点属性和索引使用对齐的小端数值数组。
+单方块的 JSON 便于查看状态和几何。子区块则有更多顶点，数值文本解析和临时数组会产生额外开销。因此子区块通过 `meshwire` 输出 **NVMS v1 二进制**：材质表使用一小段 JSON，顶点属性和索引使用对齐的小端数值数组。
 
 浏览器的 `decodeMesh` 在常见的小端平台上为响应 `ArrayBuffer` 建立 `Float32Array`、`Uint32Array` 视图。Three.js 适配层直接保留这些视图；GPU 上传仍由 Three.js 完成。协议不依赖 HTTP，同一份数据也可以写入 `.nvmesh` 文件。布局与解析接口见 [meshwire/README.md](meshwire/README.md)。
 
@@ -161,13 +163,13 @@ sectionBuilder := subchunk.New(parser)
 这些包的导入前缀为 `neomega-viewer/`。单方块仍直接接收一个 ID：
 
 ```go
-block, err := blockBuilder.Build(blockID, singleblock.Options{
-    Seed: 0,
-    Properties: map[string]string{"north": "true"},
-})
+block, err := blockBuilder.Build(blockID)
+if err != nil {
+    return err
+}
 ```
 
-`block.Binding.Java` 保留 ID 对应的原始状态，`block.State` 是应用预览选项后的状态。现成示例会将字段齐全的 Java 文本规范化、计算哈希，再输出 JSON。属性名和值使用 IR 的双引号语法：
+`block.Binding.Java` 是该 hash 对应的完整状态。改变属性时，调用者应传入新状态的 hash。现成示例会将字段齐全的 Java 文本规范化、计算哈希，再输出 JSON。属性名和值使用 IR 的双引号语法：
 
 ```sh
 go run ./examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
@@ -228,7 +230,7 @@ atlas.dispose();
 
 ## 接口与扩展位置
 
-单方块预览需要提供另一套 Java 状态表时，通过 `blockmesh.OpenOptions.Resolver` 实现 `blockstate.Resolver`。输入仍为规范化 Java 状态的哈希，调用者负责让返回的状态与资源版本匹配。子区块几何表使用 `blockstate.Java()` 枚举的完整状态集。固定颜色和材质语义通过 `material.Policy` 替换。
+两个入口的几何表都使用 `blockstate.Java()` 枚举的完整状态集。输入 hash 必须对应其中的状态。需要改变固定颜色和材质语义时，通过 `blockmesh.OpenOptions.Policy` 提供 `material.Policy`；策略在建表时执行。
 
 其他变化可以按职责定位：
 
@@ -250,12 +252,14 @@ atlas.dispose();
 | `GET /api/blocks` | JSON 名称分组、示例 ID、版本和图集地址 |
 | `GET /api/states?name=minecraft:oak_fence` | JSON 状态列表与真实 ID |
 | `GET /api/state?id=<uint32>` | JSON Java hash 对应的状态 |
-| `GET /api/block?id=<uint32>` 或 `POST /api/block` | JSON 单方块来源、模型和几何 |
+| `GET /api/block?id=<uint32>` 或 `POST /api/block` | JSON 单方块状态、渲染类别和几何 |
 | `GET /api/subchunks` | JSON 子区块示例目录 |
 | `GET /api/subchunks/{scene}/mesh` | NVMS 二进制几何 |
 | `GET /api/subchunks/{scene}/blocks` | `.nvblocks` 逻辑方块层 |
 | `POST /api/subchunk` | 提交 `.nvblocks` 原始字节，返回 NVMS |
 | `GET /assets/atlas.png` | 与材质区域配套的 PNG |
+
+`POST /api/block` 的正文为 `{"id": <javaHash>}`。返回的 `binding` 标识完整 Java 状态，`renderer` 描述静态类别，`geometry` 包含绘制数据。
 
 子区块网格接口接受 `cull`、`greedy` 布尔查询参数，两项默认开启。统计值通过 `X-Neomega-Mesh-Stats` 响应头返回。`shapes` 表示实际引用的共享 Shape 数量，空气没有 Shape 引用。完全移除的源面与局部裁切的源面分别计数。局部裁切可能产生多个保留片段，因此“原始面减去移除面”不一定等于“剔除后面数”。
 
@@ -281,7 +285,7 @@ npm --prefix web test
 npm --prefix web run build
 ```
 
-加入真实资源后，可以验证完整 preset、全部演示场景以及 HTTP 上传和二进制输出：
+加入真实资源后，可以验证完整 preset、全部演示场景以及 HTTP 上传和二进制输出。测试还比较红石 `power=0` 与 `power=15` 的 `Quad.Color`，并检查单方块输出与共享表一致：
 
 ```sh
 NEOMEGA_ASSETS_DIR="$PWD/../neomega-assets/dist/final" \

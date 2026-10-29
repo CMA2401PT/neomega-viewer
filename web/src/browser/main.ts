@@ -6,6 +6,7 @@ import {
   type Group,
   type Packet,
 } from "./api";
+import { propertyChoices } from "./states";
 import "./style.css";
 
 // This page owns selection/network state. The render exports have neither.
@@ -36,10 +37,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="section-heading"><span class="eyebrow">INSPECTOR</span><span class="small-dot"></span></div><h2>状态与外观</h2>
       <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
       <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
-      <div class="divider"></div><div class="property-heading"><h3>静态预览属性</h3><button id="restore-properties">还原</button></div><p class="hint">只调整当前预览，不改变存储的 ID。</p><div id="properties" class="properties"></div>
-      <div class="field seed-field"><label for="seed">模型选择种子</label><input id="seed" type="number" value="0" min="0" max="4294967295" step="1"></div>
-      <div class="divider"></div><div class="mapping-label">解析结果</div><div id="renderer-tag" class="renderer-tag">—</div><p class="hint" id="preview-description">Go 解析状态与模型，浏览器绘制顶点。</p>
-      <details><summary>查看来源与模型</summary><h4>Java 原始状态</h4><pre id="source-state"></pre><h4>预览状态</h4><pre id="target-state"></pre><h4>选中的模型</h4><pre id="models"></pre></details>
+      <div class="divider"></div><div class="property-heading"><h3>方块属性</h3><button id="restore-properties">还原</button></div><p class="hint">切换属性会选择对应状态的 Java block hash。</p><div id="properties" class="properties"></div>
+      <div class="divider"></div><div class="mapping-label">解析结果</div><div id="renderer-tag" class="renderer-tag">—</div><p class="hint" id="preview-description">Go 查询共享几何，浏览器绘制顶点。</p>
+      <details><summary>查看 Java 状态</summary><pre id="source-state"></pre></details>
     </aside>
   </main>
 `;
@@ -50,7 +50,7 @@ let viewport: BlockViewport;
 let currentGroup = "";
 let currentID = 0;
 let states: Binding[] = [];
-let overrides: Record<string, string> = {};
+let initialID = 0;
 let generation = 0;
 let shown = 120;
 
@@ -125,12 +125,10 @@ function list(): void {
 
 async function selectGroup(
   group: Group,
-  preferredJava?: string,
   preferredID?: number,
 ): Promise<void> {
   const token = ++generation;
   currentGroup = group.name;
-  overrides = {};
   list();
   status("读取状态…");
   try {
@@ -150,13 +148,8 @@ async function selectGroup(
         ),
       );
     }
-    currentID =
-      states.find((binding) =>
-        preferredID !== undefined
-          ? binding.id === preferredID
-          : binding.java.name === preferredJava,
-      )?.id ?? group.exampleId;
-    select.value = String(currentID);
+    currentID = preferredID ?? group.exampleId;
+    initialID = currentID;
     await showBlock();
   } catch (error) {
     if (token === generation) fail(error);
@@ -165,21 +158,23 @@ async function selectGroup(
 
 async function showBlock(): Promise<void> {
   const token = ++generation;
-  status("生成几何…");
+  el<HTMLSelectElement>("states").value = String(currentID);
+  status("读取几何…");
   try {
     const packet = await getJSON<Packet>("/api/block", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: currentID,
-        seed: Number(el<HTMLInputElement>("seed").value),
-        properties: overrides,
       }),
     });
     if (token !== generation) return;
     viewport.set(packet.geometry);
-    el("block-title").textContent = packet.state.name.replace("minecraft:", "");
-    el("java-name").textContent = packet.state.name;
+    el("block-title").textContent = packet.binding.java.name.replace(
+      "minecraft:",
+      "",
+    );
+    el("java-name").textContent = packet.binding.java.name;
     el<HTMLInputElement>("block-id").value = String(packet.binding.id);
     el("empty-note").textContent = "此方块没有可见表面";
     el("empty-note").hidden = packet.geometry.quads !== 0;
@@ -204,15 +199,11 @@ async function showBlock(): Promise<void> {
     el("preview-description").textContent =
       packet.renderer.kind === "special"
         ? "使用固定外形展示，不包含动画或实时外观。"
-        : "状态、模型和纹理引用均在 Go 中解析。";
+        : "按当前 Java block hash 查询已生成的几何。";
     el("source-state").textContent = JSON.stringify(packet.binding.java, null, 2);
-    el("target-state").textContent = JSON.stringify(packet.state, null, 2);
-    el("models").textContent =
-      packet.applications.map((application) => application.model).join("\n") ||
-      "由静态渲染分类处理";
-    renderProperties(packet);
+    renderProperties(packet.binding);
     status("预览就绪");
-    document.title = `${packet.state.name.replace("minecraft:", "")} · Neomega`;
+    document.title = `${packet.binding.java.name.replace("minecraft:", "")} · Neomega`;
   } catch (error) {
     if (token === generation) {
       viewport.set({
@@ -235,20 +226,16 @@ async function showBlock(): Promise<void> {
       el("source-state").textContent = binding
         ? JSON.stringify(binding.java, null, 2)
         : "";
-      el("target-state").textContent = binding
-        ? JSON.stringify(binding.java, null, 2)
-        : "";
-      el("models").textContent = "";
       el("preview-description").textContent = "请检查错误信息和当前预览属性。";
       fail(error);
     }
   }
 }
 
-function renderProperties(packet: Packet): void {
+function renderProperties(current: Binding): void {
   const root = el("properties");
   root.replaceChildren();
-  for (const [name, values] of Object.entries(packet.propertyValues).sort(
+  for (const [name, values] of Object.entries(propertyChoices(states, current)).sort(
     ([a], [b]) => a.localeCompare(b),
   )) {
     if (values.length < 2) continue;
@@ -258,10 +245,12 @@ function renderProperties(packet: Packet): void {
     title.textContent = name;
     const select = document.createElement("select");
     select.setAttribute("aria-label", `Java 属性 ${name}`);
-    values.forEach((value) => select.add(new Option(value, value)));
-    select.value = packet.state.properties[name];
+    values.forEach((binding) =>
+      select.add(new Option(binding.java.properties[name], String(binding.id))),
+    );
+    select.value = String(current.id);
     select.onchange = () => {
-      overrides[name] = select.value;
+      currentID = Number(select.value);
       void showBlock();
     };
     label.append(title, select);
@@ -270,7 +259,7 @@ function renderProperties(packet: Packet): void {
   if (!root.children.length) {
     const p = document.createElement("p");
     p.className = "hint no-properties";
-    p.textContent = "此模型没有可切换的外观属性。";
+    p.textContent = "此方块没有可切换的属性。";
     root.append(p);
   }
 }
@@ -293,7 +282,7 @@ async function start(): Promise<void> {
         ) ?? catalog.groups.find((group) => group.javaNames.includes(target));
       if (group) {
         el<HTMLInputElement>("search").value = "";
-        void selectGroup(group, target);
+        void selectGroup(group);
       }
     };
     el("quick").append(button);
@@ -304,12 +293,11 @@ async function start(): Promise<void> {
   };
   el<HTMLSelectElement>("states").onchange = () => {
     currentID = Number(el<HTMLSelectElement>("states").value);
-    overrides = {};
+    initialID = currentID;
     void showBlock();
   };
-  el<HTMLInputElement>("seed").onchange = () => void showBlock();
   el("restore-properties").onclick = () => {
-    overrides = {};
+    currentID = initialID;
     void showBlock();
   };
   el("reset").onclick = () => viewport.reset();
@@ -337,7 +325,7 @@ async function start(): Promise<void> {
       const group = catalog.groups.find(
         (group) => group.name === binding.java.name,
       );
-      if (group) await selectGroup(group, undefined, binding.id);
+      if (group) await selectGroup(group, binding.id);
     } catch (error) {
       if (token === generation) fail(error);
     }
@@ -346,7 +334,7 @@ async function start(): Promise<void> {
     catalog.groups.find((group) =>
       group.javaNames.includes("minecraft:stone"),
     ) ?? catalog.groups[0];
-  await selectGroup(stone, "minecraft:stone");
+  await selectGroup(stone);
   window.addEventListener(
     "pagehide",
     () => {

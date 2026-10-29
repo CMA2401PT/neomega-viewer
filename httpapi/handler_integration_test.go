@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"neomega-viewer/blockstate"
 	"neomega-viewer/catalog"
 	"neomega-viewer/httpapi"
 	"neomega-viewer/singleblock"
@@ -16,6 +17,7 @@ import (
 
 // Exercise the transport with the same unexpanded resource bundle the browser
 // uses, so JSON layout, state overrides and static failures are checked together.
+// 属性切换通过完整状态的 hash 验证。
 func TestBrowserTransport(t *testing.T) {
 	dir := os.Getenv("NEOMEGA_ASSETS_DIR")
 	if dir == "" {
@@ -61,11 +63,32 @@ func TestBrowserTransport(t *testing.T) {
 			t.Fatal("vertex attribute sizes differ")
 		}
 	}
-	slab := entries.ByName["minecraft:oak_slab"][0]
-	body, _ := json.Marshal(map[string]any{"id": slab.ID, "properties": map[string]string{"type": "bottom"}})
-	geometry = call(http.MethodPost, "/api/block", string(body), 200)
-	if err := json.Unmarshal(geometry.Body.Bytes(), &packet); err != nil || packet.Geometry.Bounds.Max[1] != 0.5 || packet.State.Properties["type"] != "bottom" {
-		t.Fatalf("static override contract: %v", err)
+	statesResponse := call(http.MethodGet, "/api/states?name=minecraft:oak_slab", "", 200)
+	var states []blockstate.Binding
+	if err := json.Unmarshal(statesResponse.Body.Bytes(), &states); err != nil {
+		t.Fatal(err)
+	}
+	for _, slab := range states {
+		body, _ := json.Marshal(map[string]any{"id": slab.ID})
+		geometry = call(http.MethodPost, "/api/block", string(body), 200)
+		if err := json.Unmarshal(geometry.Body.Bytes(), &packet); err != nil || packet.Binding.ID != slab.ID {
+			t.Fatalf("state hash contract: %v", err)
+		}
+		bounds := packet.Geometry.Bounds
+		switch packet.Binding.Java.Properties["type"] {
+		case "bottom":
+			if bounds.Min[1] != 0 || bounds.Max[1] != 0.5 {
+				t.Fatalf("bottom slab bounds: %+v", bounds)
+			}
+		case "top":
+			if bounds.Min[1] != 0.5 || bounds.Max[1] != 1 {
+				t.Fatalf("top slab bounds: %+v", bounds)
+			}
+		case "double":
+			if bounds.Min[1] != 0 || bounds.Max[1] != 1 {
+				t.Fatalf("double slab bounds: %+v", bounds)
+			}
+		}
 	}
 	for id, binding := range entries.ByID {
 		if binding.Java.Name == "minecraft:moving_piston" {

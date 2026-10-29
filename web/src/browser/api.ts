@@ -20,11 +20,8 @@ export interface Catalog {
 }
 export interface Packet {
   binding: Binding;
-  state: State;
   renderer: { kind: string; family?: string };
-  applications: { model: string; x?: number; y?: number; uvlock?: boolean }[];
   geometry: MeshData;
-  propertyValues: Record<string, string[]>;
 }
 export async function getJSON<T>(
   path: string,

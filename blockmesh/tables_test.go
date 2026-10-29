@@ -97,9 +97,34 @@ func TestTablesWithJavaResources(t *testing.T) {
 	}
 	wire["power"] = "15"
 	powered := lookup("redstone_wire", wire, 3)
-	if dot[0] == powered[0] {
-		t.Fatal("existing baked tint differences were lost during deduplication")
-	}
+	t.Run("RedstonePowerIsBakedIntoQuadColors", func(t *testing.T) {
+		for part, id := range corner {
+			unpoweredShape, err := tables.Shape(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			poweredShape, err := tables.Shape(powered[part])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id == powered[part] || len(unpoweredShape.Quads) != len(poweredShape.Quads) {
+				t.Fatalf("power states merged or changed geometry in part %d", part)
+			}
+			changed := false
+			for i, quad := range unpoweredShape.Quads {
+				other := poweredShape.Quads[i]
+				// 叠加纹理可以不染色，带色的导线面必须体现 power。
+				changed = changed || quad.Color != other.Color
+				other.Color = quad.Color
+				if quad != other {
+					t.Fatalf("power changed more than color in part %d quad %d", part, i)
+				}
+			}
+			if !changed {
+				t.Fatalf("power 0 and 15 share all quad colors in part %d", part)
+			}
+		}
+	})
 
 	stone := lookup("stone", nil, 1)
 	shape, _ = tables.Shape(stone[0])
