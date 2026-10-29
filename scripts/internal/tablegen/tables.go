@@ -14,6 +14,7 @@ import (
 	"neomega-viewer/scripts/internal/bake"
 	"neomega-viewer/scripts/internal/model"
 	"neomega-viewer/scripts/internal/resources"
+	"neomega-viewer/solidtable"
 )
 
 type shapeBucket struct {
@@ -47,6 +48,7 @@ func intern(tables *mesher.Tables[uint32], mesh geometry.Mesh, group uint32, buc
 type Result struct {
 	*mesher.Tables[uint32]
 	blockstate.Metadata
+	Solid solidtable.Table
 }
 
 func (engine *Builder) Build() (*Result, error) {
@@ -55,6 +57,7 @@ func (engine *Builder) Build() (*Result, error) {
 		return nil, err
 	}
 	tables := &Result{
+		Solid: make(solidtable.Table, len(states.ByID)),
 		Tables: &mesher.Tables[uint32]{
 			Index:      make(map[uint32][]mesher.ModelID, len(states.ByID)),
 			FullHeight: map[mesher.ModelID]mesher.ModelID{},
@@ -92,6 +95,18 @@ func (engine *Builder) Build() (*Result, error) {
 			ids = append(ids, intern(tables.Tables, mesh, group, buckets))
 		}
 		tables.Index[javaHash] = ids
+		// 多部件可能共同覆盖整面，不能逐部件判断后简单合并实心位。
+		var combined geometry.Mesh
+		for _, mesh := range meshes {
+			combined.Quads = append(combined.Quads, mesh.Quads...)
+		}
+		var solid uint8
+		for side, name := range [...]string{"west", "east", "down", "up", "north", "south"} {
+			if meshing.OpaqueBoundary(combined, name) {
+				solid |= 1 << side
+			}
+		}
+		tables.Solid[javaHash] = solid
 		if len(full) != 0 {
 			tables.FullHeight[ids[0]] = intern(tables.Tables, full[0], group, buckets)
 		}

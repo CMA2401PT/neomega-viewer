@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"neomega-viewer/scripts/internal/tablegen"
 )
@@ -39,6 +41,18 @@ func generate(assetsDir, output string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
+	solidPath := strings.TrimSuffix(output, filepath.Ext(output)) + ".nvsolid"
+	solidFile, err := os.Create(solidPath)
+	if err != nil {
+		return err
+	}
+	if err := tables.Solid.Encode(solidFile); err != nil {
+		solidFile.Close()
+		return err
+	}
+	if err := solidFile.Close(); err != nil {
+		return err
+	}
 	metadata, err := json.MarshalIndent(tables.Metadata, "", "  ")
 	if err != nil {
 		return err
@@ -47,5 +61,6 @@ func generate(assetsDir, output string) error {
 		return err
 	}
 	fmt.Printf("%s: indexed=%d shapes=%d skipped=%d\n", output, len(tables.Index), len(tables.Shapes), len(tables.Skipped))
+	fmt.Printf("%s: entries=%d\n", solidPath, len(tables.Solid))
 	return nil
 }

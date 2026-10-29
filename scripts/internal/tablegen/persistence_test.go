@@ -1,6 +1,7 @@
 package tablegen
 
 import (
+	"bytes"
 	"encoding/json"
 	"maps"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/mesher"
+	"neomega-viewer/resources"
+	"neomega-viewer/solidtable"
 )
 
 func TestPersistedTablesMatchBuild(t *testing.T) {
@@ -25,6 +28,23 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 	want, err := builder.Build()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var solidBytes bytes.Buffer
+	if err := want.Solid.Encode(&solidBytes); err != nil {
+		t.Fatal(err)
+	}
+	embeddedSolid, err := resources.Files.ReadFile("geometry.nvsolid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"roundtrip": solidBytes.Bytes(), "embedded": embeddedSolid} {
+		got, err := solidtable.Decode(bytes.NewReader(data))
+		if err != nil || !maps.Equal(got, want.Solid) {
+			t.Fatalf("%s solid table differs: error=%v", name, err)
+		}
+	}
+	if len(want.Solid) != len(want.Index) {
+		t.Fatal("solid table and geometry index contain different numbers of states")
 	}
 	path := filepath.Join(t.TempDir(), "geometry.nvtables")
 	file, err := os.Create(path)

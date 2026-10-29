@@ -8,6 +8,8 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 两张表保存为固定小端的 NVGT 二进制。加载文件或 embed 是调用者的职责，mesher 构造时只接收 `*Tables[B]`。Java 演示加载器提供内嵌资源的便捷入口。
 
+转换得到的 Java 状态可能丢失连接方向。调用者可以先用 `fixer` 根据邻居修复栅栏、玻璃板和铁栏杆，再把返回的 hash 层交给 mesher。修复时用到的实心面信息在生成阶段计算，单独保存为 `.nvsolid` 文件。
+
 浏览器和 HTTP 服务不是库的一部分，是演示它怎么用的示例。
 
 ## 目录职责
@@ -21,7 +23,9 @@ neomega-viewer/
 │  ├─ material/       # 表面材质，纹理名为 string
 │  └─ meshing/        # 剔面、裁切和合并
 ├─ blockstate/         # 上层 Java 身份与响应元数据
-├─ resources/          # 入库的 NVGT、Java 元数据及演示用 embed
+├─ fixer/              # 可选的 Java 状态修复，按顺序累积各轮改动
+├─ solidtable/         # 六面实心位域及 NVST 编解码
+├─ resources/          # 入库的几何表、实心表、Java 元数据及 embed
 ├─ demo/
 │  ├─ blockmesh/       # Java 演示加载器，组合表与身份
 │  ├─ singleblock/     # 调用 mesher 并补 Java 响应元数据
@@ -125,6 +129,31 @@ go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]'
 go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
 ```
 
+## 修复转换丢失的连接状态
+
+当 NEMC→Java 转换把连接属性丢成默认值时，先用 `neomega-viewer/fixer` 修复输入。`New()` 加载内嵌实心表，多个实例共享只读解码结果。`Fix` 返回独立切片，输入层和邻居层都保持原值。状态查询与改写通过 `neomega-blocks/presets/java/v1` 完成，fixer 不依赖几何运行时。
+
+当前层和每个非 nil 邻居层都应包含 4096 个 Java hash，索引与 mesher 相同。`Neighbours` 按 west/east/down/up/north/south 排列，即 -X/+X/-Y/+Y/-Z/+Z；nil 按该侧为空处理。hash 应对应 preset 中的完整状态；无法还原的 hash 保持原值。下面接续前面的 `blocks` 和 `renderer`，增加修复步骤：
+
+```go
+repair, err := fixer.New()
+if err != nil {
+    return err
+}
+clean := repair.Fix(blocks, fixer.Neighbours{})
+result, err := renderer.MeshSubchunk(clean, mesher.Options{})
+if err != nil {
+    return err
+}
+if err := result.Mesh.Marshal(writer); err != nil {
+    return err
+}
+```
+
+修复规则分为内部 pass（一次完整的修复步骤）。每轮读取上一轮的结果，返回“位置 → 新 hash”，由 Fixer 统一应用后交给下一轮。邻居层始终使用调用者传入的快照。增加规则时实现 `pass` 函数并在 `New` 的列表中登记即可。
+
+栏杆 pass 重算四个水平方向，既补连接也清除错误连接。木质栅栏互连，地狱砖栅栏只与同类互连；栅栏门按朝向判断。玻璃板和铁栏杆可连玻璃板、铁栏杆、玻璃及墙。这两类还会连接邻居朝向当前格的完整不透明面。实心面缺少记录时按不实心处理。墙自身的连接属性不在该 pass 的修复范围内。
+
 ## 生成和更新几何表
 
 模型、图集布局或静态材质策略改变后，需要重新生成配套几何。生成器枚举 Java 状态、选择模型、烘焙形状并计算边界覆盖：
@@ -133,10 +162,14 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 go run ./scripts/gen-geometry \
   -assets ../neomega-assets/dist/final \
   -output resources/geometry.nvtables
-wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json
+wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json resources/geometry.nvsolid
 ```
 
 `resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,787,277 字节（5.52 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,865,634 字节（5.59 MiB）。更换输入后以命令输出为准。
+
+为了让 fixer 查询邻居的实心面，生成器将每个成功状态的全部部件合并，再对六个方向调用 `meshing.OpaqueBoundary`。同一命令还生成 `resources/geometry.nvsolid`，使用上述资源得到 **18,242 条、91,222 字节**。输出路径与 `-output` 同目录、同主文件名，扩展名改为 `.nvsolid`。资源包将它内嵌，供 fixer 默认加载。
+
+实心表由 `solidtable.Table` 的 `Encode(io.Writer)` 和 `solidtable.Decode(io.Reader)` 读写。NVST v1 使用小端布局：4 字节 magic `NVST`、uint32 版本、uint32 条目数，随后是按 hash 排序的 N 条 `(uint32 javaHash, uint8 solid)`，每条 5 字节。位域 bit0…bit5 对应 west/east/down/up/north/south；置位表示该面被不透明矩形完整覆盖。
 
 NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质参数保留 float32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v1 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
 
@@ -250,6 +283,8 @@ Java 状态全集
 
 栅栏、玻璃板和墙的连接方向已经包含在输入 ID 对应的 Java 状态中。调用者写入确定的连接状态，渲染时直接查表取得已经选好的部件。
 
+若输入的栅栏、玻璃板或铁栏杆连接属性不可靠，调用者可以先经过前述 fixer，再把修复结果交给渲染入口。
+
 `prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。确定形状后，`meshing` 分两步减少面：
 
 1. **剔除实际被盖住的部分。** 模型声明可剔除、且位于格子边界的轴对齐矩形，才会检查邻居。邻居覆盖直接来自 Shape.Boundary，无须逐格重扫几何。完整不透明面可以遮挡；多个部件的矩形并集也可以形成覆盖。石头紧贴底半砖时，只裁掉下半部分，并为保留部分重新插值 UV。斜面和非矩形保守保留。
@@ -325,6 +360,7 @@ atlas.dispose();
 | 要解决的问题 | 模块 |
 |---|---|
 | ID 对应哪个 Java 状态？ | `blockstate` |
+| 如何修复转换丢失的连接状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
 | 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
 | 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
 | 怎样编码与查询共享几何？ | `mesher.Tables[B]`；演示文件加载在 `demo/blockmesh` |
