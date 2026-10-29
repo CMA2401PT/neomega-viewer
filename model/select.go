@@ -129,3 +129,34 @@ func Select(state asset.BlockState, properties map[string]string, seed uint64) (
 	}
 	return selected, nil
 }
+
+func SelectFirst(state asset.BlockState, properties map[string]string) ([]asset.Apply, error) {
+	// 候选只取首项，命中的 multipart 部件仍需全部保留。
+	choices := []asset.Choice{}
+	keys := make([]string, 0, len(state.Variants))
+	for key := range state.Variants {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		if variantMatches(key, properties) {
+			choices = append(choices, state.Variants[key])
+		}
+	}
+	if len(state.Variants) != 0 && len(choices) == 0 {
+		return nil, fmt.Errorf("no variant matches properties %v", properties)
+	}
+	for _, part := range state.Multipart {
+		if matches(part.When, properties) {
+			choices = append(choices, part.Apply)
+		}
+	}
+	selected := make([]asset.Apply, 0, len(choices))
+	for _, choice := range choices {
+		if len(choice.Options) == 0 {
+			return nil, fmt.Errorf("empty model choice")
+		}
+		selected = append(selected, choice.Options[0])
+	}
+	return selected, nil
+}

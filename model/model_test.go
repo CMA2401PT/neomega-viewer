@@ -53,6 +53,31 @@ func TestWeightsAreRepeatableAndRemainAlternatives(t *testing.T) {
 	}
 }
 
+func TestSelectFirstKeepsMatchingPartsAndIgnoresWeights(t *testing.T) {
+	heavy := 100
+	choice := asset.Choice{Options: []asset.Apply{
+		{Model: "first", Y: 90, UVLock: true},
+		{Model: "other", Weight: &heavy},
+	}}
+	state := asset.BlockState{
+		Variants: map[string]asset.Choice{"": choice, "north=true": choice},
+		Multipart: []asset.Part{
+			{Apply: choice},
+			{When: &asset.Condition{Properties: map[string]string{"north": "true"}}, Apply: choice},
+			{When: &asset.Condition{Properties: map[string]string{"north": "false"}}, Apply: choice},
+		},
+	}
+	selected, err := SelectFirst(state, map[string]string{"north": "true"})
+	if err != nil || len(selected) != 4 {
+		t.Fatalf("matching positions were lost: %v %v", selected, err)
+	}
+	for _, application := range selected {
+		if application != choice.Options[0] {
+			t.Fatalf("first candidate or its transform changed: %+v", application)
+		}
+	}
+}
+
 func TestInheritanceAndTextureSlotsDoNotMutateParents(t *testing.T) {
 	elements := []asset.Element{{Faces: map[asset.Direction]asset.Face{"up": {Texture: "#alias"}}}}
 	empty := []asset.Element{}

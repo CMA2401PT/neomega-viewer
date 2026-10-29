@@ -4,6 +4,7 @@ package blockmesh
 
 import (
 	"fmt"
+	"sync"
 
 	"neomega-assets/asset"
 	assetparse "neomega-assets/parse"
@@ -26,6 +27,7 @@ type Resolver struct {
 	identity  blockstate.Resolver
 	models    *model.Resolver
 	materials *material.Library
+	tables    func() (*Tables, error)
 }
 
 type Options struct {
@@ -67,12 +69,14 @@ func Open(options OpenOptions) (*Resolver, error) {
 	if options.Policy == nil {
 		options.Policy = resources.PreviewPolicy{}
 	}
-	return &Resolver{
+	engine := &Resolver{
 		Assets:    assets,
 		identity:  options.Resolver,
 		models:    model.NewResolver(assets.Models),
 		materials: material.New(assets.Atlas, assets.AtlasImage, options.Policy),
-	}, nil
+	}
+	engine.tables = sync.OnceValues(engine.buildTables)
+	return engine, nil
 }
 
 func (engine *Resolver) Resolve(id uint32, options Options) (*Block, error) {
