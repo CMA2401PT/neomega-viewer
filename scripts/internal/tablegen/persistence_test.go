@@ -1,7 +1,7 @@
 package tablegen
 
 import (
-	"encoding/gob"
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -9,7 +9,8 @@ import (
 	"slices"
 	"testing"
 
-	"neomega-viewer/blockmesh"
+	"neomega-viewer/demo/blockmesh"
+	"neomega-viewer/mesher"
 )
 
 func TestPersistedTablesMatchBuild(t *testing.T) {
@@ -25,22 +26,29 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "geometry.gob")
+	path := filepath.Join(t.TempDir(), "geometry.nvtables")
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = gob.NewEncoder(file).Encode(want)
+	err = want.Encode(file)
 	closeErr := file.Close()
 	if err != nil || closeErr != nil {
 		t.Fatalf("write table: %v; close: %v", err, closeErr)
+	}
+	metadata, err := json.Marshal(want.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".java.json", metadata, 0644); err != nil {
+		t.Fatal(err)
 	}
 	for _, check := range []struct {
 		Name string
 		Path string
 	}{
 		{Name: "roundtrip", Path: path},
-		{Name: "committed", Path: "../../../resources/geometry.gob"},
+		{Name: "committed", Path: "../../../resources/geometry.nvtables"},
 		{Name: "embedded"},
 	} {
 		t.Run(check.Name, func(t *testing.T) {
@@ -48,11 +56,8 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := resolver.Tables()
-			if err != nil {
-				t.Fatal(err)
-			}
-			// gob 不区分空切片与 nil，查询语义按元素比较。
+			got := resolver.Tables()
+			// 空切片与 nil 的查询语义相同，按元素比较。
 			if len(got.Index) != len(want.Index) || len(got.Shapes) != len(want.Shapes) {
 				t.Fatalf("table sizes differ: states=%d/%d shapes=%d/%d", len(got.Index), len(want.Index), len(got.Shapes), len(want.Shapes))
 			}
@@ -63,7 +68,7 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 				}
 			}
 			for id, shape := range want.Shapes {
-				loaded, err := got.Shape(blockmesh.ModelID(id))
+				loaded, err := got.Shape(mesher.ModelID(id))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -79,7 +84,7 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 			if !maps.Equal(got.FullHeight, want.FullHeight) {
 				t.Fatal("fluid full-height references differ")
 			}
-			if got.Version != want.Version || !maps.Equal(got.Renderers, want.Renderers) || !reflect.DeepEqual(got.Skipped, want.Skipped) {
+			if resolver.Metadata().Version != want.Version || !maps.Equal(resolver.Metadata().Renderers, want.Renderers) || !reflect.DeepEqual(resolver.Metadata().Skipped, want.Skipped) {
 				t.Fatal("response metadata differs")
 			}
 			t.Logf("matched %d Java hashes, %d shapes, %d fluid references", len(want.Index), len(want.Shapes), len(want.FullHeight))

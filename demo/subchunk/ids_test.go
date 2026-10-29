@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"celler"
-	"neomega-viewer/subchunk"
+	"neomega-viewer/demo/subchunk"
 )
 
 func TestPortableLayerCoordinatesAndDefaultFilledCells(t *testing.T) {

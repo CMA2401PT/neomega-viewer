@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/gob"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -12,7 +12,7 @@ import (
 
 func main() {
 	assets := flag.String("assets", "../neomega-assets/dist/final", "matching resource bundle")
-	output := flag.String("output", "resources/geometry.gob", "output geometry table")
+	output := flag.String("output", "resources/geometry.nvtables", "output geometry table")
 	flag.Parse()
 	if err := generate(*assets, *output); err != nil {
 		log.Fatal(err)
@@ -32,11 +32,18 @@ func generate(assetsDir, output string) error {
 	if err != nil {
 		return err
 	}
-	if err := gob.NewEncoder(file).Encode(tables); err != nil {
+	if err := tables.Encode(file); err != nil {
 		file.Close()
 		return err
 	}
 	if err := file.Close(); err != nil {
+		return err
+	}
+	metadata, err := json.MarshalIndent(tables.Metadata, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(output+".java.json", append(metadata, '\n'), 0644); err != nil {
 		return err
 	}
 	fmt.Printf("%s: indexed=%d shapes=%d skipped=%d\n", output, len(tables.Index), len(tables.Shapes), len(tables.Skipped))

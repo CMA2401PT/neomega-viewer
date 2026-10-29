@@ -9,9 +9,9 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/demo/catalog"
+	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/geometry"
 	"neomega-viewer/material"
-	"neomega-viewer/singleblock"
 )
 
 func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {
@@ -149,10 +149,7 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 
 func TestBuildUsesSharedShapes(t *testing.T) {
 	engine, entries := openReal(t)
-	tables, err := engine.Tables()
-	if err != nil {
-		t.Fatal(err)
-	}
+	tables := engine.Tables()
 	for _, name := range []string{"oak_slab", "oak_fence", "redstone_wire", "water", "air"} {
 		for _, binding := range entries.ByName["minecraft:"+name] {
 			block, err := engine.Build(binding.ID)

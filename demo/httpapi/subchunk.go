@@ -9,12 +9,13 @@ import (
 	"celler/layer_storage"
 
 	"neomega-viewer/demo/scenes"
+	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/mesher"
 	"neomega-viewer/meshwire"
-	"neomega-viewer/subchunk"
 )
 
-func sectionOptions(r *http.Request) (subchunk.Options, error) {
-	var options subchunk.Options
+func sectionOptions(r *http.Request) (mesher.Options, error) {
+	var options mesher.Options
 	for _, flag := range []struct {
 		Name   string
 		Target *bool
@@ -30,13 +31,13 @@ func sectionOptions(r *http.Request) (subchunk.Options, error) {
 	return options, nil
 }
 
-func addSubchunks(mux *http.ServeMux, engine *subchunk.Engine) {
+func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], version string) {
 	mux.HandleFunc("GET /api/subchunks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, struct {
 			Version  string       `json:"version"`
 			AtlasURL string       `json:"atlasUrl"`
 			Scenes   []demo.Scene `json:"scenes"`
-		}{engine.Blocks.Version(), "/assets/atlas.png", demo.List()})
+		}{version, "/assets/atlas.png", demo.List()})
 	})
 	send := func(w http.ResponseWriter, r *http.Request, layer *layer_storage.Palette[uint32]) {
 		options, err := sectionOptions(r)
@@ -46,7 +47,7 @@ func addSubchunks(mux *http.ServeMux, engine *subchunk.Engine) {
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(layer)
-		result, err := engine.Build(&plain, options)
+		result, err := engine.MeshPlainLayerStorage(&plain, options)
 		if err != nil {
 			writeError(w, 422, err)
 			return

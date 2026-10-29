@@ -1,12 +1,10 @@
-// Package subchunk renders one isolated 16x16x16 plain layer. It has no world
-// loader or worker and uses shared static geometry tables.
-package subchunk
+package mesher
 
 import (
 	"fmt"
 
+	"celler"
 	"celler/layer_storage"
-	"neomega-viewer/blockmesh"
 	"neomega-viewer/geometry"
 	"neomega-viewer/meshing"
 )
@@ -28,20 +26,8 @@ type Result struct {
 	Stats Stats
 }
 
-type Engine struct {
-	Blocks *blockmesh.Resolver
-}
-
-func New(blocks *blockmesh.Resolver) *Engine {
-	return &Engine{Blocks: blocks}
-}
-
-func (engine *Engine) Build(layer *layer_storage.Plain[uint32], options Options) (*Result, error) {
-	tables, err := engine.Blocks.Tables()
-	if err != nil {
-		return nil, err
-	}
-	cells, err := prepareNeighborhood(layer, tables)
+func (m *Mesher[B]) MeshPlainLayerStorage(layer *layer_storage.Plain[B], options Options) (*Result, error) {
+	cells, err := prepareNeighborhood(layer, m.tables)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +42,8 @@ type localGeometry struct {
 	fullHeight *geometry.Shape
 }
 
-func queryGeometry(tables *blockmesh.Tables, javaHash uint32) (localGeometry, error) {
-	ids, err := tables.ModelIDs(javaHash)
+func queryGeometry[B BlockID](tables *Tables[B], id B) (localGeometry, error) {
+	ids, err := tables.ModelIDs(id)
 	if err != nil {
 		return localGeometry{}, err
 	}
@@ -78,21 +64,21 @@ func queryGeometry(tables *blockmesh.Tables, javaHash uint32) (localGeometry, er
 	return local, nil
 }
 
-func prepareNeighborhood(layer *layer_storage.Plain[uint32], tables *blockmesh.Tables) (*meshing.Cells, error) {
+func prepareNeighborhood[B BlockID](layer *layer_storage.Plain[B], tables *Tables[B]) (*meshing.Cells, error) {
 	// 先取得原始几何，再读邻居，避免遍历顺序影响流体选择。
-	var locals [Volume]localGeometry
-	for i, javaHash := range layer.Data {
-		local, err := queryGeometry(tables, javaHash)
+	var locals [meshing.Size * meshing.Size * meshing.Size]localGeometry
+	for i, id := range layer.Data {
+		local, err := queryGeometry(tables, id)
 		if err != nil {
 			p := position(i)
-			return nil, fmt.Errorf("cell (%d,%d,%d), ID %d: %w", p.X, p.Y, p.Z, javaHash, err)
+			return nil, fmt.Errorf("cell (%d,%d,%d), ID %d: %w", p.X, p.Y, p.Z, id, err)
 		}
 		locals[i] = local
 	}
 	cells := &meshing.Cells{}
 	for i, local := range locals {
 		cells[i] = local.parts
-		if local.fullHeight == nil || position(i).Y == Size-1 {
+		if local.fullHeight == nil || position(i).Y == meshing.Size-1 {
 			continue
 		}
 		above := locals[i+1].fullHeight
@@ -117,4 +103,8 @@ func countGeometry(cells *meshing.Cells) (int, int) {
 		}
 	}
 	return blocks, len(used)
+}
+
+func position(index int) celler.SubChunkBlockPos {
+	return celler.SubChunkBlockPos{X: uint8(index >> 8), Y: uint8(index & 15), Z: uint8((index >> 4) & 15)}
 }

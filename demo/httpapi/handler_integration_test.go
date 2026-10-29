@@ -12,7 +12,7 @@ import (
 	"neomega-viewer/blockstate"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
-	"neomega-viewer/singleblock"
+	"neomega-viewer/demo/singleblock"
 )
 
 // 属性切换通过完整状态的 hash 验证。
@@ -21,7 +21,7 @@ func TestBrowserTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR to run the real resource transport check")
 	}
-	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: "../../resources/geometry.gob"})
+	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: "../../resources/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}

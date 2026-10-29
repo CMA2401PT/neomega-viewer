@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"neomega-viewer/blockmesh"
+	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
-	"neomega-viewer/singleblock"
-	"neomega-viewer/subchunk"
+	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/mesher"
 )
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 		Addr: *listen,
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
-			Subchunks: subchunk.New(parser),
+			Subchunks: mesher.NewMesher(parser.Tables()),
 			Catalog:   entries,
 			AssetsDir: *assets,
 			WebDir:    *web,

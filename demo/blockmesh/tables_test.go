@@ -8,6 +8,7 @@ import (
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/geometry"
+	"neomega-viewer/mesher"
 )
 
 func TestTablesWithJavaResources(t *testing.T) {
@@ -15,19 +16,16 @@ func TestTablesWithJavaResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := engine.Tables()
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := engine.Tables()
-	if err != nil || again != tables {
+	tables := engine.Tables()
+	again := engine.Tables()
+	if again != tables {
 		t.Fatal("tables were not shared")
 	}
 	states, err := blockstate.Java()
 	if err != nil {
 		t.Fatal(err)
 	}
-	lookup := func(name string, properties map[string]string, count int) []ModelID {
+	lookup := func(name string, properties map[string]string, count int) []mesher.ModelID {
 		t.Helper()
 		for hash, binding := range states.ByID {
 			if binding.Java.Name != asset.ID("minecraft:"+name) || !maps.Equal(binding.Java.Properties, properties) {
@@ -135,13 +133,13 @@ func TestTablesWithJavaResources(t *testing.T) {
 	lookup("water", map[string]string{"level": "0"}, 1)
 	lookup("lava", map[string]string{"level": "8"}, 1)
 
-	if len(tables.Index)+len(tables.Skipped) != len(states.ByID) {
+	if len(tables.Index)+len(engine.Metadata().Skipped) != len(states.ByID) {
 		t.Fatal("some Java states were neither indexed nor reported")
 	}
-	if len(tables.Skipped) != 12 {
-		t.Fatalf("unexpected skipped states: %+v", tables.Skipped)
+	if len(engine.Metadata().Skipped) != 12 {
+		t.Fatalf("unexpected skipped states: %+v", engine.Metadata().Skipped)
 	}
-	for _, skipped := range tables.Skipped {
+	for _, skipped := range engine.Metadata().Skipped {
 		if skipped.Binding.Java.Name != "minecraft:moving_piston" || skipped.Reason == "" {
 			t.Fatalf("unexpected skipped state: %+v", skipped)
 		}
@@ -150,7 +148,7 @@ func TestTablesWithJavaResources(t *testing.T) {
 		}
 	}
 	references := 0
-	used := map[ModelID]bool{}
+	used := map[mesher.ModelID]bool{}
 	for _, ids := range tables.Index {
 		references += len(ids)
 		for _, id := range ids {
@@ -164,5 +162,5 @@ func TestTablesWithJavaResources(t *testing.T) {
 		t.Fatal("geometry table has unused shapes or did not deduplicate")
 	}
 	t.Logf("Java states=%d; indexed=%d; shapes=%d; references=%d; skipped=%d (minecraft:moving_piston)",
-		len(states.ByID), len(tables.Index), len(tables.Shapes), references, len(tables.Skipped))
+		len(states.ByID), len(tables.Index), len(tables.Shapes), references, len(engine.Metadata().Skipped))
 }

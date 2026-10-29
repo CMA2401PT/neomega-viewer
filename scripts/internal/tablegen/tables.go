@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"neomega-assets/asset"
-	"neomega-viewer/blockmesh"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/geometry"
+	"neomega-viewer/mesher"
 	"neomega-viewer/meshing"
 	"neomega-viewer/scripts/internal/bake"
 	"neomega-viewer/scripts/internal/model"
@@ -24,7 +24,7 @@ type shapeBucket struct {
 	First geometry.Quad
 }
 
-func intern(tables *blockmesh.Tables, mesh geometry.Mesh, group uint32, buckets map[shapeBucket][]blockmesh.ModelID) blockmesh.ModelID {
+func intern(tables *mesher.Tables[uint32], mesh geometry.Mesh, group uint32, buckets map[shapeBucket][]mesher.ModelID) mesher.ModelID {
 	key := shapeBucket{Group: group, Count: len(mesh.Quads)}
 	if len(mesh.Quads) != 0 {
 		key.First = mesh.Quads[0]
@@ -34,7 +34,7 @@ func intern(tables *blockmesh.Tables, mesh geometry.Mesh, group uint32, buckets 
 			return id
 		}
 	}
-	id := blockmesh.ModelID(len(tables.Shapes))
+	id := mesher.ModelID(len(tables.Shapes))
 	tables.Shapes = append(tables.Shapes, geometry.Shape{
 		Quads:     mesh.Quads,
 		CullGroup: group,
@@ -44,28 +44,37 @@ func intern(tables *blockmesh.Tables, mesh geometry.Mesh, group uint32, buckets 
 	return id
 }
 
-func (engine *Builder) Build() (*blockmesh.Tables, error) {
+type Result struct {
+	*mesher.Tables[uint32]
+	blockstate.Metadata
+}
+
+func (engine *Builder) Build() (*Result, error) {
 	states, err := blockstate.Java()
 	if err != nil {
 		return nil, err
 	}
-	tables := &blockmesh.Tables{
-		Version:    engine.Assets.BuildInfo.Version,
-		Renderers:  map[asset.ID]blockmesh.Renderer{},
-		Index:      make(map[uint32][]blockmesh.ModelID, len(states.ByID)),
-		FullHeight: map[blockmesh.ModelID]blockmesh.ModelID{},
+	tables := &Result{
+		Tables: &mesher.Tables[uint32]{
+			Index:      make(map[uint32][]mesher.ModelID, len(states.ByID)),
+			FullHeight: map[mesher.ModelID]mesher.ModelID{},
+		},
+		Metadata: blockstate.Metadata{
+			Version:   engine.Assets.BuildInfo.Version,
+			Renderers: map[asset.ID]blockstate.Renderer{},
+		},
 	}
 	for name, profile := range engine.Assets.Renderers.Blocks {
-		tables.Renderers[name] = blockmesh.Renderer{Kind: profile.Kind, Family: profile.Family}
+		tables.Renderers[name] = blockstate.Renderer{Kind: profile.Kind, Family: profile.Family}
 	}
 	groups := map[string]uint32{}
-	buckets := map[shapeBucket][]blockmesh.ModelID{}
+	buckets := map[shapeBucket][]mesher.ModelID{}
 	// 哈希不稠密，用 map 索引；排序只为让同一套资源的编号可复现。
 	for _, javaHash := range slices.Sorted(maps.Keys(states.ByID)) {
 		binding := states.ByID[javaHash]
 		meshes, err := engine.bakeParts(binding.Java)
 		if err != nil {
-			tables.Skipped = append(tables.Skipped, blockmesh.SkippedState{Binding: binding, Reason: err.Error()})
+			tables.Skipped = append(tables.Skipped, blockstate.SkippedState{Binding: binding, Reason: err.Error()})
 			continue
 		}
 		profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
@@ -78,13 +87,13 @@ func (engine *Builder) Build() (*blockmesh.Tables, error) {
 			}
 		}
 		// 整个状态成功后再编号，失败状态不会留下部分索引或无引用的 Shape。
-		ids := make([]blockmesh.ModelID, 0, len(meshes))
+		ids := make([]mesher.ModelID, 0, len(meshes))
 		for _, mesh := range meshes {
-			ids = append(ids, intern(tables, mesh, group, buckets))
+			ids = append(ids, intern(tables.Tables, mesh, group, buckets))
 		}
 		tables.Index[javaHash] = ids
 		if len(full) != 0 {
-			tables.FullHeight[ids[0]] = intern(tables, full[0], group, buckets)
+			tables.FullHeight[ids[0]] = intern(tables.Tables, full[0], group, buckets)
 		}
 	}
 	return tables, nil

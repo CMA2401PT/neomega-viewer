@@ -9,11 +9,12 @@ import (
 
 	"celler/layer_storage"
 
-	"neomega-viewer/blockmesh"
+	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/scenes"
+	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/mesher"
 	"neomega-viewer/meshing"
 	"neomega-viewer/meshwire"
-	"neomega-viewer/subchunk"
 )
 
 func main() {
@@ -47,7 +48,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(layer)
-	result, err := subchunk.New(parser).Build(&plain, subchunk.Options{
+	result, err := mesher.NewMesher(parser.Tables()).MeshPlainLayerStorage(&plain, mesher.Options{
 		Meshing: meshing.Options{
 			DisableCulling: !*cull,
 			DisableGreedy:  !*greedy,

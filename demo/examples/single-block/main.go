@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"neomega-blocks/ir"
-	"neomega-viewer/singleblock"
+	"neomega-viewer/demo/singleblock"
 )
 
 func main() {

@@ -7,19 +7,20 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	"neomega-viewer/blockmesh"
+	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/scenes"
+	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/mesher"
 	"neomega-viewer/meshing"
-	"neomega-viewer/subchunk"
 )
 
-func realEngine(t *testing.T) *subchunk.Engine {
+func realEngine(t *testing.T) *mesher.Mesher[uint32] {
 	t.Helper()
 	parser, err := blockmesh.Open(blockmesh.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return subchunk.New(parser)
+	return mesher.NewMesher(parser.Tables())
 }
 func id(t *testing.T, java string) uint32 {
 	t.Helper()
@@ -38,7 +39,7 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 	}{
 		{meshing.Options{}, 6}, {meshing.Options{DisableGreedy: true}, 1536}, {meshing.Options{DisableCulling: true, DisableGreedy: true}, 24576},
 	} {
-		result, err := engine.Build(plain(solid), subchunk.Options{Meshing: check.Options})
+		result, err := engine.MeshPlainLayerStorage(plain(solid), mesher.Options{Meshing: check.Options})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -62,7 +63,7 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 			before := subchunk.EncodeIDs(layer)
 			input := plain(layer)
 			original := slices.Clone(input.Data)
-			result, err := engine.Build(input, subchunk.Options{})
+			result, err := engine.MeshPlainLayerStorage(input, mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +98,7 @@ func TestTransparentInterfaces(t *testing.T) {
 		layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
 		layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), id(t, check.A))
 		layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), id(t, check.B))
-		result, err := engine.Build(plain(layer), subchunk.Options{Meshing: meshing.Options{DisableGreedy: true}})
+		result, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{Meshing: meshing.Options{DisableGreedy: true}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,13 +120,13 @@ func TestConnectionsComeFromJavaHash(t *testing.T) {
 			a, b := celler.ToSubChunkBlockPos(4, 4, 4), celler.ToSubChunkBlockPos(5, 4, 4)
 			layer.Set(a, isolated)
 			layer.Set(b, isolated)
-			stored, err := engine.Build(plain(layer), subchunk.Options{})
+			stored, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			layer.Set(a, east)
 			layer.Set(b, west)
-			connected, err := engine.Build(plain(layer), subchunk.Options{})
+			connected, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,7 +134,7 @@ func TestConnectionsComeFromJavaHash(t *testing.T) {
 				t.Fatal("Java connection states did not add multipart geometry")
 			}
 			layer.Set(b, air)
-			single, err := engine.Build(plain(layer), subchunk.Options{})
+			single, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +152,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 			layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
 			fluid := id(t, "minecraft:"+name+` ["level"="0"]`)
 			layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), fluid)
-			single, err := engine.Build(plain(layer), subchunk.Options{})
+			single, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -159,7 +160,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 				t.Fatal("isolated fluid height changed")
 			}
 			layer.Set(celler.ToSubChunkBlockPos(4, 5, 4), fluid)
-			stacked, err := engine.Build(plain(layer), subchunk.Options{})
+			stacked, err := engine.MeshPlainLayerStorage(plain(layer), mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -189,7 +190,7 @@ func TestFluidHeightUsesOnlySameFamilyAbove(t *testing.T) {
 			if check.y < 15 {
 				layer.Set(celler.ToSubChunkBlockPos(4, check.y+1, 4), id(t, "minecraft:"+check.above))
 			}
-			result, err := engine.Build(layer, subchunk.Options{Meshing: meshing.Options{DisableCulling: true, DisableGreedy: true}})
+			result, err := engine.MeshPlainLayerStorage(layer, mesher.Options{Meshing: meshing.Options{DisableCulling: true, DisableGreedy: true}})
 			if err != nil {
 				t.Fatal(err)
 			}

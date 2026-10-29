@@ -2,16 +2,20 @@
 package singleblock
 
 import (
-	"neomega-viewer/blockmesh"
 	"neomega-viewer/blockstate"
+	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/geometry"
+	"neomega-viewer/mesher"
 )
 
 type OpenOptions = blockmesh.OpenOptions
 
-type Engine struct{ *blockmesh.Resolver }
+type Engine struct {
+	*blockmesh.Resolver
+	mesher *mesher.Mesher[uint32]
+}
 
-type Renderer = blockmesh.Renderer
+type Renderer = blockstate.Renderer
 
 type Block struct {
 	Binding  blockstate.Binding
@@ -33,7 +37,9 @@ func (block *Block) Packet() Packet {
 	}
 }
 
-func New(resolver *blockmesh.Resolver) *Engine { return &Engine{Resolver: resolver} }
+func New(resolver *blockmesh.Resolver) *Engine {
+	return &Engine{Resolver: resolver, mesher: mesher.NewMesher(resolver.Tables())}
+}
 
 func Open(options OpenOptions) (*Engine, error) {
 	resolver, err := blockmesh.Open(options)
@@ -44,22 +50,9 @@ func Open(options OpenOptions) (*Engine, error) {
 }
 
 func (engine *Engine) Build(javaHash uint32) (*Block, error) {
-	tables, err := engine.Tables()
+	mesh, err := engine.mesher.MeshBlock(javaHash)
 	if err != nil {
 		return nil, err
-	}
-	ids, err := tables.ModelIDs(javaHash)
-	if err != nil {
-		return nil, err
-	}
-	mesh := geometry.Mesh{Quads: []geometry.Quad{}}
-	for _, id := range ids {
-		shape, err := tables.Shape(id)
-		if err != nil {
-			return nil, err
-		}
-		// 输出独立网格，调用者修改它不会改变共享表。
-		mesh.Quads = append(mesh.Quads, shape.Quads...)
 	}
 	binding, err := engine.Binding(javaHash)
 	if err != nil {

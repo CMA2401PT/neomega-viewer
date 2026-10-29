@@ -8,12 +8,13 @@ import (
 	"os"
 	"testing"
 
-	"neomega-viewer/blockmesh"
+	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
+	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/mesher"
 	"neomega-viewer/meshwire"
-	"neomega-viewer/singleblock"
-	"neomega-viewer/subchunk"
 )
 
 func TestSubchunkBinaryTransport(t *testing.T) {
@@ -21,11 +22,11 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR for the binary subchunk transport check")
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../resources/geometry.gob"})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../resources/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := httpapi.New(httpapi.Options{Engine: singleblock.New(parser), Subchunks: subchunk.New(parser), AssetsDir: dir, WebDir: t.TempDir()})
+	handler := httpapi.New(httpapi.Options{Engine: singleblock.New(parser), Subchunks: mesher.NewMesher(parser.Tables()), AssetsDir: dir, WebDir: t.TempDir()})
 	call := func(method, path string, body []byte, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		out := httptest.NewRecorder()
@@ -43,7 +44,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if err != nil || mesh.Quads != 6 {
 		t.Fatalf("invalid binary geometry: %v, %d faces", err, mesh.Quads)
 	}
-	var stats subchunk.Stats
+	var stats mesher.Stats
 	if err := json.Unmarshal([]byte(response.Header().Get("X-Neomega-Mesh-Stats")), &stats); err != nil || stats.InputQuads != 24576 || stats.VisibleQuads != 1536 || stats.OutputQuads != 6 {
 		t.Fatalf("invalid pipeline stats: %v %+v", err, stats)
 	}

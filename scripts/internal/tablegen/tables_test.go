@@ -4,13 +4,13 @@ import (
 	"slices"
 	"testing"
 
-	"neomega-viewer/blockmesh"
 	"neomega-viewer/geometry"
+	"neomega-viewer/mesher"
 )
 
 func TestInternComparesAllBakedQuadFields(t *testing.T) {
-	tables := &blockmesh.Tables{}
-	buckets := map[shapeBucket][]blockmesh.ModelID{}
+	tables := &mesher.Tables[uint32]{}
+	buckets := map[shapeBucket][]mesher.ModelID{}
 	original := geometry.Mesh{Quads: []geometry.Quad{{}, {Color: [3]float32{1, 1, 1}}}}
 	first := intern(tables, original, 0, buckets)
 	copy := geometry.Mesh{Quads: slices.Clone(original.Quads)}
