@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
@@ -100,6 +101,20 @@ func New(options Options) http.Handler {
 	mux.HandleFunc("GET /assets/THIRD_PARTY_NOTICES.txt", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(options.AssetsDir, "THIRD_PARTY_NOTICES.txt"))
 	})
-	mux.Handle("GET /", http.FileServer(http.Dir(options.WebDir)))
+	mux.Handle("GET /", cachedFiles(http.Dir(options.WebDir)))
 	return mux
+}
+
+// 构建产物里带哈希的 assets 可长期缓存，但入口 HTML 必须每次校验，
+// 否则重建后浏览器会拿着旧 HTML 去请求已不存在的旧 JS，整页起不来。
+func cachedFiles(root http.FileSystem) http.Handler {
+	files := http.FileServer(root)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
