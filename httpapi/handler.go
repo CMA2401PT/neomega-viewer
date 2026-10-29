@@ -11,10 +11,12 @@ import (
 	"neomega-viewer/catalog"
 	"neomega-viewer/model"
 	"neomega-viewer/singleblock"
+	"neomega-viewer/subchunk"
 )
 
 type Options struct {
 	Engine    *singleblock.Engine
+	Subchunks *subchunk.Engine
 	Catalog   *catalog.Catalog
 	AssetsDir string
 	WebDir    string
@@ -41,6 +43,9 @@ func writeError(w http.ResponseWriter, status int, err error) {
 
 func New(options Options) http.Handler {
 	mux := http.NewServeMux()
+	if options.Subchunks != nil {
+		addSubchunks(mux, options.Subchunks)
+	}
 	mux.HandleFunc("GET /api/blocks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, struct {
 			Version  string          `json:"version"`

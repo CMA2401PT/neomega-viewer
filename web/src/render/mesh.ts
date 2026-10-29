@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import type { Batch, MeshData, Surface } from "./types";
+import type {
+  Batch,
+  MeshData,
+  Surface,
+  FloatAttribute,
+  IndexAttribute,
+} from "./types";
 
 const vertexShader = `
   attribute vec3 color;
@@ -79,49 +85,53 @@ function surfaceMaterial(
   });
 }
 
+// Typed binary views are retained directly. JSON arrays are converted once.
+function floats(
+  values: FloatAttribute,
+  start: number,
+  count: number,
+): Float32Array {
+  return values instanceof Float32Array
+    ? values.subarray(start, start + count)
+    : new Float32Array(values.slice(start, start + count));
+}
+
 function buffers(
   batch: Batch,
   start: number,
   count: number,
-  indices: number[],
+  indices: IndexAttribute,
 ): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
     "position",
-    new THREE.Float32BufferAttribute(
-      batch.positions.slice(start * 3, (start + count) * 3),
-      3,
-    ),
+    new THREE.BufferAttribute(floats(batch.positions, start * 3, count * 3), 3),
   );
   geometry.setAttribute(
     "normal",
-    new THREE.Float32BufferAttribute(
-      batch.normals.slice(start * 3, (start + count) * 3),
+    new THREE.BufferAttribute(floats(batch.normals, start * 3, count * 3), 3),
+  );
+  geometry.setAttribute(
+    "shadeNormal",
+    new THREE.BufferAttribute(
+      floats(batch.shadeNormals, start * 3, count * 3),
       3,
     ),
   );
   geometry.setAttribute(
     "color",
-    new THREE.Float32BufferAttribute(
-      batch.colors.slice(start * 3, (start + count) * 3),
-      3,
-    ),
+    new THREE.BufferAttribute(floats(batch.colors, start * 3, count * 3), 3),
   );
   geometry.setAttribute(
     "uv",
-    new THREE.Float32BufferAttribute(
-      batch.uvs.slice(start * 2, (start + count) * 2),
-      2,
+    new THREE.BufferAttribute(floats(batch.uvs, start * 2, count * 2), 2),
+  );
+  geometry.setIndex(
+    new THREE.BufferAttribute(
+      indices instanceof Uint32Array ? indices : new Uint32Array(indices),
+      1,
     ),
   );
-  geometry.setAttribute(
-    "shadeNormal",
-    new THREE.Float32BufferAttribute(
-      batch.shadeNormals.slice(start * 3, (start + count) * 3),
-      3,
-    ),
-  );
-  geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;
 }

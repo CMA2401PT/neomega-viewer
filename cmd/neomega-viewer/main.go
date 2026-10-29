@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"neomega-viewer/blockmesh"
 	"neomega-viewer/catalog"
 	"neomega-viewer/httpapi"
 	"neomega-viewer/singleblock"
+	"neomega-viewer/subchunk"
 )
 
 func main() {
@@ -21,7 +23,7 @@ func main() {
 	if _, err := os.Stat(filepath.Join(*web, "index.html")); err != nil {
 		log.Fatal("build the browser first: cd web && npm install && npm run build")
 	}
-	engine, err := singleblock.Open(singleblock.OpenOptions{AssetsDir: *assets})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{AssetsDir: *assets})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -29,7 +31,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := &http.Server{Addr: *listen, Handler: httpapi.New(httpapi.Options{Engine: engine, Catalog: entries, AssetsDir: *assets, WebDir: *web}), ReadHeaderTimeout: 5 * time.Second}
-	log.Printf("Java %s · %d block groups · http://%s", engine.Assets.BuildInfo.Version, len(entries.Groups), *listen)
+	server := &http.Server{
+		Addr: *listen,
+		Handler: httpapi.New(httpapi.Options{
+			Engine:    singleblock.New(parser),
+			Subchunks: subchunk.New(parser),
+			Catalog:   entries,
+			AssetsDir: *assets,
+			WebDir:    *web,
+		}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	log.Printf("Java %s · %d block groups · http://%s", parser.Assets.BuildInfo.Version, len(entries.Groups), *listen)
 	log.Fatal(server.ListenAndServe())
 }

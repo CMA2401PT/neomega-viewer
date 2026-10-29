@@ -685,3 +685,31 @@ pre {
     gap: 10px;
   }
 }
+
+.view-switch {
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.view-switch a {
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: #809387;
+}
+.view-switch a.active {
+  color: #316f54;
+  background: #eaf2ea;
+}
+@media (max-width: 650px) {
+  .view-switch {
+    margin-left: auto;
+    font-size: 10px;
+  }
+  .view-switch a {
+    padding: 6px 8px;
+  }
+  .topbar .version {
+    display: none;
+  }
+}

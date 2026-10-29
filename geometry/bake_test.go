@@ -96,3 +96,29 @@ func TestElementRotationProducesAPlaneNormal(t *testing.T) {
 		t.Fatalf("normal ignored element rotation: %v", n)
 	}
 }
+
+func TestCutoutVolumeFacesAndStandalonePlanesHaveDifferentSidedness(t *testing.T) {
+	pixels := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+	pixels.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+	library := material.New(asset.Atlas{Width: 2, Height: 1, Textures: map[string]asset.AtlasTexture{"stone": {SU: 1, SV: 1}}}, pixels, resources.PreviewPolicy{})
+	for _, check := range []struct {
+		To     asset.Vec3
+		Faces  map[asset.Direction]asset.Face
+		Double bool
+	}{
+		{asset.Vec3{16, 16, 16}, map[asset.Direction]asset.Face{"north": {Texture: "block/stone"}}, false},
+		{asset.Vec3{16, 16, 0}, map[asset.Direction]asset.Face{"north": {Texture: "block/stone"}}, true},
+		{asset.Vec3{16, 16, 0}, map[asset.Direction]asset.Face{"north": {Texture: "block/stone"}, "south": {Texture: "block/stone"}}, false},
+	} {
+		source := &model.Resolved{Elements: []asset.Element{{To: check.To, Faces: check.Faces}}}
+		mesh, err := Bake(source, asset.Apply{}, blockstate.State{Name: "minecraft:oak_leaves"}, library)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, quad := range mesh.Quads {
+			if quad.Surface.Mode != material.Cutout || quad.Surface.DoubleSided != check.Double {
+				t.Fatalf("incorrect cutout sidedness: %+v", quad.Surface)
+			}
+		}
+	}
+}

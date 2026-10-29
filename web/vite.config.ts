@@ -1,5 +1,10 @@
 import { defineConfig } from "vite";
 export default defineConfig({
+  build: {
+    rolldownOptions: {
+      input: { blocks: "index.html", subchunk: "subchunk.html" },
+    },
+  },
   server: {
     proxy: {
       "/api": "http://127.0.0.1:2410",

@@ -12,6 +12,8 @@ Three.js 的 MIT 原文保存在 [web/public/THIRD_PARTY_NOTICES.txt](web/public
 
 ## 状态与资源
 
+子区块使用相邻 `neomega-celler` 中的 `celler/layer_storage.Palette[uint32]` 存储接口。
+
 方块 ID 和状态转换使用相邻的 `neomega-blocks` preset。转换数据的准备依赖 Amulet Team 的 PyMCTranslate。本项目使用现有 Java 1.21.4 目标表；本地转换库记录的 build 317 对应上游 1.2.30。该版本采用 Amulet Team License 1.0.0，包含非商业、教育和非竞争等使用条款；它不是 MIT 许可。完整条款和来源见 [neomega-blocks 的声明](../neomega-blocks/third_party/pymctranslate-notices/NOTICE.md)。
 
 Required Notice: Copyright Amulet Team. (https://www.amuletmc.com/)

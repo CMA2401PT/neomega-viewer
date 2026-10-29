@@ -105,6 +105,12 @@ func Bake(resolved *model.Resolved, application asset.Apply, state blockstate.St
 			if err != nil {
 				return Mesh{}, err
 			}
+			// Holes in a texture do not make the back of a solid element an
+			// additional surface. Keep volume faces front-sided; a standalone
+			// cutout plane can still be viewed from both sides.
+			if surface.Mode == material.Cutout && lo[0] != hi[0] && lo[1] != hi[1] && lo[2] != hi[2] {
+				surface.DoubleSided = false
+			}
 			// A plane with explicit front/back faces already has both sides.
 			// Drawing each of those faces double-sided creates coplanar overlap.
 			axis := faceAxis[side]

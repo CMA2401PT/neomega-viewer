@@ -13,6 +13,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <header class="topbar">
     <a class="brand" href="/" aria-label="Neomega 首页"><span class="brandmark">N</span><span>NEOMEGA<span class="brand-sub">BLOCK EXPLORER</span></span></a>
     <span class="version" id="version">正在连接…</span>
+    <nav class="view-switch" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
     <span class="static-badge"><i></i>静态方块浏览器</span>
   </header>
   <main class="workspace">

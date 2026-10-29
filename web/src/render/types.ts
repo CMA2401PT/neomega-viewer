@@ -8,14 +8,16 @@ export interface Surface {
   unlit: boolean;
   opacity: number;
 }
+export type FloatAttribute = number[] | Float32Array;
+export type IndexAttribute = number[] | Uint32Array;
 export interface Batch {
   surface: Surface;
-  positions: number[];
-  normals: number[];
-  shadeNormals: number[];
-  uvs: number[];
-  colors: number[];
-  indices: number[];
+  positions: FloatAttribute;
+  normals: FloatAttribute;
+  shadeNormals: FloatAttribute;
+  uvs: FloatAttribute;
+  colors: FloatAttribute;
+  indices: IndexAttribute;
 }
 export interface MeshData {
   batches: Batch[];

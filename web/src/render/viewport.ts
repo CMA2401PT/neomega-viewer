@@ -3,8 +3,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createMeshObject, type MeshObject } from "./mesh";
 import type { MeshData } from "./types";
 
-/** An isolated block viewport. No scene/world loader or worker is involved. */
-export class BlockViewport {
+/** A geometry viewport. It does not parse blocks, load a world or start workers. */
+export class MeshViewport {
   private readonly renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: false,
@@ -13,7 +13,7 @@ export class BlockViewport {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera =
     new THREE.PerspectiveCamera(38, 1, 0.01, 100);
   private controls: OrbitControls;
-  private readonly grid = new THREE.GridHelper(8, 32, 0xb8c3c5, 0xdde4e4);
+  private readonly grid: THREE.GridHelper;
   private readonly frame = new THREE.Box3Helper(
     new THREE.Box3(new THREE.Vector3(), new THREE.Vector3(1, 1, 1)),
     0x9caaa9,
@@ -26,18 +26,24 @@ export class BlockViewport {
   );
   private scheduled = false;
   private disposed = false;
-  private ortho = false;
 
   constructor(
     private readonly host: HTMLElement,
     private readonly atlas: THREE.Texture,
+    options: { gridSize?: number; label?: string } = {},
   ) {
+    this.grid = new THREE.GridHelper(
+      options.gridSize ?? 8,
+      32,
+      0xb8c3c5,
+      0xdde4e4,
+    );
     this.scene.background = new THREE.Color(0xf0f4f3);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.domElement.setAttribute(
       "aria-label",
-      "方块三维预览，可拖动旋转和滚轮缩放",
+      options.label ?? "静态几何三维预览，可拖动旋转和滚轮缩放",
     );
     host.append(this.renderer.domElement);
     this.controls = this.makeControls();
@@ -57,7 +63,7 @@ export class BlockViewport {
     return controls;
   }
 
-  set(data: MeshData): void {
+  set(data: MeshData, options: { resetView?: boolean } = {}): void {
     if (this.current) {
       this.scene.remove(this.current.object);
       this.current.dispose();
@@ -77,12 +83,15 @@ export class BlockViewport {
       this.bounds.min.y - 0.005,
       this.bounds.getCenter(new THREE.Vector3()).z,
     );
-    this.reset();
+    if (options.resetView !== false) this.reset();
+    else this.render();
   }
 
   reset(): void {
     const center = this.bounds.getCenter(new THREE.Vector3());
     const size = Math.max(1, this.bounds.getSize(new THREE.Vector3()).length());
+    this.controls.maxDistance = size * 10;
+    this.camera.far = Math.max(100, size * 20);
     this.controls.target.copy(center);
     this.camera.position
       .copy(center)
@@ -95,13 +104,24 @@ export class BlockViewport {
   }
 
   projection(orthographic: boolean): void {
-    this.ortho = orthographic;
     this.controls.dispose();
     this.camera = orthographic
       ? new THREE.OrthographicCamera(-2, 2, 2, -2, 0.01, 100)
       : new THREE.PerspectiveCamera(38, 1, 0.01, 100);
     this.controls = this.makeControls();
     this.reset();
+  }
+
+  showWireframe(visible: boolean): void {
+    this.current?.object.traverse((object) => {
+      if (
+        object instanceof THREE.Mesh &&
+        object.material instanceof THREE.ShaderMaterial
+      ) {
+        object.material.wireframe = visible;
+      }
+    });
+    this.render();
   }
 
   showFrame(visible: boolean): void {
@@ -154,3 +174,6 @@ export class BlockViewport {
     this.renderer.domElement.remove();
   }
 }
+
+// Compatibility name for callers of the original single-block viewport.
+export { MeshViewport as BlockViewport };
