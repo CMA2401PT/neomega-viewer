@@ -23,6 +23,7 @@ var scenes = []Scene{
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
+	{"fluids", "流体与纹理动画", "石池中的水与岩浆展示纹理动画；中央叠放同类流体，检查下层的满高度衔接。"},
 	{"slabs", "半砖交界", "半砖与完整方块相邻，只剔除实际覆盖的部分。"},
 	{"foliage", "树叶与交叉平面", "透过镂空贴图观察后面的石头，并检查草和火焰的平面外形。"},
 	{"checker", "交错材质", "内部面仍会剔除，纹理不同的外表面保持分开。"},
@@ -103,6 +104,14 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		box(7, 1, 7, 9, 5, 9, "minecraft:stone []")
 		box(11, 1, 5, 12, 7, 8, "minecraft:red_stained_glass []")
 		box(11, 1, 8, 12, 7, 11, "minecraft:blue_stained_glass []")
+	case "fluids":
+		// 石底和一格高的池沿，中间留石墙分隔。
+		box(1, 0, 3, 15, 2, 12, "minecraft:stone []")
+		box(2, 1, 4, 7, 2, 11, `minecraft:water ["level"="0"]`)
+		box(9, 1, 4, 14, 2, 11, `minecraft:lava ["level"="0"]`)
+		// 中央再叠一层，让下方同类流体达到满高度。
+		box(3, 2, 6, 6, 3, 9, `minecraft:water ["level"="0"]`)
+		box(10, 2, 6, 13, 3, 9, `minecraft:lava ["level"="0"]`)
 	case "foliage":
 		box(2, 0, 2, 14, 1, 14, "minecraft:stone []")
 		box(3, 1, 4, 13, 4, 7, `minecraft:oak_leaves ["distance"="7","persistent"="false"]`)
