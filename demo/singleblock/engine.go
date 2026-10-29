@@ -4,8 +4,8 @@ package singleblock
 import (
 	"neomega-viewer/blockstate"
 	"neomega-viewer/demo/blockmesh"
-	"neomega-viewer/geometry"
 	"neomega-viewer/mesher"
+	"neomega-viewer/mesher/geometry"
 )
 
 type OpenOptions = blockmesh.OpenOptions

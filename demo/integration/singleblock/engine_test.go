@@ -10,8 +10,8 @@ import (
 	"neomega-assets/asset"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 )
 
 func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {

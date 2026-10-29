@@ -48,7 +48,7 @@ FullHeight 映射
 | 偏移 | 宽度 | 类型 | 含义 |
 |---:|---:|---|---|
 | 0 | 4 | u32 | T |
-| 4 | T | UTF-8 | Texture，即 `asset.ID` 的文本，例如 `minecraft:block/stone` |
+| 4 | T | UTF-8 | Texture，即纹理资源名字符串，例如 `minecraft:block/stone` |
 | 4+T | 4 | u32 | K |
 | 8+T | K | UTF-8 | Mode，当前使用 `opaque`、`cutout`、`blend` |
 | 8+T+K | 16 | 4 × f32 | Region：u、v、width、height；归一化图集区域，原点在左上 |
@@ -123,6 +123,6 @@ Shape 的 ModelID 就是其记录序号，不另外存编号。每条记录开�
 
 ## Go 接口与 Java 演示数据
 
-`tables.Encode(w io.Writer)` 写出上述格式；`mesher.DecodeTables[B](r io.Reader)` 读取它。两者都返回 I/O 错误，文件或 embed 由调用者打开。`mesher.NewMesher(tables)` 持有只读表并提供 `MeshBlock(id)` 与 `MeshPlainLayerStorage(layer, options)`。
+`tables.Encode(w io.Writer)` 写出上述格式；`mesher.DecodeTables[B](r io.Reader)` 读取它。两者都返回 I/O 错误，文件或 embed 由调用者打开。`mesher.NewMesher(tables)` 持有只读表并提供 `MeshBlock(id)` 与 `MeshSubchunk(blocks, options)`，其中 blocks 为按 `(x<<8)|(z<<4)|y` 排列的 4096 个 ID 的切片。
 
 仓库生成器以 uint32 的 Java hash 作为 block ID。Java 身份由 `blockstate.Java()` 提供。演示所需的资源 Version、Renderers、Skipped 单独写入 `<表路径>.java.json`，其中 Skipped 记录 Binding 和 Reason。这个旁文件不属于 NVGT，独立使用 mesher 不需要它；演示加载器 `demo/blockmesh` 为 JSON 响应加载它。两张几何表的全部内容都在 NVGT 二进制中。

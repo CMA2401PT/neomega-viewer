@@ -7,7 +7,7 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/material"
 	"neomega-viewer/scripts/internal/materials"
 	"neomega-viewer/scripts/internal/resources"
 )

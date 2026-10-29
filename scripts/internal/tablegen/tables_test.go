@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"neomega-viewer/geometry"
 	"neomega-viewer/mesher"
+	"neomega-viewer/mesher/geometry"
 )
 
 func TestInternComparesAllBakedQuadFields(t *testing.T) {

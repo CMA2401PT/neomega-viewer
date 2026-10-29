@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"neomega-assets/asset"
-	blocks "neomega-blocks/presets/block-converts/v1"
+	java "neomega-blocks/presets/java/v1"
 )
 
 type State struct {
@@ -28,17 +28,17 @@ type Table struct {
 var javaTable = sync.OnceValues(func() (*Table, error) {
 	// 目录与渲染共享状态全集，避免两条入口使用不同的 ID 来源。
 	result := &Table{ByID: map[uint32]Binding{}}
-	for java := range blocks.JavaFullStates() {
-		name, err := asset.ParseID(java.NameWithNameSpace())
+	for block := range java.JavaFullStates() {
+		name, err := asset.ParseID(block.NameWithNameSpace())
 		if err != nil {
 			return nil, err
 		}
 		properties := map[string]string{}
-		for key, value := range java.States().KeyValues {
+		for key, value := range block.States().KeyValues {
 			properties[key] = fmt.Sprint(value)
 		}
 		// JavaFullStates 已 Tidy，属性顺序与上游的规范哈希一致。
-		id := java.Hash()
+		id := block.Hash()
 		result.ByID[id] = Binding{ID: id, Java: State{Name: name, Properties: properties}}
 	}
 	return result, nil

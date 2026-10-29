@@ -1,6 +1,6 @@
 # NVMS v1：传输已经生成的几何
 
-子区块顶点适合以数值缓冲传输，避免先转换成数值文本，再在浏览器构造普通数组。`meshwire.Encode` 将 `geometry.Buffers` 编码成 NVMS；Go 消费者使用 `meshwire.Decode`，浏览器使用 `@neomega/viewer/render` 的 `decodeMesh`。
+子区块顶点适合以数值缓冲传输，避免先转换成数值文本，再在浏览器构造普通数组。`geometry.Mesh.Marshal(w io.Writer)` 将网格编码成 NVMS；Go 消费者使用 `geometry.UnmarshalMesh(r io.Reader)`，浏览器使用 `@neomega/viewer/render` 的 `decodeMesh`。
 
 协议只描述绘制数据，不保存方块 ID、模型树或 Palette。需要重新解析方块时，应保存输入层，而不是试图从顶点反推方块。HTTP 响应类型为 `application/vnd.neomega.mesh`，同样的正文可以保存为 `.nvmesh`。
 
@@ -41,13 +41,16 @@
 
 ## 如何复用
 
-Go 编码和解码都不依赖 HTTP：
+导入 `neomega-viewer/mesher/geometry` 后，编码和解码使用 `io.Writer`、`io.Reader`，可直接连接文件或 HTTP：
 
 ```go
-encoded, err := meshwire.Encode(result.Mesh.Buffers())
-// encoded 可以写文件，或直接作为 HTTP 正文。
-decoded, err := meshwire.Decode(encoded)
+err := result.Mesh.Marshal(writer)
+mesh, err := geometry.UnmarshalMesh(reader)
 ```
+
+`Quad.Marshal(writer)` 写出单面 NVMS，`geometry.UnmarshalQuad(reader)` 要求输入恰好包含一个面。多面网格必须统一按材质和属性分批，不能拼接单面 NVMS 文件；单面入口因此复用 Mesh 编码器。
+
+解码后的 Quad 顺序为材质批次顺序，同一材质内保留输入顺序。位置、UV 和法线恢复为 float32 所能表示的值；ShadeNormal 是应用默认法线后的值，CullFace 为零。NVMS 用于绘制；保存完整烘焙几何使用 [NVGT](../FORMAT.md)。
 
 浏览器在小端平台上直接建立属性视图，材质表单独解析：
 
@@ -58,4 +61,4 @@ const mesh = createMeshObject(data, atlas);
 
 这里共享的是 CPU 上收到的 `ArrayBuffer`。Three.js 在创建 GPU 缓冲时仍需要上传数据。将一个半透明批次拆成可排序的面时，适配层使用 `subarray` 保留属性视图，避免为每个面复制整份网格。
 
-方块层的 `.nvblocks` 与 NVMS 是两种不同用途的数据：前者保存 4096 个实际 ID，可重新解析和改变网格策略；后者保存一次解析得到的静态几何。方块层格式与可运行示例见 [主 README](../README.md#直接使用-go-库)。
+方块层的 `.nvblocks` 与 NVMS 是两种不同用途的数据：前者保存 4096 个实际 ID，可重新解析和改变网格策略；后者保存一次解析得到的静态几何。方块层格式与可运行示例见 [主 README](../../README.md#直接使用-go-库)。

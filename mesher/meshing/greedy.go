@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 )
 
 type groupKey struct {

@@ -5,8 +5,8 @@ package meshing
 import (
 	"math"
 
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 )
 
 const Size = 16

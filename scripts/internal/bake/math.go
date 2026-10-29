@@ -3,7 +3,7 @@ package bake
 import (
 	"math"
 
-	"neomega-viewer/geometry"
+	"neomega-viewer/mesher/geometry"
 )
 
 func add(a, b geometry.Vec3) geometry.Vec3 {

@@ -1,8 +1,10 @@
 # neomega-viewer
 
-`neomega-viewer` 把数值方块层渲染成静态几何。可复用入口是 `mesher.Mesher[B]`：调用者传入几何表和数值 block ID，库查表取形状，再按邻居覆盖剔面、合并。B 可以是 uint32、uint64 或它们的自定义类型，mesher 只把它当查表键。
+`neomega-viewer` 把数值方块层转换成静态几何。`mesher` 是连接方块数据与绘制端的可复用窄腰：调用者提供几何表和数值 block ID，它查表取得形状，再按邻居覆盖剔面、合并。`mesher.Mesher[B]` 的 B 可以是 uint32、uint64 或它们的自定义类型，库只把 ID 当查表键。
 
-Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状态、选模型、解析纹理、烘焙几何，产出 `javaHash → []ModelID` 和 `ModelID → Shape` 两张表。Java hash 是方块名加全部属性先 `Tidy()`、再 `Hash()` 得到的 uint32。模型部件被许多状态共用，所以几何去重后共享。**运行侧**只查表与拼装：单方块返回 Mesh，16×16×16 的 Plain 层返回几何与统计。连接方向、半砖位置、红石颜色等已在生成时定死；流体高度切换和面剔除依赖邻居的数值几何信息。
+`mesher/` 自带 `geometry`、`material`、`meshing` 子包，分别负责几何与传输、表面材质、剔面与合并。整个子树除 Go 标准库外没有外部依赖。子区块入口接收 4096 个数值 block ID 的切片，存储类型由调用方选择。Java 状态、模型与图集解析留在外层，其他 ID 系统也可以提供自己的表并复用相同入口。
+
+Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状态、选模型、解析纹理、烘焙几何，产出 `javaHash → []ModelID` 和 `ModelID → Shape` 两张表。Java hash 是方块名加全部属性先 `Tidy()`、再 `Hash()` 得到的 uint32。模型部件被许多状态共用，所以几何去重后共享。**运行侧**只查表与拼装：单方块返回 Mesh，16×16×16 的子区块返回几何与统计。连接方向、半砖位置、红石颜色等已在生成时定死；流体高度切换和面剔除依赖邻居的数值几何信息。
 
 两张表保存为固定小端的 NVGT 二进制。加载文件或 embed 是调用者的职责，mesher 构造时只接收 `*Tables[B]`。Java 演示加载器提供内嵌资源的便捷入口。
 
@@ -10,16 +12,15 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 ## 目录职责
 
-复用渲染时只需要根目录的核心包。演示代码集中在 `demo/`。只有生成器需要模型解析和图集采样，这些实现放在 `scripts/internal/`，由 Go 的 internal 边界限制引用。
+复用几何构建时使用 `mesher/` 及其子包。演示代码集中在 `demo/`。只有生成器需要模型解析和图集采样，这些实现放在 `scripts/internal/`，由 Go 的 internal 边界限制引用。
 
 ```text
 neomega-viewer/
-├─ mesher/             # 泛型表、二进制编解码、单块与 Plain 层几何入口
+├─ mesher/             # 泛型表、NVGT 编解码、单块与子区块入口
+│  ├─ geometry/       # Shape、Mesh、Quad、绘制缓冲与 NVMS 编解码
+│  ├─ material/       # 表面材质，纹理名为 string
+│  └─ meshing/        # 剔面、裁切和合并
 ├─ blockstate/         # 上层 Java 身份与响应元数据
-├─ geometry/           # Shape、四边形、绘制缓冲
-├─ material/           # 表面材质类型
-├─ meshing/            # 剔面、裁切和合并
-├─ meshwire/           # 几何二进制传输
 ├─ resources/          # 入库的 NVGT、Java 元数据及演示用 embed
 ├─ demo/
 │  ├─ blockmesh/       # Java 演示加载器，组合表与身份
@@ -37,17 +38,16 @@ neomega-viewer/
    └─ internal/        # tablegen、bake、model、materials、resources
 ```
 
-依赖方向为演示与脚本分别依赖核心。`catalog` 的分组和示例 ID 服务于浏览器选择器，因此属于演示。`meshwire` 可以独立写文件或传输几何，因此属于核心。根目录的 `resources` 保存生成产物；生成时的预览规则在 `scripts/internal/resources`。
+依赖方向为演示与生成脚本依赖 `mesher`，`mesher` 不反向依赖它们。内部依赖为 `geometry → material`、`meshing → geometry + material`。`catalog` 的分组和示例 ID 服务于浏览器选择器，因此属于演示。几何类型上的 NVMS 编解码可直接用于文件或网络。根目录的 `resources` 保存生成产物；生成时的预览规则在 `scripts/internal/resources`。
 
 ## 直接使用 Go 库
 
-几何使用者需要先取得表，再创建一个 Mesher。所有包的导入前缀为 `neomega-viewer/`。下面的完整示例读取 uint32 表，输出一个方块的绘制缓冲；ID 来自调用者，必须存在于表中：
+几何使用者需要先取得表，再创建一个 Mesher。所有包的导入前缀为 `neomega-viewer/`。下面的完整示例读取 uint32 表，将一个方块写成 NVMS 二进制；ID 来自调用者，必须存在于表中：
 
 ```go
 package main
 
 import (
-    "encoding/json"
     "flag"
     "log"
     "os"
@@ -67,30 +67,49 @@ func main() {
     renderer := mesher.NewMesher(tables)
     mesh, err := renderer.MeshBlock(uint32(*id))
     if err != nil { log.Fatal(err) }
-    if err := json.NewEncoder(os.Stdout).Encode(mesh.Buffers()); err != nil {
+    if err := mesh.Marshal(os.Stdout); err != nil {
         log.Fatal(err)
     }
 }
 ```
 
-自己的数值 ID 系统可以直接构建 `mesher.Tables[B]{Index, Shapes, FullHeight}`，用 `tables.Encode(writer)` 保存。`ModelIDs(id)` 和 `Shape(modelID)` 返回共享只读数据；`FullHeight` 把原模型编号映射到满高度编号。`mesher.Shape` 是 `geometry.Shape` 的别名，便于直接组装表而不复制几何类型。自定义 64 位 ID 可写成 `type BlockID uint64`，并使用 `Tables[BlockID]`、`DecodeTables[BlockID]` 和 `Plain[BlockID]`；ModelID 始终是 uint32 的 Shape 下标。
+自己的数值 ID 系统可以直接构建 `mesher.Tables[B]{Index, Shapes, FullHeight}`，用 `tables.Encode(writer)` 保存。`ModelIDs(id)` 和 `Shape(modelID)` 返回共享只读数据；`FullHeight` 把原模型编号映射到满高度编号。`mesher.Shape` 是 `geometry.Shape` 的别名，便于直接组装表而不复制几何类型。自定义 64 位 ID 可写成 `type BlockID uint64`，并使用 `Tables[BlockID]`、`DecodeTables[BlockID]` 和 `[]BlockID`；ModelID 始终是 uint32 的 Shape 下标。
 
-多个方块使用同一个 Mesher。层类型来自 `celler/layer_storage`。已有 Palette 时只在入口转换一次：
+多个方块使用同一个 Mesher。`MeshSubchunk(blocks []B, options Options)` 接收恰好 4096 个 ID，长度不足或超出会返回错误。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢，三个坐标均为 0…15。输出目标 `writer` 是任意 `io.Writer`：
+
+```go
+// blocks: []uint32，按上述顺序填满 4096 个 ID。
+result, err := renderer.MeshSubchunk(blocks, mesher.Options{})
+if err != nil {
+    return err
+}
+if err := result.Mesh.Marshal(writer); err != nil {
+    return err
+}
+```
+
+演示侧使用 `celler/layer_storage`。已有 Palette 时，用 `CopyFrom` 展开成 Plain，再直接传入它的 `Data` 切片，其顺序与子区块入口一致：
 
 ```go
 // layer: *layer_storage.Palette[uint32]
 var plain layer_storage.Plain[uint32]
 plain.CopyFrom(layer)
-result, err := renderer.MeshPlainLayerStorage(&plain, mesher.Options{})
+result, err := renderer.MeshSubchunk(plain.Data, mesher.Options{})
 if err != nil {
     return err
 }
-encoded, err := meshwire.Encode(result.Mesh.Buffers())
+if err := result.Mesh.Marshal(writer); err != nil {
+    return err
+}
 ```
 
-构建期间调用者应保持 Plain 和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。两个 Mesh 方法只返回几何和统计，Java 状态由调用者从 `blockstate` 查询。
+几何传输入口在 `neomega-viewer/mesher/geometry`。`Mesh.Marshal(w io.Writer)` 写出 NVMS，`geometry.UnmarshalMesh(r io.Reader)` 读回 Mesh；文件、HTTP 响应和内存缓冲使用同一接口。`Quad.Marshal(w)` 和 `geometry.UnmarshalQuad(r)` 用于只有一个四边形的 NVMS。`Mesh.Buffers()` 保留为扁平 GPU 属性入口，单方块 JSON 和直接绘制的 Go 调用者仍使用它。
 
-演示程序用 `demo/blockmesh.Open` 加载内嵌表，或通过 `OpenOptions{TablesPath: "/path/to/geometry.nvtables"}` 加载文件及配套的 `.java.json` 旁文件。`demo/singleblock` 是补齐 Binding、Renderer 与 JSON 响应的薄壳；层构建器已并入 mesher，服务和示例直接调用它。
+NVMS 保存 float32 绘制数据，按材质分批后的顺序恢复四边形。它不保留 CullFace，也不保留“零 ShadeNormal 表示使用 Normal”的原始标记；需要保留烘焙精度和剔面信息时，用 NVGT 保存 Tables。
+
+构建期间调用者应保持输入切片和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。两个 Mesh 方法只返回几何和统计，Java 状态由调用者从 `blockstate` 查询。
+
+演示程序用 `demo/blockmesh.Open` 加载内嵌表，或通过 `OpenOptions{TablesPath: "/path/to/geometry.nvtables"}` 加载文件及配套的 `.java.json` 旁文件。`demo/singleblock` 是补齐 Binding、Renderer 与 JSON 响应的薄壳；服务和层示例直接调用 mesher。
 
 Java 示例将完整状态文本规范化、计算 hash，再输出带 Java 元数据的 JSON。属性名和值使用 IR 的双引号语法：
 
@@ -98,7 +117,7 @@ Java 示例将完整状态文本规范化、计算 hash，再输出带 Java 元�
 go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
 ```
 
-需要跨工具交换方块层时，`demo/subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`demo/subchunk.ParseIDs` 将其还原成 Palette。每个 ID 都是 Java block hash。原有 NEMC ID 文件需要由调用者重新生成。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
+需要跨工具交换方块层时，`demo/subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`demo/subchunk.ParseIDs` 将其还原成 Palette。每个 ID 都是 Java block hash。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
 
 例如，先运行 `go run ./demo/examples/subchunk -scene solid -blocks /tmp/solid.nvblocks`，再在网页上传 `/tmp/solid.nvblocks`，或在命令行再次读取它：
 
@@ -108,7 +127,7 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 
 ## 生成和更新几何表
 
-模型、图集布局或静态材质策略改变后，需要重新生成配套几何。生成命令沿用原有状态选择、烘焙、去重和边界覆盖算法：
+模型、图集布局或静态材质策略改变后，需要重新生成配套几何。生成器枚举 Java 状态、选择模型、烘焙形状并计算边界覆盖：
 
 ```sh
 go run ./scripts/gen-geometry \
@@ -117,7 +136,7 @@ go run ./scripts/gen-geometry \
 wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json
 ```
 
-`resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,787,277 字节（5.52 MiB）**；旧 gob 为 13,207,250 字节（12.60 MiB），几何文件缩小约 56.2%。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,865,634 字节（5.59 MiB）。更换输入后以命令输出为准。
+`resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,787,277 字节（5.52 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,865,634 字节（5.59 MiB）。更换输入后以命令输出为准。
 
 NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质参数保留 float32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v1 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
 
@@ -227,7 +246,7 @@ Java 状态全集
 
 ## 多个方块放在一起时
 
-直接叠加 4096 份方块网格，会保留大量完全看不见的内面。子区块入口遍历 Plain 的全部逻辑位置，再查询各格的共享 Shape 引用。外部 Palette 是用调色板索引压缩方块 ID 的存储，进入渲染前须用 `CopyFrom` 展开成 Plain。默认填满的格子同样参与渲染。
+直接叠加 4096 份方块网格，会保留大量完全看不见的内面。子区块入口遍历输入切片的全部 4096 个位置，再查询各格的共享 Shape 引用。演示侧的 Palette 用调色板索引压缩方块 ID，调用前用 `CopyFrom` 展开成 Plain，再传入 `plain.Data`。默认填满的格子同样参与渲染。
 
 栅栏、玻璃板和墙的连接方向已经包含在输入 ID 对应的 Java 状态中。调用者写入确定的连接状态，渲染时直接查表取得已经选好的部件。
 
@@ -238,15 +257,15 @@ Java 状态全集
 
 透明面有额外规则。建表时将玻璃名称和流体家族转成 Shape 的数值消面组，避免渲染时解析名称。模型的 CullFace 也在烘焙时转为数值方向。相同玻璃、同类流体可以移除实际重叠的内面；不同玻璃保留界面。玻璃和树叶不会作为不透明遮挡物盖掉后面的石头。半透明面不参与大矩形合并，前端仍可按四边形排序。逐面排序不保证任意相交半透明表面的严格顺序。
 
-所有格子复用建表时固定的模型候选。即使名称相同，UV 不兼容的面也不会强行合并。剔面与摆放由 `cullAndPlace` 处理，合并由 `merge` 处理，最后调用 `Mesh.Buffers()` 生成顶点与索引。
+所有格子复用建表时固定的模型候选。即使名称相同，UV 不兼容的面也不会强行合并。剔面与摆放由 `cullAndPlace` 处理，合并由 `merge` 处理，得到 `geometry.Mesh`。传输时调用 `Mesh.Marshal()`；需要扁平属性或 JSON 时调用 `Mesh.Buffers()`。
 
 独立贪婪矩形可能形成 T 形接缝，即较短边接在另一条长边的中间；算法不额外缝合这些边。外边界按暴露面处理；组装地图时还需要提供相邻子区块的边界信息。子区块解析不创建地图或 worker，地图加载与卸载属于另一个入口的调度职责。
 
-## 为什么把网格传输单独分开
+## 几何怎样传给绘制端
 
-单方块的 JSON 便于查看状态和几何。子区块则有更多顶点，数值文本解析和临时数组会产生额外开销。因此子区块通过 `meshwire` 输出 **NVMS v1 二进制**：材质表使用一小段 JSON，顶点属性和索引使用对齐的小端数值数组。
+单方块的 JSON 便于查看状态和几何。子区块则有更多顶点，数值文本解析和临时数组会产生额外开销。因此子区块通过 `Mesh.Marshal` 输出 **NVMS v1 二进制**：材质表使用一小段 JSON，顶点属性和索引使用对齐的小端数值数组。
 
-浏览器的 `decodeMesh` 在常见的小端平台上为响应 `ArrayBuffer` 建立 `Float32Array`、`Uint32Array` 视图。Three.js 适配层直接保留这些视图；GPU 上传仍由 Three.js 完成。协议不依赖 HTTP，同一份数据也可以写入 `.nvmesh` 文件。布局与解析接口见 [meshwire/README.md](meshwire/README.md)。
+浏览器的 `decodeMesh` 在常见的小端平台上为响应 `ArrayBuffer` 建立 `Float32Array`、`Uint32Array` 视图。Three.js 适配层直接保留这些视图；GPU 上传仍由 Three.js 完成。协议不依赖 HTTP，同一份数据也可以写入 `.nvmesh` 文件。布局与解析接口见 [NVMS v1 格式说明](mesher/geometry/FORMAT.md)。
 
 网格合并与编码解决的是不同问题。以 Java 1.21.4 资源、当前 Java 状态全集、固定首候选的满石头层为例：
 
@@ -310,9 +329,9 @@ atlas.dispose();
 | 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
 | 怎样编码与查询共享几何？ | `mesher.Tables[B]`；演示文件加载在 `demo/blockmesh` |
 | 如何构建单个方块？ | `Mesher.MeshBlock`；Java 响应薄壳在 `demo/singleblock` |
-| 如何遍历 Plain 并准备邻域几何？ | `Mesher.MeshPlainLayerStorage` |
-| 哪些表面被覆盖，哪些矩形能够合并？ | `meshing` |
-| 几何怎样编码和解码？ | `meshwire`、`demo/web/src/render/binary.ts` |
+| 如何从 4096 个 ID 准备邻域几何？ | `Mesher.MeshSubchunk` |
+| 哪些表面被覆盖，哪些矩形能够合并？ | `mesher/meshing` |
+| 几何怎样编码和解码？ | `mesher/geometry` 的 `Mesh.Marshal`、`UnmarshalMesh`；前端 `demo/web/src/render/binary.ts` |
 | 哪些代码只是演示？ | `demo/` 下的服务、目录、场景和网页 |
 
 演示服务提供以下接口：
@@ -352,9 +371,12 @@ curl -fsS http://127.0.0.1:2410/api/subchunk \
 go build ./...
 go test ./...
 go vet ./...
+go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./mesher/...
 npm --prefix demo/web test
 npm --prefix demo/web run build
 ```
+
+依赖命令只列出非标准库包，结果只有 `neomega-viewer/mesher` 及其三个子包。NVMS 测试使用旧编码器生成的固定样本逐字节比较输出，并检查 io 错误传播。
 
 默认测试使用内嵌表，覆盖完整状态集、全部演示场景、红石颜色和流体高度。加入真实资源后，测试会重新建表，逐项比较全部 ModelIDs、Shape 四边形、Boundary 和 FullHeight，并验证 NVGT 往返、入库文件与内嵌表一致。HTTP 测试同时检查图集、单方块响应、子区块上传和二进制输出：
 

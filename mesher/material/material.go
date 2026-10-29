@@ -1,8 +1,6 @@
 // Package material separates surface sampling from geometry and world occlusion.
 package material
 
-import "neomega-assets/asset"
-
 type Mode string
 
 const (
@@ -12,7 +10,7 @@ const (
 )
 
 type Surface struct {
-	Texture asset.ID `json:"texture"`
+	Texture string `json:"texture"`
 	// Region is [u,v,width,height], normalized against the atlas, top-origin.
 	Region      [4]float32 `json:"region"`
 	Mode        Mode       `json:"mode"`

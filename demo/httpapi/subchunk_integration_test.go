@@ -14,7 +14,7 @@ import (
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
-	"neomega-viewer/meshwire"
+	"neomega-viewer/mesher/geometry"
 )
 
 func TestSubchunkBinaryTransport(t *testing.T) {
@@ -37,12 +37,12 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 		return out
 	}
 	response := call("GET", "/api/subchunks/solid/mesh", nil, 200)
-	if response.Header().Get("Content-Type") != meshwire.ContentType {
+	if response.Header().Get("Content-Type") != geometry.ContentType {
 		t.Fatal("mesh is not binary")
 	}
-	mesh, err := meshwire.Decode(response.Body.Bytes())
-	if err != nil || mesh.Quads != 6 {
-		t.Fatalf("invalid binary geometry: %v, %d faces", err, mesh.Quads)
+	mesh, err := geometry.UnmarshalMesh(bytes.NewReader(response.Body.Bytes()))
+	if err != nil || len(mesh.Quads) != 6 {
+		t.Fatalf("invalid binary geometry: %v, %d faces", err, len(mesh.Quads))
 	}
 	var stats mesher.Stats
 	if err := json.Unmarshal([]byte(response.Header().Get("X-Neomega-Mesh-Stats")), &stats); err != nil || stats.InputQuads != 24576 || stats.VisibleQuads != 1536 || stats.OutputQuads != 6 {
@@ -57,8 +57,8 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 		t.Fatal("uploaded layer differs from direct palette input")
 	}
 	unmerged := call("GET", "/api/subchunks/solid/mesh?greedy=false", nil, 200)
-	unmergedMesh, err := meshwire.Decode(unmerged.Body.Bytes())
-	if err != nil || unmergedMesh.Quads != 1536 {
+	unmergedMesh, err := geometry.UnmarshalMesh(unmerged.Body)
+	if err != nil || len(unmergedMesh.Quads) != 1536 {
 		t.Fatalf("merge toggle: %v", err)
 	}
 	raw := call("GET", "/api/subchunks/solid/blocks", nil, 200)

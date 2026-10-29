@@ -10,9 +10,8 @@ import (
 	"math/bits"
 	"slices"
 
-	"neomega-assets/asset"
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 )
 
 const tableMagic = "NVGT"
@@ -104,7 +103,7 @@ func (tables *Tables[B]) Encode(w io.Writer) error {
 		Vec2s:      uint32(len(vec2s)),
 	})
 	for _, surface := range surfaces {
-		writer.text(string(surface.Texture))
+		writer.text(surface.Texture)
 		writer.text(string(surface.Mode))
 		writer.write(surface.Region)
 		writer.write(surface.DoubleSided)
@@ -178,7 +177,7 @@ func DecodeTables[B BlockID](r io.Reader) (*Tables[B], error) {
 	surfaces := make([]material.Surface, header.Surfaces)
 	for i := range surfaces {
 		surface := &surfaces[i]
-		surface.Texture = asset.ID(reader.text())
+		surface.Texture = reader.text()
 		surface.Mode = material.Mode(reader.text())
 		reader.read(&surface.Region)
 		reader.read(&surface.DoubleSided)

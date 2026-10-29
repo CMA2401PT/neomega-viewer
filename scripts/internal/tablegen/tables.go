@@ -8,9 +8,9 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/geometry"
 	"neomega-viewer/mesher"
-	"neomega-viewer/meshing"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/meshing"
 	"neomega-viewer/scripts/internal/bake"
 	"neomega-viewer/scripts/internal/model"
 	"neomega-viewer/scripts/internal/resources"

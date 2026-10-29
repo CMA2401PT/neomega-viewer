@@ -1,15 +1,14 @@
-// Package meshwire transports quad buffers with a small JSON material table and
-// aligned little-endian numeric arrays. It is independent of HTTP and subchunks.
-package meshwire
+package geometry
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/material"
 )
 
 const Version uint32 = 1
@@ -17,54 +16,108 @@ const HeaderSize = 44
 const ContentType = "application/vnd.neomega.mesh"
 const magic = "NVMS"
 
-// Encode uses a fixed attribute order: position, normal, shadeNormal, UV, color,
-// then uint32 indices. Only the material table contains JSON, not vertex data.
-func Encode(mesh geometry.Buffers) ([]byte, error) {
-	surfaces := make([]material.Surface, len(mesh.Batches))
-	for i, batch := range mesh.Batches {
+func (mesh Mesh) Marshal(w io.Writer) error {
+	// NVMS 按材质和属性排列，所有面必须一起分批后再写出。
+	meshBuffers := mesh.Buffers()
+	surfaces := make([]material.Surface, len(meshBuffers.Batches))
+	for i, batch := range meshBuffers.Batches {
 		surfaces[i] = batch.Surface
 	}
 	metadata, err := json.Marshal(surfaces)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	result := make([]byte, HeaderSize)
-	copy(result, magic)
-	binary.LittleEndian.PutUint32(result[4:], Version)
-	binary.LittleEndian.PutUint32(result[8:], uint32(len(metadata)))
-	binary.LittleEndian.PutUint32(result[12:], uint32(len(mesh.Batches)))
-	binary.LittleEndian.PutUint32(result[16:], uint32(mesh.Quads))
+	header := make([]byte, HeaderSize)
+	copy(header, magic)
+	binary.LittleEndian.PutUint32(header[4:], Version)
+	binary.LittleEndian.PutUint32(header[8:], uint32(len(metadata)))
+	binary.LittleEndian.PutUint32(header[12:], uint32(len(meshBuffers.Batches)))
+	binary.LittleEndian.PutUint32(header[16:], uint32(meshBuffers.Quads))
 	for i := 0; i < 3; i++ {
-		binary.LittleEndian.PutUint32(result[20+i*4:], math.Float32bits(float32(mesh.Bounds.Min[i])))
-		binary.LittleEndian.PutUint32(result[32+i*4:], math.Float32bits(float32(mesh.Bounds.Max[i])))
+		binary.LittleEndian.PutUint32(header[20+i*4:], math.Float32bits(float32(meshBuffers.Bounds.Min[i])))
+		binary.LittleEndian.PutUint32(header[32+i*4:], math.Float32bits(float32(meshBuffers.Bounds.Max[i])))
 	}
-	result = append(result, metadata...)
-	for len(result)%4 != 0 {
-		result = append(result, 0)
+	buffer := bufio.NewWriter(w)
+	if _, err := buffer.Write(header); err != nil {
+		return err
 	}
-	for _, batch := range mesh.Batches {
-		count := len(batch.Positions) / 3
-		if count%4 != 0 || len(batch.Positions) != count*3 || len(batch.Normals) != count*3 || len(batch.ShadeNormals) != count*3 || len(batch.Colors) != count*3 || len(batch.UVs) != count*2 || len(batch.Indices) != count/4*6 {
-			return nil, fmt.Errorf("inconsistent quad buffer attribute lengths")
+	if _, err := buffer.Write(metadata); err != nil {
+		return err
+	}
+	padding := make([]byte, (4-len(metadata)%4)%4)
+	if _, err := buffer.Write(padding); err != nil {
+		return err
+	}
+	for _, batch := range meshBuffers.Batches {
+		counts := [2]uint32{uint32(len(batch.Positions) / 3), uint32(len(batch.Indices))}
+		if err := binary.Write(buffer, binary.LittleEndian, counts); err != nil {
+			return err
 		}
-		result = binary.LittleEndian.AppendUint32(result, uint32(count))
-		result = binary.LittleEndian.AppendUint32(result, uint32(len(batch.Indices)))
 		for _, attribute := range [][]float32{batch.Positions, batch.Normals, batch.ShadeNormals, batch.UVs, batch.Colors} {
-			for _, value := range attribute {
-				result = binary.LittleEndian.AppendUint32(result, math.Float32bits(value))
+			if err := binary.Write(buffer, binary.LittleEndian, attribute); err != nil {
+				return err
 			}
 		}
-		for _, value := range batch.Indices {
-			result = binary.LittleEndian.AppendUint32(result, value)
+		if err := binary.Write(buffer, binary.LittleEndian, batch.Indices); err != nil {
+			return err
 		}
 	}
-	return result, nil
+	return buffer.Flush()
+}
+
+func UnmarshalMesh(r io.Reader) (Mesh, error) {
+	// NVMS 只保存绘制精度和材质分批后的面序，不是烘焙数据的存档。
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return Mesh{}, err
+	}
+	buffers, err := decodeBuffers(data)
+	if err != nil {
+		return Mesh{}, err
+	}
+	mesh := Mesh{Quads: make([]Quad, 0, buffers.Quads)}
+	for _, batch := range buffers.Batches {
+		for base := 0; base < len(batch.Positions)/3; base += 4 {
+			quad := Quad{Surface: batch.Surface}
+			for axis := 0; axis < 3; axis++ {
+				quad.Normal[axis] = float64(batch.Normals[base*3+axis])
+				quad.ShadeNormal[axis] = float64(batch.ShadeNormals[base*3+axis])
+				quad.Color[axis] = batch.Colors[base*3+axis]
+			}
+			for i := 0; i < 4; i++ {
+				for axis := 0; axis < 3; axis++ {
+					quad.Positions[i][axis] = float64(batch.Positions[(base+i)*3+axis])
+				}
+				for axis := 0; axis < 2; axis++ {
+					quad.UV[i][axis] = float64(batch.UVs[(base+i)*2+axis])
+				}
+			}
+			mesh.Quads = append(mesh.Quads, quad)
+		}
+	}
+	return mesh, nil
+}
+
+func (quad Quad) Marshal(w io.Writer) error {
+	// 单面复用 NVMS，避免引入另一种独立格式。
+	return (Mesh{Quads: []Quad{quad}}).Marshal(w)
+}
+
+func UnmarshalQuad(r io.Reader) (Quad, error) {
+	mesh, err := UnmarshalMesh(r)
+	if err != nil {
+		return Quad{}, err
+	}
+	if len(mesh.Quads) != 1 {
+		return Quad{}, fmt.Errorf("expected one quad, got %d", len(mesh.Quads))
+	}
+	return mesh.Quads[0], nil
 }
 
 // Decode reads the same portable layout for Go consumers. Browser consumers can
 // instead view the aligned arrays directly in the received ArrayBuffer.
-func Decode(data []byte) (geometry.Buffers, error) {
-	var result geometry.Buffers
+func decodeBuffers(data []byte) (Buffers, error) {
+	var result Buffers
 	if len(data) < HeaderSize || string(data[:4]) != magic {
 		return result, fmt.Errorf("invalid NVMS header")
 	}
@@ -90,7 +143,7 @@ func Decode(data []byte) (geometry.Buffers, error) {
 		return result, fmt.Errorf("material count differs from batch count")
 	}
 	offset = (offset + 3) &^ 3
-	result.Batches = make([]geometry.Batch, 0, len(surfaces))
+	result.Batches = make([]Batch, 0, len(surfaces))
 	quads := 0
 	for _, surface := range surfaces {
 		if offset+8 > uint64(len(data)) {
@@ -113,7 +166,7 @@ func Decode(data []byte) (geometry.Buffers, error) {
 			}
 			return values
 		}
-		batch := geometry.Batch{Surface: surface}
+		batch := Batch{Surface: surface}
 		batch.Positions = readFloats(vertices * 3)
 		batch.Normals = readFloats(vertices * 3)
 		batch.ShadeNormals = readFloats(vertices * 3)

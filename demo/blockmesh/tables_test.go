@@ -7,8 +7,8 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/geometry"
 	"neomega-viewer/mesher"
+	"neomega-viewer/mesher/geometry"
 )
 
 func TestTablesWithJavaResources(t *testing.T) {

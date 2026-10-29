@@ -8,8 +8,8 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 	"neomega-viewer/scripts/internal/materials"
 	"neomega-viewer/scripts/internal/model"
 	"neomega-viewer/scripts/internal/resources"

@@ -11,7 +11,7 @@ import (
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
-	"neomega-viewer/meshwire"
+	"neomega-viewer/mesher/geometry"
 )
 
 func sectionOptions(r *http.Request) (mesher.Options, error) {
@@ -47,21 +47,18 @@ func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], version str
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(layer)
-		result, err := engine.MeshPlainLayerStorage(&plain, options)
+		result, err := engine.MeshSubchunk(plain.Data, options)
 		if err != nil {
 			writeError(w, 422, err)
 			return
 		}
-		encoded, err := meshwire.Encode(result.Mesh.Buffers())
-		if err != nil {
-			writeError(w, 500, err)
-			return
-		}
 		stats, _ := json.Marshal(result.Stats)
-		w.Header().Set("Content-Type", meshwire.ContentType)
+		w.Header().Set("Content-Type", geometry.ContentType)
 		w.Header().Set("X-Neomega-Mesh-Stats", string(stats))
-		w.Header().Set("Content-Length", strconv.Itoa(len(encoded)))
-		w.Write(encoded)
+		if err := result.Mesh.Marshal(w); err != nil {
+			// 正文可能已经开始，交由 HTTP 中止响应，避免混入 JSON。
+			panic(http.ErrAbortHandler)
+		}
 	}
 	mux.HandleFunc("GET /api/subchunks/{scene}/mesh", func(w http.ResponseWriter, r *http.Request) {
 		layer, err := demo.Build(r.PathValue("scene"))

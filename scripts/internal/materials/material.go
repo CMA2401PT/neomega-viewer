@@ -7,7 +7,7 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/material"
 )
 
 // Policy supplies semantic exceptions and static preview tints. Alpha holes and
@@ -59,7 +59,7 @@ func (library *Library) Surface(state blockstate.State, texture asset.ID, forceB
 		mode = material.Blend
 	}
 	return material.Surface{
-		Texture:     texture,
+		Texture:     string(texture),
 		Region:      [4]float32{float32(entry.U), float32(entry.V), float32(entry.SU), float32(entry.SV)},
 		Mode:        mode,
 		DoubleSided: mode != material.Opaque,

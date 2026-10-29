@@ -13,8 +13,7 @@ import (
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
-	"neomega-viewer/meshing"
-	"neomega-viewer/meshwire"
+	"neomega-viewer/mesher/meshing"
 )
 
 func main() {
@@ -48,7 +47,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(layer)
-	result, err := mesher.NewMesher(parser.Tables()).MeshPlainLayerStorage(&plain, mesher.Options{
+	result, err := mesher.NewMesher(parser.Tables()).MeshSubchunk(plain.Data, mesher.Options{
 		Meshing: meshing.Options{
 			DisableCulling: !*cull,
 			DisableGreedy:  !*greedy,
@@ -57,11 +56,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	data, err := meshwire.Encode(result.Mesh.Buffers())
+	file, err := os.Create(*meshOut)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile(*meshOut, data, 0644); err != nil {
+	if err := result.Mesh.Marshal(file); err != nil {
+		file.Close()
+		log.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		log.Fatal(err)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(result.Stats); err != nil {

@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"neomega-viewer/geometry"
-	"neomega-viewer/material"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/material"
 )
 
 var opaque = material.Surface{Mode: material.Opaque, Opacity: 1}

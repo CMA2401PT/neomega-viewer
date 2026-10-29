@@ -3,7 +3,7 @@ package mesher
 import (
 	"fmt"
 
-	"neomega-viewer/geometry"
+	"neomega-viewer/mesher/geometry"
 )
 
 type ModelID uint32

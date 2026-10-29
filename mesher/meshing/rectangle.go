@@ -3,7 +3,7 @@ package meshing
 import (
 	"math"
 
-	"neomega-viewer/geometry"
+	"neomega-viewer/mesher/geometry"
 )
 
 type rectangle struct {

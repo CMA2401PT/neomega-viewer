@@ -3,10 +3,8 @@ package mesher
 import (
 	"fmt"
 
-	"celler"
-	"celler/layer_storage"
-	"neomega-viewer/geometry"
-	"neomega-viewer/meshing"
+	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/mesher/meshing"
 )
 
 type Options struct {
@@ -26,14 +24,19 @@ type Result struct {
 	Stats Stats
 }
 
-func (m *Mesher[B]) MeshPlainLayerStorage(layer *layer_storage.Plain[B], options Options) (*Result, error) {
-	cells, err := prepareNeighborhood(layer, m.tables)
+func (m *Mesher[B]) MeshSubchunk(blocks []B, options Options) (*Result, error) {
+	// 固定 16³ 格才能按 (x<<8)|(z<<4)|y 直接寻址邻居。
+	const blockCount = meshing.Size * meshing.Size * meshing.Size
+	if len(blocks) != blockCount {
+		return nil, fmt.Errorf("subchunk requires %d block IDs, got %d", blockCount, len(blocks))
+	}
+	cells, err := prepareNeighborhood(blocks, m.tables)
 	if err != nil {
 		return nil, err
 	}
 	mesh, stats := meshing.Build(cells, options.Meshing)
-	blocks, shapes := countGeometry(cells)
-	return &Result{Mesh: mesh, Stats: Stats{Stats: stats, Blocks: blocks, Shapes: shapes}}, nil
+	visibleBlocks, shapes := countGeometry(cells)
+	return &Result{Mesh: mesh, Stats: Stats{Stats: stats, Blocks: visibleBlocks, Shapes: shapes}}, nil
 }
 
 type localGeometry struct {
@@ -64,10 +67,10 @@ func queryGeometry[B BlockID](tables *Tables[B], id B) (localGeometry, error) {
 	return local, nil
 }
 
-func prepareNeighborhood[B BlockID](layer *layer_storage.Plain[B], tables *Tables[B]) (*meshing.Cells, error) {
+func prepareNeighborhood[B BlockID](blocks []B, tables *Tables[B]) (*meshing.Cells, error) {
 	// 先取得原始几何，再读邻居，避免遍历顺序影响流体选择。
 	var locals [meshing.Size * meshing.Size * meshing.Size]localGeometry
-	for i, id := range layer.Data {
+	for i, id := range blocks {
 		local, err := queryGeometry(tables, id)
 		if err != nil {
 			p := position(i)
@@ -105,6 +108,10 @@ func countGeometry(cells *meshing.Cells) (int, int) {
 	return blocks, len(used)
 }
 
-func position(index int) celler.SubChunkBlockPos {
-	return celler.SubChunkBlockPos{X: uint8(index >> 8), Y: uint8(index & 15), Z: uint8((index >> 4) & 15)}
+type blockPosition struct {
+	X, Y, Z uint8
+}
+
+func position(index int) blockPosition {
+	return blockPosition{X: uint8(index >> 8), Y: uint8(index & 15), Z: uint8((index >> 4) & 15)}
 }

@@ -1,6 +1,6 @@
 package mesher
 
-import "neomega-viewer/geometry"
+import "neomega-viewer/mesher/geometry"
 
 type BlockID interface {
 	// 调用者决定数值的含义；自定义 uint32/uint64 类型也可以作为表键。

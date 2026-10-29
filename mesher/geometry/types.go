@@ -1,7 +1,7 @@
 // There are no neighbor queries, chunk coordinates or workers in this package.
 package geometry
 
-import "neomega-viewer/material"
+import "neomega-viewer/mesher/material"
 
 type Vec3 [3]float64
 type Vec2 [2]float64
