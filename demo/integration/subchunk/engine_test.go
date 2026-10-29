@@ -1,7 +1,6 @@
 package subchunk_test
 
 import (
-	"os"
 	"slices"
 	"testing"
 
@@ -9,18 +8,14 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	"neomega-viewer/blockmesh"
-	"neomega-viewer/demo"
+	"neomega-viewer/demo/scenes"
 	"neomega-viewer/meshing"
 	"neomega-viewer/subchunk"
 )
 
 func realEngine(t *testing.T) *subchunk.Engine {
 	t.Helper()
-	dir := os.Getenv("NEOMEGA_ASSETS_DIR")
-	if dir == "" {
-		t.Skip("set NEOMEGA_ASSETS_DIR to verify actual palette/model integration")
-	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{AssetsDir: dir})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

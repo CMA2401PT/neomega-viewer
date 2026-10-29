@@ -2,7 +2,6 @@
 package singleblock
 
 import (
-	"neomega-assets/asset"
 	"neomega-viewer/blockmesh"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/geometry"
@@ -12,10 +11,7 @@ type OpenOptions = blockmesh.OpenOptions
 
 type Engine struct{ *blockmesh.Resolver }
 
-type Renderer struct {
-	Kind   asset.RendererKind `json:"kind"`
-	Family string             `json:"family,omitempty"`
-}
+type Renderer = blockmesh.Renderer
 
 type Block struct {
 	Binding  blockstate.Binding
@@ -69,7 +65,7 @@ func (engine *Engine) Build(javaHash uint32) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
+	profile := engine.Renderer(binding.Java.Name)
 	return &Block{
 		Binding:  binding,
 		Renderer: Renderer{Kind: profile.Kind, Family: profile.Family},

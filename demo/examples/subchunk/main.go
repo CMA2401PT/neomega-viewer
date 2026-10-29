@@ -10,14 +10,14 @@ import (
 	"celler/layer_storage"
 
 	"neomega-viewer/blockmesh"
-	"neomega-viewer/demo"
+	"neomega-viewer/demo/scenes"
 	"neomega-viewer/meshing"
 	"neomega-viewer/meshwire"
 	"neomega-viewer/subchunk"
 )
 
 func main() {
-	assets := flag.String("assets", "../neomega-assets/dist/final", "resource directory")
+	tables := flag.String("tables", "", "geometry table file; empty uses bundled tables")
 	scene := flag.String("scene", "mixed", "demo recipe")
 	input := flag.String("input", "", "read a 4096-ID little-endian block layer instead of a demo")
 	blocksOut := flag.String("blocks", "", "write the logical block layer as .nvblocks")
@@ -41,7 +41,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{AssetsDir: *assets})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: *tables})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,38 +1,55 @@
 package blockmesh
 
 import (
+	"encoding/gob"
 	"fmt"
-	"maps"
-	"slices"
-	"strings"
+	"io"
+	"os"
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/geometry"
-	"neomega-viewer/meshing"
-	"neomega-viewer/model"
-	"neomega-viewer/resources"
 )
 
 type ModelID uint32
 
 type SkippedState struct {
 	Binding blockstate.Binding
-	Err     error
+	Reason  string
+}
+
+type Renderer struct {
+	Kind   asset.RendererKind `json:"kind"`
+	Family string             `json:"family,omitempty"`
 }
 
 type Tables struct {
 	// 表和查询返回的切片共享且只读，供多个渲染入口复用。
-	Index   map[uint32][]ModelID
-	Shapes  []geometry.Shape
-	Skipped []SkippedState
+	Index  map[uint32][]ModelID
+	Shapes []geometry.Shape
 	// 仅流体几何有此映射，上方同类流体出现时改用满高度几何。
 	FullHeight map[ModelID]ModelID
+	// 响应元数据随几何保存，运行时无需再读取模型资源。
+	Version   string
+	Renderers map[asset.ID]Renderer
+	Skipped   []SkippedState
 }
 
-func (engine *Resolver) Tables() (*Tables, error) {
-	// 每套资源和材质策略各建一次，避免不同 Open 配置串用几何。
-	return engine.tables()
+func ReadTables(reader io.Reader) (*Tables, error) {
+	var tables Tables
+	if err := gob.NewDecoder(reader).Decode(&tables); err != nil {
+		return nil, err
+	}
+	return &tables, nil
+}
+
+func LoadTables(path string) (*Tables, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return ReadTables(file)
 }
 
 func (tables *Tables) ModelIDs(javaHash uint32) ([]ModelID, error) {
@@ -48,150 +65,4 @@ func (tables *Tables) Shape(id ModelID) (*geometry.Shape, error) {
 		return nil, fmt.Errorf("unknown model ID %d", id)
 	}
 	return &tables.Shapes[id], nil
-}
-
-type shapeBucket struct {
-	// 面数和首面只缩小查找范围，完整四边形序列相等才共享 ID。
-	// Bake 受状态的材质与颜色影响，仅按模型路径和旋转会误合并。
-	Group uint32
-	Count int
-	First geometry.Quad
-}
-
-func (tables *Tables) intern(mesh geometry.Mesh, group uint32, buckets map[shapeBucket][]ModelID) ModelID {
-	key := shapeBucket{Group: group, Count: len(mesh.Quads)}
-	if len(mesh.Quads) != 0 {
-		key.First = mesh.Quads[0]
-	}
-	for _, id := range buckets[key] {
-		if slices.Equal(tables.Shapes[id].Quads, mesh.Quads) {
-			return id
-		}
-	}
-	id := ModelID(len(tables.Shapes))
-	tables.Shapes = append(tables.Shapes, geometry.Shape{
-		Quads:     mesh.Quads,
-		CullGroup: group,
-		Boundary:  meshing.BoundaryCoverage(mesh),
-	})
-	buckets[key] = append(buckets[key], id)
-	return id
-}
-
-func (engine *Resolver) buildTables() (*Tables, error) {
-	states, err := blockstate.Java()
-	if err != nil {
-		return nil, err
-	}
-	tables := &Tables{
-		Index:      make(map[uint32][]ModelID, len(states.ByID)),
-		FullHeight: map[ModelID]ModelID{},
-	}
-	groups := map[string]uint32{}
-	buckets := map[shapeBucket][]ModelID{}
-	// 哈希不稠密，用 map 索引；排序只为让同一套资源的编号可复现。
-	for _, javaHash := range slices.Sorted(maps.Keys(states.ByID)) {
-		binding := states.ByID[javaHash]
-		meshes, err := engine.bakeParts(binding.Java)
-		if err != nil {
-			tables.Skipped = append(tables.Skipped, SkippedState{Binding: binding, Err: err})
-			continue
-		}
-		profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
-		group := cullGroup(binding.Java, profile.Kind, profile.Family, groups)
-		var full []geometry.Mesh
-		if profile.Kind == asset.RendererFluid {
-			full, err = engine.bakeParts(binding.Java.With(map[string]string{"level": "8"}))
-			if err != nil {
-				return nil, err
-			}
-		}
-		// 整个状态成功后再编号，失败状态不会留下部分索引或无引用的 Shape。
-		ids := make([]ModelID, 0, len(meshes))
-		for _, mesh := range meshes {
-			ids = append(ids, tables.intern(mesh, group, buckets))
-		}
-		tables.Index[javaHash] = ids
-		if len(full) != 0 {
-			tables.FullHeight[ids[0]] = tables.intern(full[0], group, buckets)
-		}
-	}
-	return tables, nil
-}
-
-func (engine *Resolver) bakeParts(state blockstate.State) ([]geometry.Mesh, error) {
-	profile, ok := engine.Assets.Renderers.Blocks[state.Name]
-	if !ok {
-		return nil, fmt.Errorf("no renderer entry for %s", state.Name)
-	}
-	switch profile.Kind {
-	case asset.RendererInvisible:
-		return nil, nil
-	case asset.RendererDynamic:
-		return nil, fmt.Errorf("%s has no fixed static shape", state.Name)
-	case asset.RendererFluid:
-		mesh, err := geometry.Bake(
-			resources.FluidPreview(state, profile.Family),
-			asset.Apply{},
-			state,
-			engine.materials,
-		)
-		// 只有真正位于格子边界的流体面才允许邻居剔除。
-		for side, covers := range meshing.BoundaryCoverage(mesh) {
-			for _, cover := range covers {
-				mesh.Quads[cover.Quad].CullFace = geometry.CullFace(side + 1)
-			}
-		}
-		return []geometry.Mesh{mesh}, err
-	}
-	definition, ok := engine.Assets.BlockState(state.Name)
-	if !ok {
-		return nil, fmt.Errorf("blockstate %s missing", state.Name)
-	}
-	if _, needed := model.PropertyValues(definition, nil)["waterlogged"]; needed {
-		state = resources.PreviewProperties(state)
-	}
-	applications, err := model.SelectFirst(definition, state.Properties)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", state.Name, err)
-	}
-	meshes := make([]geometry.Mesh, 0, len(applications))
-	for _, application := range applications {
-		id, err := asset.ParseID(string(application.Model))
-		if err != nil {
-			return nil, err
-		}
-		resolved, err := engine.models.Resolve(id)
-		if err != nil {
-			return nil, err
-		}
-		mesh, err := geometry.Bake(
-			resolved,
-			application,
-			state,
-			engine.materials,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("model %s: %w", id, err)
-		}
-		meshes = append(meshes, mesh)
-	}
-	return meshes, nil
-}
-
-func cullGroup(state blockstate.State, kind asset.RendererKind, family string, groups map[string]uint32) uint32 {
-	// 名称规则只在建表时消费，形状去重也必须区分消面语义。
-	key := ""
-	if kind == asset.RendererFluid {
-		key = "fluid:" + family
-	} else if strings.Contains(state.Name.Path(), "glass") {
-		key = "glass:" + string(state.Name)
-	}
-	if key == "" {
-		return 0
-	}
-	if groups[key] == 0 {
-		groups[key] = uint32(len(groups) + 1)
-	}
-	return groups[key]
 }

@@ -1,4 +1,3 @@
-// Package geometry bakes model faces into reusable quads and draw buffers.
 // There are no neighbor queries, chunk coordinates or workers in this package.
 package geometry
 

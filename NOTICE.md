@@ -4,11 +4,11 @@
 
 ## 绘制代码
 
-浏览器使用 [Three.js](https://github.com/mrdoob/three.js)，版本由 `web/package-lock.json` 固定为 0.186.1。
+浏览器使用 [Three.js](https://github.com/mrdoob/three.js)，版本由 `demo/web/package-lock.json` 固定为 0.186.1。
 
 `Copyright © 2010-2026 three.js authors`
 
-Three.js 的 MIT 原文保存在 [web/public/THIRD_PARTY_NOTICES.txt](web/public/THIRD_PARTY_NOTICES.txt)，网页构建会将其复制到 `web/dist`。Vite 和 TypeScript 是构建依赖，各自保留包内许可。
+Three.js 的 MIT 原文保存在 [demo/web/public/THIRD_PARTY_NOTICES.txt](demo/web/public/THIRD_PARTY_NOTICES.txt)，网页构建会将其复制到 `demo/web/dist`。Vite 和 TypeScript 是构建依赖，各自保留包内许可。
 
 ## 状态与资源
 
@@ -22,4 +22,4 @@ Required Notice: Copyright Amulet Team. (https://www.amuletmc.com/)
 
 Minecraft 模型、纹理及其衍生素材保留原权利人的权利。资源提取、图集打包和顶点生成不产生新的素材授权。应用分发资源时，应保留 `dist/final/THIRD_PARTY_NOTICES.txt`，并遵守输入素材适用的 [Minecraft EULA](https://www.minecraft.net/eula)、[Usage Guidelines](https://www.minecraft.net/usage-guidelines) 和额外资源包条款。
 
-服务端分发时保留本文件、项目许可证、转换数据的许可声明与配套资源声明。单独分发网页时保留 `web/dist/THIRD_PARTY_NOTICES.txt`；外部提供的模型和纹理仍按其自身来源附带声明。
+服务端分发时保留本文件、项目许可证、转换数据的许可声明与配套资源声明。单独分发网页时保留 `demo/web/dist/THIRD_PARTY_NOTICES.txt`；外部提供的模型和纹理仍按其自身来源附带声明。

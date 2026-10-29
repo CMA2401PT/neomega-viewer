@@ -1,14 +1,116 @@
 # neomega-viewer
 
-`neomega-viewer` 把存储中的方块 ID 转换成静态几何，并提供单方块和子区块两个网页入口。Go 解释方块状态、选择模型、处理纹理引用与网格；TypeScript 和 Three.js 显示已经生成的顶点。单方块通过切换完整状态的 Java block hash 调整属性。子区块读取一个 16×16×16 的 Plain，即平铺保存 Java block hash 的数组。两者共用 `blockmesh` 的几何表。
+`neomega-viewer` 是把完整 Java 状态的 hash 转成静态几何的 Go 库。单方块入口接收一个 hash。子区块入口接收一个 16×16×16 的 Plain，即平铺保存 hash 的数组。单方块查表拼接模型部件，子区块再根据邻居的边界覆盖剔面、合并。浏览器与 HTTP 服务是库的使用示例。
 
-方块 ID 本身不能说明外形。同一个名称可能因属性选择不同模型；栅栏还会同时使用多个模型。因此，解析保留资源之间的关系：**ID → Java 方块状态 → variant / multipart → model → texture → 顶点**。首次渲染前生成两张共享表：Java block hash 对应模型编号列表，每个模型编号对应一个 Shape。Shape 保存烘焙四边形与六方向边界覆盖。单方块渲染时查表拼接部件。子区块取得相同形状，再根据邻居的覆盖剔除和合并表面。
+几何在生成阶段烘焙。生成器枚举状态、选择模型、解析纹理并生成两张表：`javaHash → []ModelID` 与 `ModelID → Shape`。Shape 保存四边形、材质和六方向边界覆盖。运行时从 gob 文件加载这些数据，不再解析模型或烘焙。库默认加载随程序嵌入的表，也可以加载调用者指定的文件。
 
-## 先运行浏览器
+## 目录职责
 
-需要两份配套数据：`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的资源。输入 ID 是 **Java block hash**，即完整 Java 状态（名称与属性）先 `Tidy()`、再 `Hash()` 得到的 uint32 值。`Tidy()` 将属性按字典序规范化，确保书写顺序不影响 ID。
+复用渲染时只需要根目录的核心包。演示代码集中在 `demo/`。只有生成器需要模型解析和图集采样，这些实现放在 `scripts/internal/`，由 Go 的 internal 边界限制引用。
 
-默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，viewer 将它们建成共享查找表，供渲染与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。
+```text
+neomega-viewer/
+├─ blockmesh/          # 表加载、查询和共享入口
+├─ blockstate/         # Java hash 与完整状态
+├─ geometry/           # Shape、四边形、绘制缓冲
+├─ material/           # 表面材质类型
+├─ meshing/            # 剔面、裁切和合并
+├─ singleblock/        # 单方块渲染
+├─ subchunk/           # 子区块渲染、方块层编码
+├─ meshwire/           # 几何二进制传输
+├─ resources/          # 入库的 geometry.gob 与嵌入入口
+├─ demo/
+│  ├─ cmd/neomega-viewer/
+│  ├─ httpapi/
+│  ├─ catalog/         # 浏览器选择器目录
+│  ├─ scenes/          # 示例场景
+│  ├─ examples/        # 命令行示例
+│  ├─ integration/     # 使用目录和场景的集成测试
+│  └─ web/             # 浏览器源码和构建配置
+└─ scripts/
+   ├─ gen-geometry/    # 生成命令
+   └─ internal/        # tablegen、bake、model、materials、resources
+```
+
+依赖方向为演示与脚本分别依赖核心。`catalog` 的分组和示例 ID 服务于浏览器选择器，因此属于演示。`meshwire` 可以独立写文件或传输几何，因此属于核心。根目录的 `resources` 保存生成产物；生成时的预览规则在 `scripts/internal/resources`。
+
+## 直接使用 Go 库
+
+输入 ID 是 **Java block hash**，即完整 Java 状态（名称与属性）先 `Tidy()`、再 `Hash()` 得到的 uint32 值。`Tidy()` 将属性按字典序规范化，确保书写顺序不影响 ID。
+
+自己的 Go 应用可以打开一次表解析器，交给单方块和子区块两个构建器。默认使用仓库随库分发的几何表，无须提供 assets 目录：
+
+```go
+parser, err := blockmesh.Open(blockmesh.OpenOptions{})
+if err != nil {
+    return err
+}
+blockBuilder := singleblock.New(parser)
+sectionBuilder := subchunk.New(parser)
+```
+
+这些包的导入前缀为 `neomega-viewer/`。自定义资源使用 `blockmesh.OpenOptions{TablesPath: "/path/to/geometry.gob"}`。`Tables()`、`ModelIDs()`、`Shape()` 与 `FullHeight` 继续提供共享只读数据。打开表失败直接返回错误。单方块接收一个 ID：
+
+```go
+block, err := blockBuilder.Build(blockID)
+if err != nil {
+    return err
+}
+```
+
+`block.Binding.Java` 是该 hash 对应的完整状态。改变属性时，调用者应传入新状态的 hash。现成示例会将字段齐全的 Java 文本规范化、计算哈希，再输出 JSON。属性名和值使用 IR 的双引号语法：
+
+```sh
+go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
+```
+
+子区块直接接收 `*layer_storage.Plain[uint32]`。调用者已有 Palette 时，在入口转换一次。这个类型来自 `neomega-celler`，Go 导入路径为 `celler/layer_storage`：
+
+```go
+// layer: *layer_storage.Palette[uint32]
+var plain layer_storage.Plain[uint32]
+plain.CopyFrom(layer)
+result, err := sectionBuilder.Build(&plain, subchunk.Options{})
+if err != nil {
+    return err
+}
+encoded, err := meshwire.Encode(result.Mesh.Buffers())
+```
+
+构建期间调用者应保持 Plain 不变。读取和网格处理不会修改它。解析器与共享状态表初始化后视为只读，同一个构建器可以并发处理不同输入。
+
+需要跨工具交换方块层时，`subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`subchunk.ParseIDs` 将其还原成 Palette。每个 ID 都是 Java block hash。原有 NEMC ID 文件需要由调用者重新生成。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
+
+例如，先运行 `go run ./demo/examples/subchunk -scene solid -blocks /tmp/solid.nvblocks`，再在网页上传 `/tmp/solid.nvblocks`，或在命令行再次读取它：
+
+```sh
+go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
+```
+
+## 生成和更新几何表
+
+模型、图集布局或静态材质策略改变后，需要重新生成配套几何。生成命令沿用原有状态选择、烘焙、去重和边界覆盖算法：
+
+```sh
+go run ./scripts/gen-geometry \
+  -assets ../neomega-assets/dist/final \
+  -output resources/geometry.gob
+wc -c resources/geometry.gob
+```
+
+`resources/geometry.gob` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape 和 12 个跳过的 `moving_piston` 状态。文件为 13,207,250 字节，约 12.60 MiB。更换输入后以命令输出为准。
+
+文件使用 Go 标准库 `encoding/gob`。它直接保存嵌套数组、切片、字符串和浮点字段，保留 Boundary 元数据与流体满高度映射。版本、渲染类别和跳过状态的原因一并保存，单方块响应不必再加载模型资源。跳过原因保存为字符串，避免持久化 Go 的具体 error 类型。
+
+默认加载使用 `go:embed`，与工作目录无关。`sync.OnceValues` 只缓存解码结果。重新生成仓库表后，重新构建程序即可带入新表；也可以用 `TablesPath` 或演示命令的 `-tables` 直接读取文件。gob 中 map 的编码顺序不固定，等价性按解码后的内容比较。
+
+几何中的 UV 区域对应生成时的图集布局。服务的 `-assets` 与 `-tables` 应来自同一套资源。更换图集后需同时更新表文件，单独改变服务的 `-assets` 不会重新烘焙。
+
+## 运行浏览器
+
+浏览器需要几何表与生成它时使用的图集。`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的模型与图集。
+
+默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，`blockstate` 将它们建成共享身份表，供单方块响应与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。
 
 需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
 
@@ -27,14 +129,14 @@ new-world/
 go run ./cmd/neomega-assets build -version 1.21.4
 ```
 
-viewer 只读取交付目录 `neomega-assets/dist/final`，无须重新读取 JAR。默认适配器会检查版本，避免把不同版本的状态和模型混用。资源更新方式见 [neomega-assets README](../neomega-assets/README.md)。
+生成器读取交付目录 `neomega-assets/dist/final`，并沿用资源版本与 Java 状态版本的检查。服务只从 assets 目录提供配套图集和来源声明。资源更新方式见 [neomega-assets README](../neomega-assets/README.md)。
 
 然后在 `neomega-viewer` 中构建网页并启动服务：
 
 ```sh
-npm --prefix web ci
-npm --prefix web run build
-go run ./cmd/neomega-viewer
+npm --prefix demo/web ci
+npm --prefix demo/web run build
+go run ./demo/cmd/neomega-viewer
 ```
 
 两个入口有不同的观察目的：
@@ -49,17 +151,18 @@ go run ./cmd/neomega-viewer
 资源或网页位于其他地方时，显式传入路径：
 
 ```sh
-go run ./cmd/neomega-viewer \
+go run ./demo/cmd/neomega-viewer \
   -assets /path/to/dist/final \
+  -tables /path/to/geometry.gob \
   -web /path/to/web/dist \
   -listen 127.0.0.1:2410
 ```
 
-开发网页时，保持 Go 服务运行，在另一终端执行 `npm --prefix web run dev`，然后打开 <http://127.0.0.1:2411> 或其 `/subchunk.html` 页面。Vite 将 API、图集和资源声明请求代理到 Go 服务。
+开发网页时，保持 Go 服务运行，在另一终端执行 `npm --prefix demo/web run dev`，然后打开 <http://127.0.0.1:2411> 或其 `/subchunk.html` 页面。Vite 将 API、图集和资源声明请求代理到 Go 服务。
 
 ## 一个方块怎样变成几何
 
-要让单方块和子区块使用相同的解释规则，首先需要一个没有场景调度职责的解析器。`blockmesh.Resolver` 组合以下步骤，并共享只读的资源、模型继承缓存和材质库。两条入口都在首次取得 `Tables()` 时完成建表。以下解释步骤只在建表时执行。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
+`scripts/internal/tablegen.Builder` 组合下面的生成步骤，使用模型继承缓存和材质库。`model`、`bake` 和 `materials` 均指 `scripts/internal/` 下的生成包。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
 
 ```text
 Java 状态全集
@@ -72,7 +175,7 @@ Java 状态全集
   │ model.Resolver：解析父模型、合并纹理槽、跟随 #纹理别名
   ▼
 模型元素与面
-  │ geometry.Bake + material.Library
+  │ bake.Bake + materials.Library
   ▼
 局部四边形 → 去重为 Shape，写入两张表
 ```
@@ -93,7 +196,7 @@ Java 状态全集
 | 镂空 `cutout` | 树叶、草 | 丢弃透明像素，其余像素写入深度 |
 | 半透明 `blend` | 玻璃、水 | 混合颜色，不写入深度，逐面参与远近排序 |
 
-`material.Library` 根据图集像素分类。`resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
+`scripts/internal/materials.Library` 根据图集像素分类。`scripts/internal/resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
 
 箱子、床和告示牌等方块的完整外观由游戏代码绘制，JAR 未必包含完整模型。`neomega-assets` 的 `blockRenderers.json` 说明类别并补入社区静态模板，viewer 通过同一模型接口解析它们。图集 PNG 单独加载，不随每个网格重复传输。
 
@@ -137,73 +240,20 @@ Java 状态全集
 这些是未压缩的文件大小。下面的命令在仓库根目录生成表中三份文件，并输出各阶段面数：
 
 ```sh
-go run ./examples/subchunk -scene solid -cull=false -greedy=false -mesh /tmp/solid-raw.nvmesh
-go run ./examples/subchunk -scene solid -greedy=false -mesh /tmp/solid-culled.nvmesh
-go run ./examples/subchunk -scene solid -mesh /tmp/solid.nvmesh -blocks /tmp/solid.nvblocks
+go run ./demo/examples/subchunk -scene solid -cull=false -greedy=false -mesh /tmp/solid-raw.nvmesh
+go run ./demo/examples/subchunk -scene solid -greedy=false -mesh /tmp/solid-culled.nvmesh
+go run ./demo/examples/subchunk -scene solid -mesh /tmp/solid.nvmesh -blocks /tmp/solid.nvblocks
 wc -c /tmp/solid-raw.nvmesh /tmp/solid-culled.nvmesh /tmp/solid.nvmesh
 ```
 
 更换资源、模型选择或编码版本后，应重跑命令核对数量。
 
-## 直接使用 Go 库
-
-HTTP 服务只是组合入口。自己的 Go 应用可以打开一次解析器，交给两个相互独立的构建器：
-
-```go
-parser, err := blockmesh.Open(blockmesh.OpenOptions{
-    AssetsDir: "../neomega-assets/dist/final",
-})
-if err != nil {
-    return err
-}
-blockBuilder := singleblock.New(parser)
-sectionBuilder := subchunk.New(parser)
-```
-
-这些包的导入前缀为 `neomega-viewer/`。单方块仍直接接收一个 ID：
-
-```go
-block, err := blockBuilder.Build(blockID)
-if err != nil {
-    return err
-}
-```
-
-`block.Binding.Java` 是该 hash 对应的完整状态。改变属性时，调用者应传入新状态的 hash。现成示例会将字段齐全的 Java 文本规范化、计算哈希，再输出 JSON。属性名和值使用 IR 的双引号语法：
-
-```sh
-go run ./examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
-```
-
-子区块直接接收 `*layer_storage.Plain[uint32]`。调用者已有 Palette 时，在入口转换一次。这个类型来自 `neomega-celler`，Go 导入路径为 `celler/layer_storage`：
-
-```go
-// layer: *layer_storage.Palette[uint32]
-var plain layer_storage.Plain[uint32]
-plain.CopyFrom(layer)
-result, err := sectionBuilder.Build(&plain, subchunk.Options{})
-if err != nil {
-    return err
-}
-encoded, err := meshwire.Encode(result.Mesh.Buffers())
-```
-
-构建期间调用者应保持 Plain 不变。读取和网格处理不会修改它。解析器与共享状态表初始化后视为只读，同一个构建器可以并发处理不同输入。
-
-需要跨工具交换方块层时，`subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`subchunk.ParseIDs` 将其还原成 Palette。每个 ID 都是 Java block hash。原有 NEMC ID 文件需要由调用者重新生成。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
-
-例如，生成后在网页上传 `/tmp/solid.nvblocks`，或在命令行再次读取它：
-
-```sh
-go run ./examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
-```
-
 ## 复用前端绘制
 
-外部页面需要自行管理网络和场景时，可使用 `web` 的 `@neomega/viewer/render` 导出。它只依赖 Three.js，不依赖演示页、方块目录、地图或 worker：
+外部页面需要自行管理网络和场景时，可使用 `demo/web` 的 `@neomega/viewer/render` 导出。它只依赖 Three.js，不依赖演示页、方块目录、地图或 worker：
 
 ```sh
-npm install /path/to/neomega-viewer/web
+npm install /path/to/neomega-viewer/demo/web
 ```
 
 Three.js 作为 peer dependency 由宿主共享。本地目录链接也有开发用的 Three.js，Vite 宿主应加入 `resolve: { dedupe: ["three"] }`，让场景与绘制模块使用同一个实例。
@@ -230,20 +280,21 @@ atlas.dispose();
 
 ## 接口与扩展位置
 
-两个入口的几何表都使用 `blockstate.Java()` 枚举的完整状态集。输入 hash 必须对应其中的状态。需要改变固定颜色和材质语义时，通过 `blockmesh.OpenOptions.Policy` 提供 `material.Policy`；策略在建表时执行。
+两个入口的几何表都使用 `blockstate.Java()` 枚举的完整状态集。输入 hash 必须对应其中的状态。需要改变固定颜色和材质语义时，在生成侧通过 `tablegen.OpenOptions.Policy` 提供 `materials.Policy`，并重新生成表。运行时 `OpenOptions` 只选择 `TablesPath`。
 
 其他变化可以按职责定位：
 
 | 要解决的问题 | 模块 |
 |---|---|
 | ID 对应哪个 Java 状态？ | `blockstate` |
-| 状态命中哪些部件，模型怎样继承？ | `model` |
-| 一个状态怎样变为局部几何？ | `blockmesh`、`geometry`、`material`、`resources` |
+| 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
+| 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
+| 怎样加载与查询共享几何？ | `blockmesh`、`geometry` |
 | 如何构建单个方块？ | `singleblock` |
 | 如何遍历 Plain 并准备邻域几何？ | `subchunk` |
 | 哪些表面被覆盖，哪些矩形能够合并？ | `meshing` |
-| 几何怎样编码和解码？ | `meshwire`、`web/src/render/binary.ts` |
-| 哪些代码只是演示？ | `demo`、`httpapi`、`web/src/browser`、`web/src/subchunk` |
+| 几何怎样编码和解码？ | `meshwire`、`demo/web/src/render/binary.ts` |
+| 哪些代码只是演示？ | `demo/` 下的服务、目录、场景和网页 |
 
 演示服务提供以下接口：
 
@@ -276,16 +327,17 @@ curl -fsS http://127.0.0.1:2410/api/subchunk \
 
 ## 验证解析与传输
 
-不依赖生成资源的小型测试检查模型继承、条件选择、旋转、UV、覆盖并集与孔洞、局部裁切、贪婪兼容条件和二进制布局：
+单元测试检查模型继承、条件选择、旋转、UV、覆盖并集与孔洞、局部裁切、贪婪兼容条件和二进制布局：
 
 ```sh
+go build ./...
 go test ./...
 go vet ./...
-npm --prefix web test
-npm --prefix web run build
+npm --prefix demo/web test
+npm --prefix demo/web run build
 ```
 
-加入真实资源后，可以验证完整 preset、全部演示场景以及 HTTP 上传和二进制输出。测试还比较红石 `power=0` 与 `power=15` 的 `Quad.Color`，并检查单方块输出与共享表一致：
+默认测试使用内嵌表，覆盖完整状态集、全部演示场景、红石颜色和流体高度。加入真实资源后，测试会重新建表，逐项比较全部 ModelIDs、Shape 四边形、Boundary 和 FullHeight，并验证 gob 往返、入库文件与内嵌表一致。HTTP 测试同时检查图集、单方块响应、子区块上传和二进制输出：
 
 ```sh
 NEOMEGA_ASSETS_DIR="$PWD/../neomega-assets/dist/final" \
@@ -297,7 +349,7 @@ Java 1.21.4 状态全集的单方块全表检查生成 18,242 个静态结果，
 要检查 Go 编码器与 TypeScript 解码器的配合，可使用前面生成的满石头网格：
 
 ```sh
-NEOMEGA_MESH_FIXTURE=/tmp/solid.nvmesh npm --prefix web test
+NEOMEGA_MESH_FIXTURE=/tmp/solid.nvmesh npm --prefix demo/web test
 ```
 
 该检查验证面数、范围、重复 UV，以及解码器和 Three.js 适配层对原始数值缓冲的共享。

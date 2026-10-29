@@ -3,13 +3,12 @@ package singleblock_test
 import (
 	"maps"
 	"math"
-	"os"
 	"slices"
 	"sync"
 	"testing"
 
 	"neomega-assets/asset"
-	"neomega-viewer/catalog"
+	"neomega-viewer/demo/catalog"
 	"neomega-viewer/geometry"
 	"neomega-viewer/material"
 	"neomega-viewer/singleblock"
@@ -17,11 +16,7 @@ import (
 
 func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {
 	t.Helper()
-	dir := os.Getenv("NEOMEGA_ASSETS_DIR")
-	if dir == "" {
-		t.Skip("set NEOMEGA_ASSETS_DIR to run real resource/palette checks")
-	}
-	engine, err := singleblock.Open(singleblock.OpenOptions{AssetsDir: dir})
+	engine, err := singleblock.Open(singleblock.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +110,7 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 	checked, unsupported := 0, 0
 	for id, binding := range entries.ByID {
 		block, err := engine.Build(id)
-		profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
+		profile := engine.Renderer(binding.Java.Name)
 		if profile.Kind == asset.RendererDynamic {
 			if err == nil {
 				t.Fatalf("runtime-only shape silently accepted: %+v", binding.Java)

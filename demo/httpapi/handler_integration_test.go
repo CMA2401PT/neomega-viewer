@@ -10,20 +10,18 @@ import (
 	"testing"
 
 	"neomega-viewer/blockstate"
-	"neomega-viewer/catalog"
-	"neomega-viewer/httpapi"
+	"neomega-viewer/demo/catalog"
+	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/singleblock"
 )
 
-// Exercise the transport with the same unexpanded resource bundle the browser
-// uses, so JSON layout, state overrides and static failures are checked together.
 // 属性切换通过完整状态的 hash 验证。
 func TestBrowserTransport(t *testing.T) {
 	dir := os.Getenv("NEOMEGA_ASSETS_DIR")
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR to run the real resource transport check")
 	}
-	engine, err := singleblock.Open(singleblock.OpenOptions{AssetsDir: dir})
+	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: "../../resources/geometry.gob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +44,7 @@ func TestBrowserTransport(t *testing.T) {
 		Version string          `json:"version"`
 		Groups  []catalog.Group `json:"groups"`
 	}
-	if err := json.Unmarshal(catalogResponse.Body.Bytes(), &listed); err != nil || len(listed.Groups) != len(entries.Groups) || listed.Version != engine.Assets.BuildInfo.Version {
+	if err := json.Unmarshal(catalogResponse.Body.Bytes(), &listed); err != nil || len(listed.Groups) != len(entries.Groups) || listed.Version != engine.Version() {
 		t.Fatalf("catalog contract: %v", err)
 	}
 	stone := entries.ByName["minecraft:stone"][0]

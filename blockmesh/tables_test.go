@@ -2,7 +2,6 @@ package blockmesh
 
 import (
 	"maps"
-	"os"
 	"slices"
 	"testing"
 
@@ -12,11 +11,7 @@ import (
 )
 
 func TestTablesWithJavaResources(t *testing.T) {
-	dir := os.Getenv("NEOMEGA_ASSETS_DIR")
-	if dir == "" {
-		t.Skip("set NEOMEGA_ASSETS_DIR to run real resource checks")
-	}
-	engine, err := Open(OpenOptions{AssetsDir: dir})
+	engine, err := Open(OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +142,7 @@ func TestTablesWithJavaResources(t *testing.T) {
 		t.Fatalf("unexpected skipped states: %+v", tables.Skipped)
 	}
 	for _, skipped := range tables.Skipped {
-		if skipped.Binding.Java.Name != "minecraft:moving_piston" || skipped.Err == nil {
+		if skipped.Binding.Java.Name != "minecraft:moving_piston" || skipped.Reason == "" {
 			t.Fatalf("unexpected skipped state: %+v", skipped)
 		}
 		if _, err := tables.ModelIDs(skipped.Binding.ID); err == nil {
@@ -170,22 +165,4 @@ func TestTablesWithJavaResources(t *testing.T) {
 	}
 	t.Logf("Java states=%d; indexed=%d; shapes=%d; references=%d; skipped=%d (minecraft:moving_piston)",
 		len(states.ByID), len(tables.Index), len(tables.Shapes), references, len(tables.Skipped))
-}
-
-func TestInternComparesAllBakedQuadFields(t *testing.T) {
-	tables := &Tables{}
-	buckets := map[shapeBucket][]ModelID{}
-	original := geometry.Mesh{Quads: []geometry.Quad{{}, {Color: [3]float32{1, 1, 1}}}}
-	first := tables.intern(original, 0, buckets)
-	copy := geometry.Mesh{Quads: slices.Clone(original.Quads)}
-	if tables.intern(copy, 0, buckets) != first {
-		t.Fatal("identical geometry did not share an ID")
-	}
-	if tables.intern(copy, 1, buckets) == first {
-		t.Fatal("different cull groups shared a shape")
-	}
-	copy.Quads[1].Color = [3]float32{1, 0, 0}
-	if tables.intern(copy, 0, buckets) == first {
-		t.Fatal("a difference after the first quad was ignored")
-	}
 }

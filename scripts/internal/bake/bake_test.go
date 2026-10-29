@@ -1,4 +1,4 @@
-package geometry
+package bake
 
 import (
 	"image"
@@ -8,19 +8,21 @@ import (
 
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
+	"neomega-viewer/geometry"
 	"neomega-viewer/material"
-	"neomega-viewer/model"
-	"neomega-viewer/resources"
+	"neomega-viewer/scripts/internal/materials"
+	"neomega-viewer/scripts/internal/model"
+	"neomega-viewer/scripts/internal/resources"
 )
 
-func testMaterials() *material.Library {
+func testMaterials() *materials.Library {
 	pixels := image.NewNRGBA(image.Rect(0, 0, 16, 16))
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
 			pixels.SetNRGBA(x, y, color.NRGBA{R: 255, A: 255})
 		}
 	}
-	return material.New(asset.Atlas{Width: 16, Height: 16, Textures: map[string]asset.AtlasTexture{"stone": {SU: 1, SV: 1}}}, pixels, resources.PreviewPolicy{})
+	return materials.New(asset.Atlas{Width: 16, Height: 16, Textures: map[string]asset.AtlasTexture{"stone": {SU: 1, SV: 1}}}, pixels, resources.PreviewPolicy{})
 }
 
 func close(a, b float64) bool { return math.Abs(a-b) < 1e-6 }
@@ -63,8 +65,8 @@ func TestVariantRotationAndUVLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, quad := range mesh.Quads {
-		if quad.CullFace != NoCullFace {
-			if quad.CullFace != East || !close(quad.Normal[0], 1) {
+		if quad.CullFace != geometry.NoCullFace {
+			if quad.CullFace != geometry.East || !close(quad.Normal[0], 1) {
 				t.Fatalf("north did not rotate east: %+v", quad)
 			}
 			for _, p := range quad.Positions {
@@ -88,7 +90,7 @@ func TestElementRotationProducesAPlaneNormal(t *testing.T) {
 	if err != nil || len(mesh.Quads) != 1 {
 		t.Fatalf("cross plane missing: %v", err)
 	}
-	if mesh.Quads[0].ShadeNormal != (Vec3{0, 1, 0}) {
+	if mesh.Quads[0].ShadeNormal != (geometry.Vec3{0, 1, 0}) {
 		t.Fatal("lighting override was lost")
 	}
 	n := mesh.Quads[0].Normal
@@ -100,7 +102,7 @@ func TestElementRotationProducesAPlaneNormal(t *testing.T) {
 func TestCutoutVolumeFacesAndStandalonePlanesHaveDifferentSidedness(t *testing.T) {
 	pixels := image.NewNRGBA(image.Rect(0, 0, 2, 1))
 	pixels.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
-	library := material.New(asset.Atlas{Width: 2, Height: 1, Textures: map[string]asset.AtlasTexture{"stone": {SU: 1, SV: 1}}}, pixels, resources.PreviewPolicy{})
+	library := materials.New(asset.Atlas{Width: 2, Height: 1, Textures: map[string]asset.AtlasTexture{"stone": {SU: 1, SV: 1}}}, pixels, resources.PreviewPolicy{})
 	for _, check := range []struct {
 		To     asset.Vec3
 		Faces  map[asset.Direction]asset.Face

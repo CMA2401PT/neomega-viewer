@@ -8,7 +8,7 @@ import (
 
 	"celler/layer_storage"
 
-	"neomega-viewer/demo"
+	"neomega-viewer/demo/scenes"
 	"neomega-viewer/meshwire"
 	"neomega-viewer/subchunk"
 )
@@ -36,7 +36,7 @@ func addSubchunks(mux *http.ServeMux, engine *subchunk.Engine) {
 			Version  string       `json:"version"`
 			AtlasURL string       `json:"atlasUrl"`
 			Scenes   []demo.Scene `json:"scenes"`
-		}{engine.Blocks.Assets.BuildInfo.Version, "/assets/atlas.png", demo.List()})
+		}{engine.Blocks.Version(), "/assets/atlas.png", demo.List()})
 	})
 	send := func(w http.ResponseWriter, r *http.Request, layer *layer_storage.Palette[uint32]) {
 		options, err := sectionOptions(r)

@@ -1,56 +1,61 @@
-// Package blockmesh resolves one stored block into local-space static geometry.
-// Single-block and subchunk entry points share this parser, not their scene logic.
-// 解释与烘焙仅在建表时执行，渲染入口共享生成结果。
 package blockmesh
 
 import (
-	"fmt"
 	"sync"
 
-	assetparse "neomega-assets/parse"
-	blocks "neomega-blocks/presets/block-converts/v1"
+	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
-	"neomega-viewer/material"
-	"neomega-viewer/model"
 	"neomega-viewer/resources"
 )
 
 type OpenOptions struct {
-	AssetsDir string
-	Policy    material.Policy
+	// 留空使用随库分发的表，外部资源包可指定配套表文件。
+	TablesPath string
 }
 
 type Resolver struct {
-	Assets    *assetparse.Assets
-	identity  *blockstate.Table
-	models    *model.Resolver
-	materials *material.Library
-	tables    func() (*Tables, error)
+	identity *blockstate.Table
+	tables   *Tables
 }
 
-func Open(options OpenOptions) (*Resolver, error) {
-	assets, err := assetparse.Load(options.AssetsDir)
+var bundledTables = sync.OnceValues(func() (*Tables, error) {
+	// 多个渲染入口共享同一份解码结果。
+	file, err := resources.Files.Open("geometry.gob")
 	if err != nil {
 		return nil, err
 	}
-	if assets.BuildInfo.Version != blocks.JavaTargetVersion {
-		return nil, fmt.Errorf("resources are Java %s; Java states target %s", assets.BuildInfo.Version, blocks.JavaTargetVersion)
+	defer file.Close()
+	return ReadTables(file)
+})
+
+func Open(options OpenOptions) (*Resolver, error) {
+	var tables *Tables
+	var err error
+	if options.TablesPath == "" {
+		tables, err = bundledTables()
+	} else {
+		tables, err = LoadTables(options.TablesPath)
+	}
+	if err != nil {
+		return nil, err
 	}
 	identity, err := blockstate.Java()
 	if err != nil {
 		return nil, err
 	}
-	if options.Policy == nil {
-		options.Policy = resources.PreviewPolicy{}
-	}
-	engine := &Resolver{
-		Assets:    assets,
-		identity:  identity,
-		models:    model.NewResolver(assets.Models),
-		materials: material.New(assets.Atlas, assets.AtlasImage, options.Policy),
-	}
-	engine.tables = sync.OnceValues(engine.buildTables)
-	return engine, nil
+	return &Resolver{identity: identity, tables: tables}, nil
+}
+
+func (engine *Resolver) Tables() (*Tables, error) {
+	return engine.tables, nil
+}
+
+func (engine *Resolver) Version() string {
+	return engine.tables.Version
+}
+
+func (engine *Resolver) Renderer(name asset.ID) Renderer {
+	return engine.tables.Renderers[name]
 }
 
 // Binding resolves identity only, without selecting or baking models.

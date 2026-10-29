@@ -1,4 +1,3 @@
-// This example hashes and bakes a Java block without starting an HTTP server.
 // hash 对应的几何从共享表取得。
 package main
 
@@ -13,11 +12,11 @@ import (
 )
 
 func main() {
-	assets := flag.String("assets", "../neomega-assets/dist/final", "resource bundle directory")
+	tables := flag.String("tables", "", "geometry table file; empty uses bundled tables")
 	java := flag.String("java", "minecraft:stone []", "Java state in neomega-blocks IR syntax")
 	flag.Parse()
 	state := ir.IRBlock(*java).Tidy()
-	engine, err := singleblock.Open(singleblock.OpenOptions{AssetsDir: *assets})
+	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: *tables})
 	if err != nil {
 		log.Fatal(err)
 	}

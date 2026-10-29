@@ -9,7 +9,8 @@ import (
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/material"
-	"neomega-viewer/model"
+	"neomega-viewer/scripts/internal/materials"
+	"neomega-viewer/scripts/internal/model"
 )
 
 type PreviewPolicy struct{}
@@ -30,7 +31,7 @@ func (PreviewPolicy) Opacity(state blockstate.State) float32 {
 }
 
 // These fixed colors make isolated previews readable. A caller may provide a
-// different material.Policy for another biome or a particular static scene.
+// different materials.Policy for another biome or a particular static scene.
 func (PreviewPolicy) Tint(state blockstate.State, index int) [3]float32 {
 	if index < 0 {
 		return [3]float32{1, 1, 1}
@@ -43,17 +44,17 @@ func (PreviewPolicy) Tint(state blockstate.State, index int) [3]float32 {
 		r := uint32((0.3 + 0.6*p) * 255)
 		g := uint32(max(0, p*p*0.7-0.5) * 255)
 		b := uint32(max(0, p*p*0.6-0.7) * 255)
-		return material.Linear(r<<16 | g<<8 | b)
+		return materials.Linear(r<<16 | g<<8 | b)
 	case name == "water" || name == "bubble_column":
-		return material.Linear(0x3f76e4)
+		return materials.Linear(0x3f76e4)
 	case name == "birch_leaves":
-		return material.Linear(0x80a755)
+		return materials.Linear(0x80a755)
 	case name == "spruce_leaves":
-		return material.Linear(0x619961)
+		return materials.Linear(0x619961)
 	case strings.HasSuffix(name, "_leaves") || name == "vine":
-		return material.Linear(0x77ab2f)
+		return materials.Linear(0x77ab2f)
 	default:
-		return material.Linear(0x91bd59)
+		return materials.Linear(0x91bd59)
 	}
 }
 

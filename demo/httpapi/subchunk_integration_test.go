@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"neomega-viewer/blockmesh"
-	"neomega-viewer/demo"
-	"neomega-viewer/httpapi"
+	"neomega-viewer/demo/httpapi"
+	"neomega-viewer/demo/scenes"
 	"neomega-viewer/meshwire"
 	"neomega-viewer/singleblock"
 	"neomega-viewer/subchunk"
@@ -21,7 +21,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR for the binary subchunk transport check")
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{AssetsDir: dir})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../resources/geometry.gob"})
 	if err != nil {
 		t.Fatal(err)
 	}

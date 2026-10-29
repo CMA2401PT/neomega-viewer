@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"neomega-viewer/catalog"
+	"neomega-viewer/demo/catalog"
 	"neomega-viewer/singleblock"
 	"neomega-viewer/subchunk"
 )
@@ -44,7 +44,7 @@ func New(options Options) http.Handler {
 			Version  string          `json:"version"`
 			AtlasURL string          `json:"atlasUrl"`
 			Groups   []catalog.Group `json:"groups"`
-		}{Version: options.Engine.Assets.BuildInfo.Version, AtlasURL: "/assets/atlas.png", Groups: options.Catalog.Groups})
+		}{Version: options.Engine.Version(), AtlasURL: "/assets/atlas.png", Groups: options.Catalog.Groups})
 	})
 	mux.HandleFunc("GET /api/states", func(w http.ResponseWriter, r *http.Request) {
 		states, ok := options.Catalog.ByName[r.URL.Query().Get("name")]

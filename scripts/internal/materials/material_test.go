@@ -1,4 +1,4 @@
-package material_test
+package materials_test
 
 import (
 	"image"
@@ -8,7 +8,8 @@ import (
 	"neomega-assets/asset"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/material"
-	"neomega-viewer/resources"
+	"neomega-viewer/scripts/internal/materials"
+	"neomega-viewer/scripts/internal/resources"
 )
 
 func TestAlphaHolesAndTranslucencyAreDifferent(t *testing.T) {
@@ -19,7 +20,7 @@ func TestAlphaHolesAndTranslucencyAreDifferent(t *testing.T) {
 	atlas := asset.Atlas{Width: 6, Height: 1, Textures: map[string]asset.AtlasTexture{
 		"solid": {U: 0, SU: 2.0 / 6, SV: 1}, "holes": {U: 2.0 / 6, SU: 2.0 / 6, SV: 1}, "partial": {U: 4.0 / 6, SU: 2.0 / 6, SV: 1},
 	}}
-	library := material.New(atlas, pixels, resources.PreviewPolicy{})
+	library := materials.New(atlas, pixels, resources.PreviewPolicy{})
 	for texture, want := range map[asset.ID]material.Mode{"minecraft:block/solid": material.Opaque, "minecraft:block/holes": material.Cutout, "minecraft:block/partial": material.Blend} {
 		surface, err := library.Surface(blockstate.State{Name: "minecraft:stone"}, texture, false, false)
 		if err != nil || surface.Mode != want {
