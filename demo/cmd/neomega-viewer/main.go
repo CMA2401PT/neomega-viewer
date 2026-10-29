@@ -12,6 +12,7 @@ import (
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 )
 
@@ -32,11 +33,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	stateFixer, err := fixer.New()
+	if err != nil {
+		log.Fatal(err)
+	}
 	server := &http.Server{
 		Addr: *listen,
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
 			Subchunks: mesher.NewMesher(parser.Tables()),
+			Fixer:     stateFixer,
 			Catalog:   entries,
 			AssetsDir: *assets,
 			WebDir:    *web,

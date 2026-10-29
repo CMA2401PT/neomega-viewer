@@ -4,10 +4,12 @@ package demo
 
 import (
 	"fmt"
+	"strings"
 
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
 )
 
 type Scene struct {
@@ -18,6 +20,7 @@ type Scene struct {
 
 var scenes = []Scene{
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
+	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
 	{"slabs", "半砖交界", "半砖与完整方块相邻，只剔除实际覆盖的部分。"},
@@ -37,12 +40,23 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		return nil, fmt.Errorf("unknown demo %q", name)
 	}
 	ids := map[string]uint32{}
-	blockID := func(java string) uint32 {
-		if id, found := ids[java]; found {
+	blockID := func(recipe string) uint32 {
+		if id, found := ids[recipe]; found {
 			return id
 		}
-		id := ir.IRBlock(java).Tidy().Hash()
-		ids[java] = id
+		block := ir.IRBlock(recipe).Tidy()
+		// 配方可省略默认属性，渲染和 fixer 需要完整状态的 hash。
+		properties, _ := java.BlockProperties(block.NameWithNameSpace())
+		defaults := make([]string, 0, len(properties))
+		for name, property := range properties {
+			defaults = append(defaults, fmt.Sprintf("%q=%s", name, property.Default))
+		}
+		states := ir.IRStates("[" + strings.Join(defaults, ",") + "]").Tidy()
+		for name, value := range block.States().KeyValues {
+			states = states.Set(name, value)
+		}
+		id := ir.IRBlock(block.NameWithNameSpace() + " " + string(states)).Tidy().Hash()
+		ids[recipe] = id
 		return id
 	}
 	air := blockID("minecraft:air []")
@@ -97,13 +111,24 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 			put(x, 1, 11, "minecraft:short_grass []")
 		}
 		put(12, 1, 11, `minecraft:fire ["age"="0","east"="false","north"="false","south"="false","up"="false","west"="false"]`)
+	case "fence_dirty":
+		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
+		// 保留默认连接状态，让开关展示 fixer 补出的横杆。
+		box(3, 1, 3, 10, 2, 4, "minecraft:oak_fence []")
+		put(10, 1, 3, "minecraft:stone []")
+		box(3, 1, 7, 8, 2, 8, "minecraft:oak_fence []")
+		box(7, 1, 8, 8, 2, 12, "minecraft:oak_fence []")
+		put(7, 1, 12, "minecraft:stone []")
+		put(12, 1, 7, "minecraft:oak_fence []")
+		put(12, 1, 10, "minecraft:oak_fence []")
+		put(3, 1, 12, "minecraft:oak_fence []")
 	case "mixed":
 		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
 		box(2, 1, 3, 3, 5, 12, "minecraft:glass []")
 		box(3, 1, 3, 6, 2, 8, `minecraft:oak_slab ["type"="bottom"]`)
 		box(3, 1, 9, 6, 2, 12, `minecraft:oak_slab ["type"="top"]`)
 		for x := 7; x < 14; x++ {
-			// 场景直接写入连接状态，渲染入口只消费这些状态。
+			// 预置连接用于对照，无需开启修复。
 			put(x, 1, 3, fmt.Sprintf(
 				`minecraft:oak_fence ["east"="%t","north"="false","south"="%t","west"="%t"]`,
 				x < 13,

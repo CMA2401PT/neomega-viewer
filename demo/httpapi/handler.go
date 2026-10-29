@@ -10,12 +10,14 @@ import (
 
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 )
 
 type Options struct {
 	Engine    *singleblock.Engine
 	Subchunks *mesher.Mesher[uint32]
+	Fixer     *fixer.Fixer
 	Catalog   *catalog.Catalog
 	AssetsDir string
 	WebDir    string
@@ -37,7 +39,7 @@ func writeError(w http.ResponseWriter, status int, err error) {
 func New(options Options) http.Handler {
 	mux := http.NewServeMux()
 	if options.Subchunks != nil {
-		addSubchunks(mux, options.Subchunks, options.Engine.Version())
+		addSubchunks(mux, options.Subchunks, options.Fixer, options.Engine.Version())
 	}
 	mux.HandleFunc("GET /api/blocks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, struct {

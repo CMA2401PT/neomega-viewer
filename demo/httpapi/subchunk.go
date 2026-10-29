@@ -10,6 +10,7 @@ import (
 
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
 )
@@ -31,7 +32,7 @@ func sectionOptions(r *http.Request) (mesher.Options, error) {
 	return options, nil
 }
 
-func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], version string) {
+func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], stateFixer *fixer.Fixer, version string) {
 	mux.HandleFunc("GET /api/subchunks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, struct {
 			Version  string       `json:"version"`
@@ -47,7 +48,12 @@ func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], version str
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(layer)
-		result, err := engine.MeshSubchunk(plain.Data, options)
+		data := plain.Data
+		if r.URL.Query().Get("fix") == "1" {
+			// 独立预览没有相邻子区块，只修复当前层内的连接。
+			data = stateFixer.Fix(data, fixer.Neighbours{})
+		}
+		result, err := engine.MeshSubchunk(data, options)
 		if err != nil {
 			writeError(w, 422, err)
 			return

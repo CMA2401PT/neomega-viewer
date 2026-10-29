@@ -68,6 +68,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <div class="divider"></div>
     <div class="row-head"><b>网格流水线</b></div>
     <div class="mesh-options">
+      <label class="toggle"><input id="fix" type="checkbox"><span class="track"></span><span class="copy"><b>修复方块状态 / 连接</b><small>补全栅栏与相邻栅栏、实心方块的连接</small></span></label>
       <label class="toggle"><input id="cull" type="checkbox" checked><span class="track"></span><span class="copy"><b>剔除遮挡面</b><small>保留半砖旁没有被盖住的部分</small></span></label>
       <label class="toggle"><input id="greedy" type="checkbox" checked><span class="track"></span><span class="copy"><b>合并相邻面</b><small>兼容的材质与 UV 才能合并</small></span></label>
     </div>
@@ -132,6 +133,7 @@ async function load(resetView = false): Promise<void> {
   status("解析子区块…");
   el<HTMLButtonElement>("save-mesh").disabled = true;
   const query = new URLSearchParams({
+    fix: checked("fix") ? "1" : "0",
     cull: String(checked("cull")),
     greedy: String(checked("greedy")),
   });
@@ -242,7 +244,7 @@ async function start(): Promise<void> {
     };
     el("scenes").append(button);
   }
-  for (const id of ["cull", "greedy"])
+  for (const id of ["fix", "cull", "greedy"])
     el<HTMLInputElement>(id).onchange = () => void load();
   // View chips toggle their own class and drive the viewport.
   const toggleChip = (id: string, apply: (on: boolean) => void): void => {
