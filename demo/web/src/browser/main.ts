@@ -15,12 +15,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="viewport"></div>
   <div class="empty-note" id="empty-note" hidden>此方块没有可见表面</div>
 
-  <header class="topbar">
-    <div class="mark"><span class="mark-glyph"></span><span class="mark-name">Neomega</span></div>
-    <nav class="view-switch" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
-    <div class="topbar-spacer"></div>
-  </header>
-
   <div class="view-cluster">
     <canvas class="gizmo" id="gizmo" width="64" height="64" aria-hidden="true"></canvas>
     <div class="view-seg" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
@@ -31,9 +25,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <button class="view-reset" id="reset">重置视角</button>
   </div>
 
-  <aside class="panel" aria-label="方块选择与属性">
+  <button class="panel-open" id="panel-open" aria-label="展开面板" hidden>单方块</button>
+
+  <aside class="panel" id="panel" aria-label="方块选择与属性">
     <div class="panel-head">
-      <span class="eyebrow">Single Block</span>
+      <nav class="view-switch" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a><button class="panel-collapse" id="panel-collapse" aria-label="收起面板">⟨</button></nav>
       <h1 id="block-title">准备预览</h1>
       <div class="meta"><span class="chip" id="version">连接中</span><span class="chip" id="catalog-count"></span><span class="status" id="status">加载中</span></div>
       <p class="hint" id="java-name">加载方块目录与纹理图集</p>
@@ -335,6 +331,15 @@ async function start(): Promise<void> {
     void showBlock();
   };
   el("reset").onclick = () => viewport.reset();
+  // 面板收到侧面:收起时整页只剩场景与右上角视图选项,留一个把手拉回来。
+  const panel = el("panel");
+  const opener = el("panel-open");
+  const setPanel = (collapsed: boolean): void => {
+    panel.classList.toggle("collapsed", collapsed);
+    opener.hidden = !collapsed;
+  };
+  el("panel-collapse").onclick = () => setPanel(true);
+  opener.onclick = () => setPanel(false);
   // Grid/frame are transparent toggle chips, not form checkboxes.
   const toggleChip = (id: string, apply: (on: boolean) => void): void => {
     const chip = el<HTMLButtonElement>(id);

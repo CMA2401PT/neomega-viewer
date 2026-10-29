@@ -105,50 +105,21 @@ a:focus-visible {
   pointer-events: none;
 }
 
-/* ---- top bar: product mark + page switch, one hairline strip ---- */
-.topbar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 4;
-  height: 40px;
-  display: flex;
-  align-items: stretch;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.mark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  border-right: 1px solid var(--line);
-}
-/* The mark is a flat geometric glyph, not a decorative logo. */
-.mark-glyph {
-  width: 15px;
-  height: 15px;
-  background: var(--red);
-  border: 1px solid var(--ink);
-}
-.mark-name {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-}
+/* 页面切换并进面板头,去掉独立顶栏;两项按钮排成一行。 */
 .view-switch {
   display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 2px;
 }
 .view-switch a {
   display: flex;
   align-items: center;
-  padding: 0 18px;
+  padding: 4px 12px;
   font-size: 12px;
   letter-spacing: 0.04em;
   color: var(--ink-dim);
-  border-right: 1px solid var(--line-soft);
+  border: 1px solid var(--line);
 }
 .view-switch a:hover {
   background: var(--hover);
@@ -157,22 +128,33 @@ a:focus-visible {
 .view-switch a.active {
   color: var(--on-active);
   background: var(--ink);
+  border-color: var(--ink);
   font-weight: 600;
 }
-.topbar-spacer {
-  flex: 1;
+/* 收起把手贴在切换行末尾。 */
+.panel-collapse {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.panel-collapse:hover {
+  background: var(--hover);
+  color: var(--ink);
 }
 
 /* ---- top-right view cluster: gizmo + projection + toggles ---- */
+/* 悬浮控件不再画底框:直接浮在场景上,只靠文字与线描标记,整页更干净。 */
 .view-cluster {
   position: absolute;
-  top: 52px;
+  top: 12px;
   right: 12px;
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
 }
 .view-cluster > * {
@@ -181,54 +163,43 @@ a:focus-visible {
 .gizmo {
   width: 64px;
   height: 64px;
-  background: var(--panel);
-  border: 1px solid var(--line);
 }
 .view-seg {
   display: flex;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  gap: 10px;
 }
 .view-seg button {
-  padding: 5px 12px;
+  padding: 4px 10px;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-dim);
-  border-right: 1px solid var(--line);
-}
-.view-seg button:last-child {
-  border-right: none;
 }
 .view-seg button:hover {
-  background: var(--hover);
+  color: var(--ink);
 }
 .view-seg button.active {
-  background: var(--ink);
-  color: var(--on-active);
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--blue);
 }
 .view-toggles {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  align-items: flex-end;
+  gap: 4px;
 }
 .view-chip {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 11px;
+  gap: 8px;
+  padding: 3px 4px;
   font-size: 11px;
   letter-spacing: 0.03em;
   color: var(--ink-dim);
-  border-bottom: 1px solid var(--line-soft);
   text-align: left;
 }
-.view-chip:last-child {
-  border-bottom: none;
-}
 .view-chip:hover {
-  background: var(--hover);
+  color: var(--ink);
 }
 /* The square state marker fills with a primary when the toggle is on. */
 .view-chip .box {
@@ -245,22 +216,23 @@ a:focus-visible {
   background: var(--blue);
 }
 .view-reset {
-  padding: 6px 12px;
+  padding: 3px 4px;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-dim);
-  background: var(--panel);
-  border: 1px solid var(--line);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line);
 }
 .view-reset:hover {
-  background: var(--hover);
   color: var(--ink);
+  text-decoration-color: var(--ink);
 }
 
-/* ---- the left control panel: a flat framed column ---- */
+/* ---- 左侧控制面板:唯一保留描边的卡片;可收到页面左侧之外 ---- */
 .panel {
   position: absolute;
-  top: 52px;
+  top: 12px;
   left: 12px;
   bottom: 12px;
   width: 320px;
@@ -269,6 +241,32 @@ a:focus-visible {
   flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line);
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+.panel.collapsed {
+  transform: translateX(calc(-100% - 16px));
+  opacity: 0;
+  pointer-events: none;
+}
+/* 收起后留在左上角的把手,点一下把面板拉回来。 */
+.panel-open {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  padding: 7px 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--on-active);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+}
+.panel-open::before {
+  content: "⟩ ";
+}
+.panel-open:hover {
+  background: var(--ink-dim);
 }
 .panel-head {
   display: flex;
@@ -654,19 +652,14 @@ details pre {
   right: 12px;
   z-index: 2;
   display: flex;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  gap: 20px;
 }
 .metrics > div {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 8px 16px;
-  min-width: 74px;
-  border-right: 1px solid var(--line);
-}
-.metrics > div:last-child {
-  border-right: none;
+  min-width: 56px;
+  text-align: right;
 }
 .metrics span {
   font-size: 16px;
@@ -696,8 +689,7 @@ details pre {
   .view-cluster {
     right: 8px;
   }
-  .mark-name,
-  .view-switch a:not(.active) {
-    display: none;
+  .panel-open {
+    left: 8px;
   }
 }
