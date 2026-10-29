@@ -17,7 +17,7 @@ export class MeshViewport {
   private readonly grid: THREE.GridHelper;
   private readonly frame = new THREE.Box3Helper(
     new THREE.Box3(new THREE.Vector3(), new THREE.Vector3(1, 1, 1)),
-    0x5be0c6,
+    0x1246b4, // Bauhaus blue bounding outline, reads on the light stage.
   );
   private readonly resize: ResizeObserver;
   // Called every camera change so the host can drive an orientation gizmo.
@@ -36,15 +36,17 @@ export class MeshViewport {
     options: { gridSize?: number; label?: string } = {},
   ) {
     const gridSpan = options.gridSize ?? 8;
+    // Monochrome ground grid: a darker centre cross over hairline grey lines,
+    // tuned to read on the light stage without competing with the geometry.
     this.grid = new THREE.GridHelper(
       gridSpan,
       gridSpan * 4,
-      0x4a6f73,
-      0x2a3d42,
+      0x555555,
+      0xb8b8b4,
     );
     const gridMaterial = this.grid.material as THREE.Material;
     gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.42;
+    gridMaterial.opacity = 0.9;
     // Background stays null so the transparent canvas reveals the CSS scene.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;

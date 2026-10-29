@@ -30,69 +30,75 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="viewport"></div>
   <div class="empty-note" id="empty-note" hidden>此子区块没有可见表面</div>
 
-  <a class="brand glass" href="/">
-    <span class="brandmark">N</span>
-    <span class="brand-text"><b>NEOMEGA</b><span class="brand-sub">GEOMETRY EXPLORER</span></span>
-  </a>
-  <nav class="view-switch glass" aria-label="渲染目标"><a href="/">单方块</a><a href="/subchunk.html" class="active">子区块</a></nav>
+  <header class="topbar">
+    <div class="mark"><span class="mark-glyph"></span><span class="mark-name">Neomega</span></div>
+    <nav class="view-switch" aria-label="渲染目标"><a href="/">单方块</a><a href="/subchunk.html" class="active">子区块</a></nav>
+    <div class="topbar-spacer"></div>
+  </header>
 
   <div class="view-cluster">
-    <canvas class="gizmo" id="gizmo" width="72" height="72" aria-hidden="true"></canvas>
-    <div class="view-seg glass" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
+    <canvas class="gizmo" id="gizmo" width="64" height="64" aria-hidden="true"></canvas>
+    <div class="view-seg" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
     <div class="view-toggles">
-      <button class="view-chip" id="wireframe" aria-pressed="false"><span class="dot"></span>三角网格</button>
-      <button class="view-chip on" id="grid" aria-pressed="true"><span class="dot"></span>地面网格</button>
-      <button class="view-chip" id="frame" aria-pressed="false"><span class="dot"></span>形状边界</button>
+      <button class="view-chip" id="wireframe" aria-pressed="false"><span class="box"></span>三角网格</button>
+      <button class="view-chip on" id="grid" aria-pressed="true"><span class="box"></span>地面网格</button>
+      <button class="view-chip" id="frame" aria-pressed="false"><span class="box"></span>形状边界</button>
     </div>
-    <button class="view-reset glass" id="reset">↺ 重置视角</button>
+    <button class="view-reset" id="reset">重置视角</button>
   </div>
 
-  <aside class="panel glass" aria-label="场景与网格流水线">
+  <aside class="panel" aria-label="场景与网格流水线">
     <div class="panel-head">
-      <span class="eyebrow">ISOLATED SUBCHUNK</span>
+      <span class="eyebrow">Isolated Subchunk</span>
       <h1 id="scene-title">准备预览</h1>
       <div class="meta"><span class="chip" id="version">连接中</span><span class="chip">16³</span><span class="status" id="status">加载中</span></div>
-      <p class="hint" id="scene-caption">加载静态资源</p>
     </div>
 
-    <div class="panel-scroll scroll">
-    <div class="row-head"><b>场景</b></div>
-    <div id="scenes" class="scene-list"></div>
+    <div class="panel-scroll">
+      <div class="section">
+        <div class="row-head">场景</div>
+        <div id="scenes" class="scene-list"></div>
+      </div>
 
-    <div class="upload">
-      <label for="layer-file">加载自己的子区块</label>
-      <p class="hint">4096 个小端 uint32 Java block hash，顺序为 X-Z-Y。</p>
-      <input id="layer-file" type="file" accept=".nvblocks,.bin">
-    </div>
+      <div class="section">
+        <div class="row-head">加载自己的子区块</div>
+        <div class="upload">
+          <input id="layer-file" type="file" accept=".nvblocks,.bin">
+          <p class="hint">4096 个小端 uint32 Java block hash，顺序为 X-Z-Y。</p>
+        </div>
+      </div>
 
-    <div class="divider"></div>
-    <div class="row-head"><b>网格流水线</b></div>
-    <div class="mesh-options">
-      <label class="toggle"><input id="fix" type="checkbox"><span class="track"></span><span class="copy"><b>修复方块状态 / 连接</b><small>补全栅栏与相邻栅栏、实心方块的连接</small></span></label>
-      <label class="toggle"><input id="cull" type="checkbox" checked><span class="track"></span><span class="copy"><b>剔除遮挡面</b><small>保留半砖旁没有被盖住的部分</small></span></label>
-      <label class="toggle"><input id="greedy" type="checkbox" checked><span class="track"></span><span class="copy"><b>合并相邻面</b><small>兼容的材质与 UV 才能合并</small></span></label>
-    </div>
+      <div class="section">
+        <div class="row-head">网格流水线</div>
+        <div class="mesh-options">
+          <label class="toggle"><input id="fix" type="checkbox"><span class="box"></span><span class="copy"><b>修复方块状态 / 连接</b><small>补全栅栏与相邻栅栏、实心方块的连接</small></span></label>
+          <label class="toggle"><input id="cull" type="checkbox" checked><span class="box"></span><span class="copy"><b>剔除遮挡面</b><small>保留半砖旁没有被盖住的部分</small></span></label>
+          <label class="toggle"><input id="greedy" type="checkbox" checked><span class="box"></span><span class="copy"><b>合并相邻面</b><small>兼容的材质与 UV 才能合并</small></span></label>
+        </div>
+      </div>
 
-    <div class="divider"></div>
-    <h3 class="pipeline-title">四边形的变化</h3>
-    <div class="pipeline">
-      <div><label>模型原始面<span id="input-quads">—</span></label><i id="bar-input"></i></div>
-      <div><label>剔除后<span id="visible-quads">—</span></label><i id="bar-visible"></i></div>
-      <div><label>合并后<span id="output-quads">—</span></label><i id="bar-output"></i></div>
-    </div>
-    <p class="hint" id="shape-stats"></p>
-    <p class="hint">不同颜色的玻璃保留界面。半透明面单独排序；树叶的镂空不会遮掉后面的物体。</p>
+      <div class="section">
+        <h3 class="pipeline-title">四边形的变化</h3>
+        <div class="pipeline">
+          <div><label>模型原始面<span id="input-quads">—</span></label><span class="bar"><i id="bar-input"></i></span></div>
+          <div><label>剔除后<span id="visible-quads">—</span></label><span class="bar"><i id="bar-visible"></i></span></div>
+          <div><label>合并后<span id="output-quads">—</span></label><span class="bar"><i id="bar-output"></i></span></div>
+        </div>
+        <p class="hint" id="shape-stats"></p>
+      </div>
 
-    <div class="divider"></div>
-    <button id="save-mesh" class="download" disabled>下载当前网格 .nvmesh</button>
-    <a id="save-layer" class="download" href="#">下载方块层 .nvblocks</a>
+      <div class="section">
+        <button id="save-mesh" class="download" disabled>下载当前网格 .nvmesh</button>
+        <a id="save-layer" class="download" href="#">下载方块层 .nvblocks</a>
+      </div>
 
-    <div class="divider"></div>
-    <div class="panel-foot">场景使用 Java block hash。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      <div class="section">
+        <div class="panel-foot">场景使用 Java block hash。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      </div>
     </div>
   </aside>
 
-  <div class="metrics glass">
+  <div class="metrics">
     <div><span id="quad-count">—</span><small>输出四边形</small></div>
     <div><span id="triangle-count">—</span><small>三角形</small></div>
     <div><span id="batch-count">—</span><small>材质组</small></div>
@@ -164,7 +170,6 @@ async function load(resetView = false): Promise<void> {
     viewport.showWireframe(wireframe);
     latest = data;
     el("scene-title").textContent = current.title;
-    el("scene-caption").textContent = current.description;
     el("empty-note").textContent = "此子区块没有可见表面";
     el("empty-note").hidden = mesh.quads !== 0;
     el("quad-count").textContent = mesh.quads.toLocaleString();
@@ -196,7 +201,6 @@ async function load(resetView = false): Promise<void> {
       quads: 0,
     });
     el("scene-title").textContent = current.title;
-    el("scene-caption").textContent = current.description;
     el("empty-note").textContent = "无法生成此预览，请查看上方错误信息";
     el("empty-note").hidden = false;
     for (const id of [
@@ -228,11 +232,14 @@ async function start(): Promise<void> {
     const button = document.createElement("button");
     button.className = "scene-card";
     button.dataset.scene = scene.id;
+    const copy = document.createElement("span");
+    copy.className = "copy";
     const title = document.createElement("strong");
     title.textContent = scene.title;
-    const description = document.createElement("span");
+    const description = document.createElement("small");
     description.textContent = scene.description;
-    button.append(title, description);
+    copy.append(title, description);
+    button.append(copy);
     button.onclick = () => {
       uploaded = undefined;
       current = scene;
@@ -299,7 +306,13 @@ async function start(): Promise<void> {
       .forEach((node) => node.classList.remove("selected"));
     await load(true);
   };
-  current = catalog.scenes[0];
+  const first = catalog.scenes[0];
+  if (!first) {
+    status("目录里没有可用场景", true);
+    el("scene-title").textContent = "无场景";
+    return;
+  }
+  current = first;
   document.querySelector(".scene-card")?.classList.add("selected");
   await load(true);
   window.addEventListener(

@@ -15,55 +15,61 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="viewport"></div>
   <div class="empty-note" id="empty-note" hidden>此方块没有可见表面</div>
 
-  <a class="brand glass" href="/" aria-label="Neomega 首页">
-    <span class="brandmark">N</span>
-    <span class="brand-text"><b>NEOMEGA</b><span class="brand-sub">BLOCK EXPLORER</span></span>
-  </a>
-  <nav class="view-switch glass" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
+  <header class="topbar">
+    <div class="mark"><span class="mark-glyph"></span><span class="mark-name">Neomega</span></div>
+    <nav class="view-switch" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
+    <div class="topbar-spacer"></div>
+  </header>
 
   <div class="view-cluster">
-    <canvas class="gizmo" id="gizmo" width="72" height="72" aria-hidden="true"></canvas>
-    <div class="view-seg glass" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
+    <canvas class="gizmo" id="gizmo" width="64" height="64" aria-hidden="true"></canvas>
+    <div class="view-seg" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
     <div class="view-toggles">
-      <button class="view-chip on" id="grid" aria-pressed="true"><span class="dot"></span>地面网格</button>
-      <button class="view-chip" id="frame" aria-pressed="false"><span class="dot"></span>形状边界</button>
+      <button class="view-chip on" id="grid" aria-pressed="true"><span class="box"></span>地面网格</button>
+      <button class="view-chip" id="frame" aria-pressed="false"><span class="box"></span>形状边界</button>
     </div>
-    <button class="view-reset glass" id="reset">↺ 重置视角</button>
+    <button class="view-reset" id="reset">重置视角</button>
   </div>
 
-  <aside class="panel glass" aria-label="方块选择与属性">
+  <aside class="panel" aria-label="方块选择与属性">
     <div class="panel-head">
-      <span class="eyebrow">SINGLE BLOCK</span>
+      <span class="eyebrow">Single Block</span>
       <h1 id="block-title">准备预览</h1>
       <div class="meta"><span class="chip" id="version">连接中</span><span class="chip" id="catalog-count"></span><span class="status" id="status">加载中</span></div>
       <p class="hint" id="java-name">加载方块目录与纹理图集</p>
     </div>
-    <div class="panel-scroll scroll">
-    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称，如 glass、oak…" aria-label="搜索方块"></label>
-    <div class="quick" id="quick" aria-label="常见方块"></div>
-    <div class="row-head"><b>方块列表</b><span id="list-count"></span></div>
-    <div class="block-list" id="block-list" role="list" aria-label="方块列表"></div>
+    <div class="panel-scroll">
+      <div class="section">
+        <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称，如 glass、oak…" aria-label="搜索方块"></label>
+        <div class="quick" id="quick" aria-label="常见方块"></div>
+        <div class="row-head">方块列表<span id="list-count"></span></div>
+        <div class="block-list" id="block-list" role="list" aria-label="方块列表"></div>
+      </div>
 
-    <div class="divider"></div>
-    <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
-    <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
+      <div class="section">
+        <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
+        <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
+      </div>
 
-    <div class="divider"></div>
-    <div class="sub-head"><h3>方块属性</h3><button id="restore-properties">还原</button></div>
-    <p class="hint">切换属性会选择对应状态的 Java block hash。</p>
-    <div id="properties" class="properties"></div>
+      <div class="section">
+        <div class="sub-head"><h3>方块属性</h3><button id="restore-properties">还原</button></div>
+        <p class="hint">切换属性会选择对应状态的 Java block hash。</p>
+        <div id="properties" class="properties"></div>
+      </div>
 
-    <div class="divider"></div>
-    <div id="renderer-tag" class="renderer-tag">—</div>
-    <p class="hint" id="preview-description">Go 查询共享几何，浏览器绘制顶点。</p>
-    <details><summary>查看 Java 状态</summary><pre id="source-state"></pre></details>
+      <div class="section">
+        <div id="renderer-tag" class="renderer-tag">—</div>
+        <p class="hint" id="preview-description">Go 查询共享几何，浏览器绘制顶点。</p>
+        <details><summary>查看 Java 状态</summary><pre id="source-state"></pre></details>
+      </div>
 
-    <div class="divider"></div>
-    <div class="panel-foot">列表使用 Java block hash，同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      <div class="section">
+        <div class="panel-foot">列表使用 Java block hash，同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      </div>
     </div>
   </aside>
 
-  <div class="metrics glass">
+  <div class="metrics">
     <div><span id="quad-count">—</span><small>四边形</small></div>
     <div><span id="triangle-count">—</span><small>三角形</small></div>
     <div><span id="batch-count">—</span><small>材质组</small></div>
@@ -121,7 +127,6 @@ function list(): void {
     button.title = group.name;
     const icon = document.createElement("span");
     icon.className = "cube-icon";
-    icon.textContent = "◇";
     const name = document.createElement("span");
     name.className = "block-name";
     name.textContent = group.name.replace("minecraft:", "");

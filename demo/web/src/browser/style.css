@@ -1,26 +1,34 @@
-/* Neomega viewer — the whole page is the 3D scene; UI floats over it as glass.
-   Shared by both the single-block and subchunk pages. */
+/* Neomega viewer — shared design system.
+   Bauhaus / line-drawing direction: strict geometry, hairline frames, hard
+   right angles, high contrast. Black / white / grey carry the surface; the
+   three primaries (red / blue / yellow) appear only as functional accents.
+   The whole page is the 3D stage; controls are sharp framed overlays. */
 :root {
-  /* Teal-leaning dark palette; the canvas renders over this gradient. */
-  --bg-0: #0a1416;
-  --bg-1: #0f1e20;
-  --bg-2: #13282a;
-  --accent: #3fe0c5;
-  --accent-soft: #2bb39c;
-  --ink: #e8f4f1;
-  --ink-dim: #9fb6b2;
-  --ink-faint: #6c8480;
-  --glass: rgba(16, 30, 32, 0.62);
-  --glass-edge: rgba(120, 200, 190, 0.16);
-  --glass-hi: rgba(255, 255, 255, 0.04);
-  --radius: 18px;
-  --radius-sm: 11px;
+  /* Achromatic ground. */
+  --paper: #f4f4f2;
+  --panel: #ffffff;
+  --ink: #111111;
+  --ink-dim: #4a4a4a;
+  --ink-faint: #8a8a8a;
+  --line: #111111;
+  --line-soft: #d7d7d4;
+  --field: #ffffff;
+  --hover: #ececea;
+  --active: #111111;
+  --on-active: #ffffff;
+  /* Bauhaus primaries, used only as functional accents. */
+  --red: #d7263d;
+  --blue: #1246b4;
+  --yellow: #f4c20d;
+  --stage-top: #ededeb;
+  --stage-bottom: #d9d9d6;
+  color-scheme: light;
   font-family:
-    Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "PingFang SC", sans-serif;
+    "Helvetica Neue", Helvetica, Arial, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   font-synthesis: none;
-  font-size: 14px;
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
 * {
@@ -33,39 +41,39 @@ body {
 }
 body {
   overflow: hidden;
-  background:
-    radial-gradient(120% 90% at 78% 8%, var(--bg-2) 0%, transparent 55%),
-    radial-gradient(120% 120% at 12% 96%, #0c2420 0%, transparent 50%),
-    linear-gradient(160deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  background: var(--paper);
   color: var(--ink);
 }
 button,
 input,
 select {
   font: inherit;
+  color: inherit;
 }
 button {
   cursor: pointer;
-  color: inherit;
   background: none;
   border: none;
+  padding: 0;
 }
 a {
   color: inherit;
   text-decoration: none;
 }
+/* Sharp, square focus ring — no rounded outlines anywhere. */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 ::selection {
-  background: rgba(63, 224, 197, 0.3);
+  background: var(--yellow);
+  color: var(--ink);
 }
 
-/* ---- full-bleed stage: the canvas lives here and fills the viewport ---- */
+/* ---- full-bleed stage: the canvas fills the viewport ---- */
 #app {
   position: fixed;
   inset: 0;
@@ -74,6 +82,8 @@ a:focus-visible {
   position: absolute;
   inset: 0;
   z-index: 0;
+  background:
+    linear-gradient(180deg, var(--stage-top) 0%, var(--stage-bottom) 100%);
 }
 #viewport canvas {
   display: block;
@@ -83,285 +93,313 @@ a:focus-visible {
 .empty-note {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 46%;
   transform: translate(-50%, -50%);
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  padding: 9px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
   color: var(--ink-dim);
-  font-size: 13px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
   z-index: 2;
   pointer-events: none;
 }
 
-/* ---- shared glass surface ---- */
-.glass {
-  background: linear-gradient(
-    155deg,
-    rgba(23, 44, 46, 0.78),
-    rgba(12, 24, 26, 0.68)
-  );
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--radius);
-  -webkit-backdrop-filter: blur(22px) saturate(1.3);
-  backdrop-filter: blur(22px) saturate(1.3);
-  box-shadow:
-    0 24px 60px -20px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 var(--glass-hi);
-}
-
-/* ---- top-left brand chip ---- */
-.brand {
+/* ---- top bar: product mark + page switch, one hairline strip ---- */
+.topbar {
   position: absolute;
-  top: 22px;
-  left: 24px;
-  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  height: 40px;
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.mark {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 15px 9px 10px;
-  border-radius: 999px;
+  gap: 10px;
+  padding: 0 16px;
+  border-right: 1px solid var(--line);
 }
-.brandmark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: linear-gradient(140deg, var(--accent), var(--accent-soft));
-  color: #04201b;
-  font-weight: 800;
-  font-size: 16px;
+/* The mark is a flat geometric glyph, not a decorative logo. */
+.mark-glyph {
+  width: 15px;
+  height: 15px;
+  background: var(--red);
+  border: 1px solid var(--ink);
 }
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
-}
-.brand-text b {
-  font-size: 13px;
-  letter-spacing: 0.14em;
+.mark-name {
+  font-size: 12px;
   font-weight: 700;
-}
-.brand-sub {
-  font-size: 9px;
   letter-spacing: 0.22em;
-  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.view-switch {
+  display: flex;
+}
+.view-switch a {
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  border-right: 1px solid var(--line-soft);
+}
+.view-switch a:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.view-switch a.active {
+  color: var(--on-active);
+  background: var(--ink);
+  font-weight: 600;
+}
+.topbar-spacer {
+  flex: 1;
 }
 
-/* ---- top-right transparent view cluster (no panel chrome) ---- */
+/* ---- top-right view cluster: gizmo + projection + toggles ---- */
 .view-cluster {
   position: absolute;
-  top: 20px;
-  right: 24px;
+  top: 52px;
+  right: 12px;
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 12px;
+  gap: 8px;
   pointer-events: none;
 }
 .view-cluster > * {
   pointer-events: auto;
 }
 .gizmo {
-  width: 72px;
-  height: 72px;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
+  width: 64px;
+  height: 64px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.view-seg {
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.view-seg button {
+  padding: 5px 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  border-right: 1px solid var(--line);
+}
+.view-seg button:last-child {
+  border-right: none;
+}
+.view-seg button:hover {
+  background: var(--hover);
+}
+.view-seg button.active {
+  background: var(--ink);
+  color: var(--on-active);
+  font-weight: 600;
 }
 .view-toggles {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  align-items: flex-end;
+  border: 1px solid var(--line);
+  background: var(--panel);
 }
 .view-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 12px;
+  gap: 9px;
+  padding: 6px 11px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
   color: var(--ink-dim);
-  background: rgba(10, 20, 22, 0.42);
-  border: 1px solid transparent;
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  transition:
-    color 0.16s,
-    background 0.16s,
-    border-color 0.16s;
-  white-space: nowrap;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+}
+.view-chip:last-child {
+  border-bottom: none;
 }
 .view-chip:hover {
-  color: var(--ink);
-  background: rgba(16, 32, 34, 0.6);
+  background: var(--hover);
 }
-.view-chip .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ink-faint);
-  transition: background 0.16s;
+/* The square state marker fills with a primary when the toggle is on. */
+.view-chip .box {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  flex: none;
 }
 .view-chip.on {
-  color: var(--accent);
-  border-color: var(--glass-edge);
-  background: rgba(16, 40, 38, 0.6);
+  color: var(--ink);
 }
-.view-chip.on .dot {
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-}
-.view-seg {
-  display: flex;
-  padding: 3px;
-  border-radius: 999px;
-  background: rgba(10, 20, 22, 0.5);
-  border: 1px solid transparent;
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-.view-seg button {
-  padding: 5px 13px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--ink-dim);
-  transition:
-    color 0.16s,
-    background 0.16s;
-}
-.view-seg button.active {
-  color: #04201b;
-  background: linear-gradient(140deg, var(--accent), var(--accent-soft));
-  font-weight: 600;
+.view-chip.on .box {
+  background: var(--blue);
 }
 .view-reset {
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   color: var(--ink-dim);
-  background: rgba(10, 20, 22, 0.42);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  transition:
-    color 0.16s,
-    background 0.16s;
+  background: var(--panel);
+  border: 1px solid var(--line);
 }
 .view-reset:hover {
+  background: var(--hover);
   color: var(--ink);
-  background: rgba(16, 32, 34, 0.6);
 }
 
-/* ---- the floating control panel (all settings/selectors/knobs) ---- */
+/* ---- the left control panel: a flat framed column ---- */
 .panel {
   position: absolute;
-  top: 78px;
-  left: 24px;
-  bottom: 24px;
-  width: 348px;
+  top: 52px;
+  left: 12px;
+  bottom: 12px;
+  width: 320px;
   z-index: 2;
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
 }
 .panel-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
 }
 .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
   font-size: 10px;
-  letter-spacing: 0.2em;
-  color: var(--accent-soft);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
   font-weight: 600;
-}
-.eyebrow::before {
-  content: "";
-  width: 14px;
-  height: 1px;
-  background: var(--accent-soft);
 }
 .panel-head h1 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: 19px;
+  font-weight: 700;
   letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 .panel-head .meta {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--ink-faint);
+  font-size: 10px;
 }
 .chip {
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: rgba(63, 224, 197, 0.1);
-  border: 1px solid var(--glass-edge);
+  padding: 2px 7px;
+  border: 1px solid var(--line);
   color: var(--ink-dim);
   font-size: 10px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-
-/* status pill with state dot */
+/* Status carries a square state marker; colour maps to meaning. */
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   font-size: 11px;
   color: var(--ink-dim);
+  margin-left: auto;
 }
 .status::before {
   content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
+  width: 8px;
+  height: 8px;
+  background: var(--blue);
 }
 .status.error {
-  color: #ff8a8a;
+  color: var(--red);
 }
 .status.error::before {
-  background: #ff8a8a;
-  box-shadow: 0 0 8px #ff8a8a;
+  background: var(--red);
 }
 
-/* search */
+/* scrolling body; the head stays pinned */
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.section {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.section:last-child {
+  border-bottom: none;
+}
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 700;
+}
+.row-head span {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* scrollbars kept thin and monochrome */
+.panel-scroll,
+.block-list,
+.scene-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-faint) transparent;
+}
+.panel-scroll::-webkit-scrollbar,
+.block-list::-webkit-scrollbar,
+.scene-list::-webkit-scrollbar {
+  width: 8px;
+}
+.panel-scroll::-webkit-scrollbar-thumb,
+.block-list::-webkit-scrollbar-thumb,
+.scene-list::-webkit-scrollbar-thumb {
+  background: var(--ink-faint);
+}
+
+/* search: a framed input with a leading glyph box */
 .search {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 13px;
-  border-radius: var(--radius-sm);
-  background: rgba(8, 18, 20, 0.5);
-  border: 1px solid var(--glass-edge);
-  transition: border-color 0.16s;
-}
-.search:focus-within {
-  border-color: var(--accent-soft);
+  align-items: stretch;
+  border: 1px solid var(--line);
 }
 .search span {
-  color: var(--ink-faint);
-  font-size: 15px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  border-right: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-size: 14px;
 }
 .search input {
   flex: 1;
-  background: none;
+  min-width: 0;
   border: none;
-  padding: 11px 0;
-  color: var(--ink);
+  background: var(--field);
+  padding: 8px 10px;
 }
 .search input::placeholder {
   color: var(--ink-faint);
@@ -369,112 +407,69 @@ a:focus-visible {
 .search input:focus {
   outline: none;
 }
+.search:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
 
-/* quick example tags */
+/* quick example tags: square chips in a row */
 .quick {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 .quick button {
-  padding: 5px 11px;
-  border-radius: 999px;
+  padding: 4px 9px;
   font-size: 11px;
   color: var(--ink-dim);
-  background: rgba(10, 22, 24, 0.5);
-  border: 1px solid transparent;
-  transition:
-    color 0.14s,
-    border-color 0.14s,
-    background 0.14s;
+  border: 1px solid var(--line-soft);
 }
 .quick button:hover {
-  color: var(--accent);
-  border-color: var(--glass-edge);
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--hover);
 }
 
-.row-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 11px;
-  color: var(--ink-faint);
-  letter-spacing: 0.02em;
-}
-.row-head b {
-  color: var(--ink-dim);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 10px;
-}
-
-/* the lower panel region scrolls as one; header stays pinned */
-.panel-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding-right: 4px;
-  margin-right: -6px;
-}
-/* block list gets its own capped scroll so the fields below stay reachable */
+/* list of block rows */
 .block-list {
-  max-height: 260px;
+  max-height: 240px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding-right: 4px;
-  margin: 0 -2px;
-}
-.block-list::-webkit-scrollbar,
-.scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.block-list::-webkit-scrollbar-thumb,
-.scroll::-webkit-scrollbar-thumb {
-  background: rgba(120, 200, 190, 0.2);
-  border-radius: 3px;
-}
-.block-list,
-.scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(120, 200, 190, 0.2) transparent;
+  border: 1px solid var(--line-soft);
 }
 .block-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
-  padding: 9px 11px;
-  border-radius: var(--radius-sm);
+  padding: 7px 10px;
   text-align: left;
-  border: 1px solid transparent;
-  transition:
-    background 0.13s,
-    border-color 0.13s;
+  border-bottom: 1px solid var(--line-soft);
+}
+.block-row:last-child {
+  border-bottom: none;
 }
 .block-row:hover {
-  background: rgba(63, 224, 197, 0.06);
+  background: var(--hover);
 }
 .block-row.selected {
-  background: rgba(63, 224, 197, 0.12);
-  border-color: var(--glass-edge);
+  background: var(--ink);
+  color: var(--on-active);
 }
 .cube-icon {
-  color: var(--accent-soft);
-  font-size: 13px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  flex: none;
 }
 .block-row.selected .cube-icon {
-  color: var(--accent);
+  background: var(--yellow);
+  border-color: var(--yellow);
 }
 .block-name {
   flex: 1;
-  font-size: 13px;
-  color: var(--ink);
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -482,33 +477,24 @@ a:focus-visible {
 .state-count {
   font-size: 10px;
   color: var(--ink-faint);
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: rgba(10, 22, 24, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+.block-row.selected .state-count {
+  color: var(--on-active);
 }
 .more {
-  margin-top: 4px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--accent);
-  background: rgba(63, 224, 197, 0.07);
+  padding: 7px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-top: 1px solid var(--line-soft);
 }
 .more:hover {
-  background: rgba(63, 224, 197, 0.12);
+  background: var(--hover);
 }
 
-/* inspector blocks inside the panel */
-.divider {
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--glass-edge),
-    transparent
-  );
-  margin: 2px 0;
-}
+/* labelled fields and selects */
 .field {
   display: flex;
   flex-direction: column;
@@ -516,57 +502,54 @@ a:focus-visible {
 }
 .field > label,
 .property > span {
-  font-size: 11px;
-  color: var(--ink-dim);
-  letter-spacing: 0.02em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
 }
 select,
 .id-input input {
-  background: rgba(8, 18, 20, 0.5);
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-sm);
-  padding: 9px 11px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  padding: 7px 10px;
   color: var(--ink);
   min-width: 0;
-  transition: border-color 0.16s;
 }
 select {
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-faint) 50%),
-    linear-gradient(135deg, var(--ink-faint) 50%, transparent 50%);
+  /* a hard chevron drawn with two hairlines */
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
   background-position:
-    calc(100% - 15px) 55%,
-    calc(100% - 10px) 55%;
+    calc(100% - 14px) 52%,
+    calc(100% - 9px) 52%;
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
 select:focus,
 .id-input input:focus {
-  border-color: var(--accent-soft);
-  outline: none;
-}
-select option {
-  background: #0f1e20;
-  color: var(--ink);
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
 }
 .id-input {
   display: flex;
-  gap: 7px;
 }
 .id-input input {
   flex: 1;
+  border-right: none;
 }
 .id-input button {
-  padding: 0 15px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--accent);
-  background: rgba(63, 224, 197, 0.1);
-  border: 1px solid var(--glass-edge);
-  transition: background 0.14s;
+  padding: 0 14px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-active);
+  background: var(--ink);
+  border: 1px solid var(--line);
 }
 .id-input button:hover {
-  background: rgba(63, 224, 197, 0.18);
+  background: var(--ink-dim);
 }
 
 .sub-head {
@@ -574,22 +557,26 @@ select option {
   justify-content: space-between;
   align-items: center;
 }
-.sub-head h3 {
+.sub-head h3,
+.pipeline-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 .sub-head button,
 .ghost-btn {
   font-size: 11px;
-  color: var(--ink-faint);
-  padding: 4px 10px;
-  border-radius: 999px;
-  transition: color 0.14s;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  padding: 3px 9px;
+  border: 1px solid var(--line-soft);
 }
 .sub-head button:hover,
 .ghost-btn:hover {
-  color: var(--accent);
+  border-color: var(--line);
+  color: var(--ink);
 }
 .hint {
   font-size: 11px;
@@ -610,72 +597,40 @@ select option {
 }
 
 .renderer-tag {
-  display: inline-flex;
   align-self: flex-start;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--accent);
-  background: rgba(63, 224, 197, 0.1);
-  border: 1px solid var(--glass-edge);
+  padding: 4px 9px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: 1px solid var(--line);
 }
 details summary {
   font-size: 11px;
-  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
   cursor: pointer;
   list-style: none;
 }
 details summary::before {
-  content: "▸ ";
+  content: "+ ";
+  font-weight: 700;
 }
 details[open] summary::before {
-  content: "▾ ";
+  content: "\2212 "; /* minus */
+  font-weight: 700;
 }
 details pre {
   margin: 8px 0 0;
-  padding: 10px;
-  border-radius: var(--radius-sm);
-  background: rgba(6, 14, 16, 0.6);
+  padding: 9px;
+  background: var(--paper);
+  border: 1px solid var(--line-soft);
   font-size: 10.5px;
   line-height: 1.5;
   color: var(--ink-dim);
   overflow-x: auto;
   max-height: 180px;
-}
-
-/* ---- metrics strip floating at bottom-center ---- */
-.metrics {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  display: flex;
-  gap: 4px;
-  padding: 8px;
-}
-.metrics > div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 18px;
-  min-width: 78px;
-}
-.metrics > div + div {
-  border-left: 1px solid var(--glass-edge);
-}
-.metrics span {
-  font-size: 17px;
-  font-weight: 650;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.metrics small {
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
 }
 
 .panel-foot {
@@ -683,53 +638,66 @@ details pre {
   color: var(--ink-faint);
   line-height: 1.7;
 }
+.panel-foot a {
+  border-bottom: 1px solid var(--line-soft);
+}
 .panel-foot a:hover {
-  color: var(--accent);
-}
-
-/* page nav tucked into the brand chip area */
-.view-switch {
-  position: absolute;
-  top: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
-  display: flex;
-  padding: 3px;
-  border-radius: 999px;
-}
-.view-switch a {
-  padding: 6px 16px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--ink-dim);
-  transition:
-    color 0.16s,
-    background 0.16s;
-}
-.view-switch a.active {
-  color: #04201b;
-  background: linear-gradient(140deg, var(--accent), var(--accent-soft));
-  font-weight: 600;
-}
-.view-switch a:not(.active):hover {
   color: var(--ink);
+  border-color: var(--ink);
 }
 
-@media (max-width: 720px) {
+/* ---- metrics strip: bottom-left framed cells ---- */
+/* metrics sit bottom-right so the left panel's foot stays clear */
+.metrics {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 16px;
+  min-width: 74px;
+  border-right: 1px solid var(--line);
+}
+.metrics > div:last-child {
+  border-right: none;
+}
+.metrics span {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.metrics small {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 760px) {
   .panel {
-    left: 12px;
-    right: 12px;
+    left: 8px;
+    right: 8px;
     width: auto;
-    top: 70px;
-    bottom: 94px;
+    bottom: 86px;
   }
   .metrics {
-    bottom: 12px;
+    left: 8px;
+    right: 8px;
     flex-wrap: wrap;
-    max-width: calc(100vw - 24px);
   }
-  .view-switch {
+  .view-cluster {
+    right: 8px;
+  }
+  .mark-name,
+  .view-switch a:not(.active) {
     display: none;
   }
 }

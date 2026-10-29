@@ -15,7 +15,8 @@ export class AxisGizmo {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(size, size, false);
     this.camera.position.set(0, 0, 5);
-    const colors = { x: 0xff6b7a, y: 0x7ce08a, z: 0x6aa8ff } as const;
+    // Bauhaus primaries map to the axes; they read on the white gizmo panel.
+    const colors = { x: 0xd7263d, y: 0xf4c20d, z: 0x1246b4 } as const;
     const dirs = {
       x: new THREE.Vector3(1, 0, 0),
       y: new THREE.Vector3(0, 1, 0),
@@ -25,7 +26,7 @@ export class AxisGizmo {
       const dir = dirs[key];
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), dir.clone()]),
-        new THREE.LineBasicMaterial({ color: colors[key], transparent: true, opacity: 0.85 }),
+        new THREE.LineBasicMaterial({ color: colors[key] }),
       );
       const tip = new THREE.Mesh(
         new THREE.SphereGeometry(0.16, 16, 16),

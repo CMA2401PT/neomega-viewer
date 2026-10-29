@@ -1,54 +1,69 @@
-/* Subchunk page extras layered on the shared glass design system. */
+/* Subchunk page extras, layered on the shared Bauhaus design system. */
+
+/* scene list: framed rows, square select marker */
 .scene-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 230px;
+  border: 1px solid var(--line-soft);
+  max-height: 260px;
   overflow-y: auto;
-  padding-right: 4px;
-  margin: 0 -2px;
 }
 .scene-card {
-  display: block;
+  display: flex;
+  gap: 10px;
   width: 100%;
-  padding: 11px 13px;
+  padding: 9px 11px;
   text-align: left;
-  border-radius: 11px;
-  border: 1px solid transparent;
-  transition:
-    background 0.13s,
-    border-color 0.13s;
+  border-bottom: 1px solid var(--line-soft);
+  align-items: flex-start;
+}
+.scene-card:last-child {
+  border-bottom: none;
+}
+.scene-card::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-top: 3px;
+  flex: none;
+  border: 1px solid var(--ink);
+  background: transparent;
 }
 .scene-card:hover {
-  background: rgba(63, 224, 197, 0.06);
+  background: var(--hover);
 }
 .scene-card.selected {
-  background: rgba(63, 224, 197, 0.12);
-  border-color: var(--glass-edge);
+  background: var(--ink);
+  color: var(--on-active);
+}
+.scene-card.selected::before {
+  background: var(--yellow);
+  border-color: var(--yellow);
+}
+.scene-card .copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 .scene-card strong {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 700;
 }
-.scene-card span {
-  display: block;
-  font-size: 11px;
-  line-height: 1.5;
+.scene-card small {
+  font-size: 10.5px;
+  line-height: 1.45;
   color: var(--ink-faint);
 }
+.scene-card.selected small {
+  color: #cfcfcf;
+}
 
+/* upload field */
 .upload {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.upload > label {
-  font-size: 11px;
-  color: var(--ink-dim);
-  letter-spacing: 0.02em;
 }
 .upload input[type="file"] {
   font-size: 11px;
@@ -56,72 +71,70 @@
 }
 .upload input[type="file"]::file-selector-button {
   margin-right: 10px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-edge);
-  background: rgba(63, 224, 197, 0.1);
-  color: var(--accent);
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
   font: inherit;
   font-size: 11px;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  transition: background 0.14s;
 }
 .upload input[type="file"]::file-selector-button:hover {
-  background: rgba(63, 224, 197, 0.18);
+  background: var(--hover);
 }
 
-/* mesh option toggles — rendered as switches */
+/* mesh pipeline toggles: a labelled checkbox drawn as a hard square */
 .mesh-options {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 2px;
 }
 .toggle {
   display: flex;
   align-items: flex-start;
   gap: 11px;
   cursor: pointer;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.toggle:last-child {
+  border-bottom: none;
 }
 .toggle input {
   position: absolute;
   opacity: 0;
-  pointer-events: none;
+  width: 0;
+  height: 0;
 }
-.toggle .track {
+.toggle .box {
   flex: none;
   position: relative;
-  width: 38px;
-  height: 22px;
-  margin-top: 1px;
-  border-radius: 999px;
-  background: rgba(10, 22, 24, 0.7);
-  border: 1px solid var(--glass-edge);
-  transition: background 0.18s;
-}
-.toggle .track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  background: var(--ink-faint);
-  transition:
-    transform 0.18s,
-    background 0.18s;
+  margin-top: 1px;
+  border: 1px solid var(--ink);
+  background: var(--field);
 }
-.toggle input:checked + .track {
-  background: rgba(63, 224, 197, 0.25);
-  border-color: var(--accent-soft);
+.toggle input:checked + .box {
+  background: var(--red);
+  border-color: var(--red);
 }
-.toggle input:checked + .track::after {
-  transform: translateX(16px);
-  background: var(--accent);
+/* a white check mark drawn with two borders */
+.toggle input:checked + .box::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
-.toggle input:focus-visible + .track {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.toggle input:focus-visible + .box {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 .toggle .copy {
   display: flex;
@@ -129,73 +142,85 @@
   gap: 2px;
 }
 .toggle .copy b {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
 }
 .toggle .copy small {
   font-size: 10.5px;
   color: var(--ink-faint);
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
-.pipeline-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
+/* quad pipeline bars: hard-edged fills, primaries for stage colour */
 .pipeline {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
 }
 .pipeline > div {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 .pipeline label {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
-  color: var(--ink-dim);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
 .pipeline label span {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
+  letter-spacing: 0;
 }
-.pipeline i {
+.pipeline .bar {
+  height: 10px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  overflow: hidden;
+}
+.pipeline .bar i {
   display: block;
-  height: 5px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  height: 100%;
   width: 1%;
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--ink);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.pipeline > div:first-child i {
-  background: rgba(120, 200, 190, 0.3);
+.pipeline #bar-input {
+  background: var(--yellow);
+}
+.pipeline #bar-visible {
+  background: var(--blue);
+}
+.pipeline #bar-output {
+  background: var(--red);
 }
 
+/* download actions: framed buttons, filled primary action */
 .download {
   display: block;
   width: 100%;
   text-align: center;
-  padding: 11px;
-  border-radius: 11px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-  background: rgba(63, 224, 197, 0.1);
-  border: 1px solid var(--glass-edge);
-  transition:
-    background 0.14s,
-    opacity 0.14s;
-}
-.download + .download {
-  margin-top: 8px;
+  padding: 9px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--panel);
 }
 .download:hover {
-  background: rgba(63, 224, 197, 0.2);
+  background: var(--hover);
+}
+button.download:not(:disabled) {
+  background: var(--ink);
+  color: var(--on-active);
+}
+button.download:not(:disabled):hover {
+  background: var(--ink-dim);
 }
 .download:disabled {
   opacity: 0.4;
