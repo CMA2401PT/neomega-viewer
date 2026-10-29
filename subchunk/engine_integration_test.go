@@ -2,6 +2,7 @@ package subchunk_test
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"celler"
@@ -42,12 +43,19 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 	}{
 		{meshing.Options{}, 6}, {meshing.Options{DisableGreedy: true}, 1536}, {meshing.Options{DisableCulling: true, DisableGreedy: true}, 24576},
 	} {
-		result, err := engine.Build(solid, subchunk.Options{Meshing: check.Options})
+		result, err := engine.Build(plain(solid), subchunk.Options{Meshing: check.Options})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(result.Mesh.Quads) != check.Quads || result.Stats.Blocks != 4096 || result.Stats.InputQuads != 24576 {
 			t.Fatalf("default-filled solid lost cells: %+v", result.Stats)
+		}
+		removed := 23040
+		if check.Options.DisableCulling {
+			removed = 0
+		}
+		if result.Stats.RemovedQuads != removed || result.Stats.ClippedQuads != 0 {
+			t.Fatalf("solid culling changed: %+v", result.Stats)
 		}
 	}
 	for _, scene := range demo.List() {
@@ -57,18 +65,23 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := subchunk.EncodeIDs(layer)
-			result, err := engine.Build(layer, subchunk.Options{})
+			input := plain(layer)
+			original := slices.Clone(input.Data)
+			result, err := engine.Build(input, subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if string(before) != string(subchunk.EncodeIDs(layer)) {
 				t.Fatal("rendering mutated caller palette")
 			}
+			if !slices.Equal(original, input.Data) {
+				t.Fatal("rendering mutated caller plain layer")
+			}
 			if scene.ID == "empty" && result.Stats.OutputQuads != 0 {
 				t.Fatal("air has visible faces")
 			}
-			if scene.ID == "slabs" && result.Stats.ClippedQuads == 0 {
-				t.Fatal("real slab/stone interface was not clipped")
+			if scene.ID == "slabs" && (result.Stats.RemovedQuads != 814 || result.Stats.ClippedQuads != 6 || result.Stats.OutputQuads != 31) {
+				t.Fatalf("real slab/stone clipping changed: %+v", result.Stats)
 			}
 			t.Logf("%s: %+v", scene.ID, result.Stats)
 		})
@@ -89,7 +102,7 @@ func TestTransparentInterfaces(t *testing.T) {
 		layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
 		layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), id(t, check.A))
 		layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), id(t, check.B))
-		result, err := engine.Build(layer, subchunk.Options{Meshing: meshing.Options{DisableGreedy: true}})
+		result, err := engine.Build(plain(layer), subchunk.Options{Meshing: meshing.Options{DisableGreedy: true}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,13 +124,13 @@ func TestConnectionsComeFromJavaHash(t *testing.T) {
 			a, b := celler.ToSubChunkBlockPos(4, 4, 4), celler.ToSubChunkBlockPos(5, 4, 4)
 			layer.Set(a, isolated)
 			layer.Set(b, isolated)
-			stored, err := engine.Build(layer, subchunk.Options{})
+			stored, err := engine.Build(plain(layer), subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			layer.Set(a, east)
 			layer.Set(b, west)
-			connected, err := engine.Build(layer, subchunk.Options{})
+			connected, err := engine.Build(plain(layer), subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +138,7 @@ func TestConnectionsComeFromJavaHash(t *testing.T) {
 				t.Fatal("Java connection states did not add multipart geometry")
 			}
 			layer.Set(b, air)
-			single, err := engine.Build(layer, subchunk.Options{})
+			single, err := engine.Build(plain(layer), subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -143,7 +156,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 			layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
 			fluid := id(t, "minecraft:"+name+` ["level"="0"]`)
 			layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), fluid)
-			single, err := engine.Build(layer, subchunk.Options{})
+			single, err := engine.Build(plain(layer), subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +164,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 				t.Fatal("isolated fluid height changed")
 			}
 			layer.Set(celler.ToSubChunkBlockPos(4, 5, 4), fluid)
-			stacked, err := engine.Build(layer, subchunk.Options{})
+			stacked, err := engine.Build(plain(layer), subchunk.Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,4 +173,42 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFluidHeightUsesOnlySameFamilyAbove(t *testing.T) {
+	engine := realEngine(t)
+	for _, check := range []struct {
+		name, base, above string
+		y                 int
+		height            float64
+	}{
+		{"flowing isolated", `water ["level"="7"]`, "air []", 4, 1.0 / 9},
+		{"different level", `water ["level"="7"]`, `water ["level"="2"]`, 4, 1},
+		{"different family", `water ["level"="7"]`, `lava ["level"="0"]`, 4, 1.0 / 9},
+		{"falling isolated", `water ["level"="8"]`, "air []", 4, 1},
+		{"section top", `water ["level"="0"]`, "air []", 15, 8.0 / 9},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			layer := layer_storage.MakePlainStorage(id(t, "minecraft:air []"))
+			layer.Set(celler.ToSubChunkBlockPos(4, check.y, 4), id(t, "minecraft:"+check.base))
+			if check.y < 15 {
+				layer.Set(celler.ToSubChunkBlockPos(4, check.y+1, 4), id(t, "minecraft:"+check.above))
+			}
+			result, err := engine.Build(layer, subchunk.Options{Meshing: meshing.Options{DisableCulling: true, DisableGreedy: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, quad := range result.Mesh.Quads[:6] {
+				if quad.Normal[1] == 1 && quad.Positions[0][1] != float64(check.y)+check.height {
+					t.Fatalf("lower fluid height = %g, want %g", quad.Positions[0][1], float64(check.y)+check.height)
+				}
+			}
+		})
+	}
+}
+
+func plain(layer *layer_storage.Palette[uint32]) *layer_storage.Plain[uint32] {
+	result := &layer_storage.Plain[uint32]{}
+	result.CopyFrom(layer)
+	return result
 }

@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	"celler/layer_storage"
+
 	"neomega-viewer/blockmesh"
 	"neomega-viewer/demo"
 	"neomega-viewer/meshing"
@@ -22,8 +24,6 @@ func main() {
 	meshOut := flag.String("mesh", "/tmp/subchunk.nvmesh", "output binary mesh")
 	cull := flag.Bool("cull", true, "remove covered boundary faces")
 	greedy := flag.Bool("greedy", true, "merge compatible rectangles")
-	vary := flag.Bool("vary", false, "vary weighted model choices by cell position")
-	seed := flag.Uint64("seed", 0, "static model selection seed")
 	flag.Parse()
 	layer, err := demo.Build(*scene)
 	if *input != "" {
@@ -45,9 +45,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err := subchunk.New(parser).Build(layer, subchunk.Options{
-		Seed:       *seed,
-		VaryModels: *vary,
+	var plain layer_storage.Plain[uint32]
+	plain.CopyFrom(layer)
+	result, err := subchunk.New(parser).Build(&plain, subchunk.Options{
 		Meshing: meshing.Options{
 			DisableCulling: !*cull,
 			DisableGreedy:  !*greedy,

@@ -24,7 +24,7 @@ func face(axis, sign int, plane float64, lo, hi [2]float64, surface material.Sur
 		q.Positions[i][a], q.Positions[i][b] = corner[0], corner[1]
 		q.UV[i] = geometry.Vec2(corner)
 	}
-	q.CullFace = sideNames[axis*2+(sign+1)/2]
+	q.CullFace = geometry.CullFace(axis*2 + (sign+1)/2 + 1)
 	return q
 }
 
@@ -62,7 +62,7 @@ func meshArea(mesh geometry.Mesh) float64 {
 }
 
 func TestSolidSection(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	cube := cuboid(1, opaque)
 	original := append([]geometry.Quad(nil), cube.Quads...)
 	for i := range cells {
@@ -80,7 +80,7 @@ func TestSolidSection(t *testing.T) {
 		{"neither", Options{DisableCulling: true, DisableGreedy: true}, 24576, 24576},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			mesh, stats := Build(&cells, test.options)
+			mesh, stats := buildFixture(&cells, test.options)
 			if stats.InputQuads != 24576 || stats.VisibleQuads != test.visible || stats.OutputQuads != test.output || len(mesh.Quads) != test.output {
 				t.Fatalf("unexpected counts: %+v", stats)
 			}
@@ -111,10 +111,10 @@ func TestSolidSection(t *testing.T) {
 }
 
 func TestPartialSlabCoverage(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	cells[0].Mesh = cuboid(1, opaque)
 	cells[256].Mesh = cuboid(.5, opaque)
-	mesh, stats := Build(&cells, Options{DisableGreedy: true})
+	mesh, stats := buildFixture(&cells, Options{DisableGreedy: true})
 	if stats.RemovedQuads != 1 || stats.ClippedQuads != 1 || stats.VisibleQuads != 11 || !close(meshArea(mesh), 9) {
 		t.Fatalf("cube/slab: stats=%+v area=%g", stats, meshArea(mesh))
 	}
@@ -136,7 +136,7 @@ func TestPartialSlabCoverage(t *testing.T) {
 		t.Fatal("exposed upper half of cube disappeared")
 	}
 	cells[0].Mesh = cuboid(.5, opaque)
-	mesh, stats = Build(&cells, Options{DisableGreedy: true})
+	mesh, stats = buildFixture(&cells, Options{DisableGreedy: true})
 	if stats.RemovedQuads != 2 || stats.ClippedQuads != 0 || !close(meshArea(mesh), 7) {
 		t.Fatalf("matching slabs: stats=%+v area=%g", stats, meshArea(mesh))
 	}
@@ -155,14 +155,14 @@ func TestCoverageUnionAndInteriorHole(t *testing.T) {
 		{"central occluder", [][4]float64{{.2, .2, .8, .8}}, .64, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var cells Cells
+			var cells fixtureCells
 			cells[0].Mesh.Quads = []geometry.Quad{face(0, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)}
 			for _, bounds := range test.covers {
 				cover := face(0, -1, 0, [2]float64{bounds[0], bounds[1]}, [2]float64{bounds[2], bounds[3]}, opaque)
-				cover.CullFace = "" // actual geometry alone establishes coverage
+				cover.CullFace = geometry.NoCullFace // actual geometry alone establishes coverage
 				cells[256].Mesh.Quads = append(cells[256].Mesh.Quads, cover)
 			}
-			mesh, stats := Build(&cells, Options{})
+			mesh, stats := buildFixture(&cells, Options{})
 			exposed := 0.0
 			for _, q := range mesh.Quads {
 				if q.Normal[0] > 0 {
@@ -182,23 +182,23 @@ func TestTransparentInterfaces(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		left, right material.Surface
-		groups      [2]string
+		groups      [2]uint32
 		removed     int
 	}{
-		{"same glass", glass, glass, [2]string{"glass", "glass"}, 2},
-		{"different glass", glass, glass, [2]string{"clear", "red"}, 0},
-		{"ungrouped glass", glass, glass, [2]string{}, 0},
-		{"glass beside stone", glass, opaque, [2]string{}, 1},
-		{"stone beside leaves", opaque, leaves, [2]string{}, 1},
-		{"leaves beside leaves", leaves, leaves, [2]string{}, 0},
-		{"group never hides stone", opaque, glass, [2]string{"same", "same"}, 1},
-		{"opacity prevents occlusion", material.Surface{Mode: material.Opaque, Opacity: .5}, glass, [2]string{}, 0},
+		{"same glass", glass, glass, [2]uint32{1, 1}, 2},
+		{"different glass", glass, glass, [2]uint32{1, 2}, 0},
+		{"ungrouped glass", glass, glass, [2]uint32{}, 0},
+		{"glass beside stone", glass, opaque, [2]uint32{}, 1},
+		{"stone beside leaves", opaque, leaves, [2]uint32{}, 1},
+		{"leaves beside leaves", leaves, leaves, [2]uint32{}, 0},
+		{"group never hides stone", opaque, glass, [2]uint32{1, 1}, 1},
+		{"opacity prevents occlusion", material.Surface{Mode: material.Opaque, Opacity: .5}, glass, [2]uint32{}, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var cells Cells
-			cells[0] = Cell{Mesh: cuboid(1, test.left), CullGroup: test.groups[0]}
-			cells[256] = Cell{Mesh: cuboid(1, test.right), CullGroup: test.groups[1]}
-			_, stats := Build(&cells, Options{DisableGreedy: true})
+			var cells fixtureCells
+			cells[0] = fixtureCell{Mesh: cuboid(1, test.left), CullGroup: test.groups[0]}
+			cells[256] = fixtureCell{Mesh: cuboid(1, test.right), CullGroup: test.groups[1]}
+			_, stats := buildFixture(&cells, Options{DisableGreedy: true})
 			if stats.RemovedQuads != test.removed {
 				t.Fatalf("stats=%+v", stats)
 			}
@@ -241,12 +241,12 @@ func TestGreedyCompatibility(t *testing.T) {
 		{"non-affine UV", func(q *geometry.Quad) { q.UV[2][0] += .25 }, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var cells Cells
+			var cells fixtureCells
 			q := face(1, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)
 			cells[0].Mesh.Quads = []geometry.Quad{q}
 			test.modify(&q)
 			cells[256].Mesh.Quads = []geometry.Quad{q}
-			mesh, _ := Build(&cells, Options{})
+			mesh, _ := buildFixture(&cells, Options{})
 			if len(mesh.Quads) != test.output {
 				t.Fatalf("quads=%d want=%d", len(mesh.Quads), test.output)
 			}
@@ -262,8 +262,8 @@ func TestConservativeCulling(t *testing.T) {
 		name   string
 		modify func(*geometry.Quad)
 	}{
-		{"missing cullface", func(q *geometry.Quad) { q.CullFace = "" }},
-		{"wrong cullface", func(q *geometry.Quad) { q.CullFace = "north" }},
+		{"missing cullface", func(q *geometry.Quad) { q.CullFace = geometry.NoCullFace }},
+		{"wrong cullface", func(q *geometry.Quad) { q.CullFace = geometry.North }},
 		{"inset", func(q *geometry.Quad) {
 			for i := range q.Positions {
 				q.Positions[i][0] = .75
@@ -279,12 +279,12 @@ func TestConservativeCulling(t *testing.T) {
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var cells Cells
+			var cells fixtureCells
 			q := face(0, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)
 			test.modify(&q)
 			cells[0].Mesh.Quads = []geometry.Quad{q}
 			cells[256].Mesh = cuboid(1, opaque)
-			mesh, stats := Build(&cells, Options{DisableGreedy: true})
+			mesh, stats := buildFixture(&cells, Options{DisableGreedy: true})
 			if mesh.Quads[0] != q || stats.ClippedQuads != 0 {
 				t.Fatalf("ineligible source changed: stats=%+v", stats)
 			}
@@ -293,17 +293,17 @@ func TestConservativeCulling(t *testing.T) {
 }
 
 func TestFractionalCoordinatesAndDeterminism(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	// Adjacent rectangles inside one cell avoid any implicit block-grid rule.
 	q1 := face(2, 1, .371, [2]float64{.137, .219}, [2]float64{.493, .813}, opaque)
 	q2 := face(2, 1, .371, [2]float64{.493, .219}, [2]float64{.917, .813}, opaque)
 	cells[0].Mesh.Quads = []geometry.Quad{q1, q2}
-	mesh, stats := Build(&cells, Options{})
+	mesh, stats := buildFixture(&cells, Options{})
 	if len(mesh.Quads) != 1 || !close(meshArea(mesh), (.917-.137)*(.813-.219)) {
 		t.Fatalf("fractional endpoints lost: %+v %+v", mesh, stats)
 	}
 	for i := 0; i < 5; i++ {
-		again, nextStats := Build(&cells, Options{})
+		again, nextStats := buildFixture(&cells, Options{})
 		if !reflect.DeepEqual(mesh, again) || stats != nextStats {
 			t.Fatal("nondeterministic output")
 		}
@@ -314,18 +314,18 @@ func TestFractionalCoordinatesAndDeterminism(t *testing.T) {
 		q2.UV[i][0] += .00001
 	}
 	cells[0].Mesh.Quads[1] = q2
-	mesh, _ = Build(&cells, Options{})
+	mesh, _ = buildFixture(&cells, Options{})
 	if len(mesh.Quads) != 2 {
 		t.Fatal("greedy filled a fractional gap")
 	}
 }
 
 func TestOverlappingLayersAndOppositeWinding(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	q := face(1, 1, .5, [2]float64{}, [2]float64{1, 1}, opaque)
 	back := face(1, -1, .5, [2]float64{}, [2]float64{1, 1}, opaque)
 	cells[0].Mesh.Quads = []geometry.Quad{q, q, back}
-	mesh, _ := Build(&cells, Options{})
+	mesh, _ := buildFixture(&cells, Options{})
 	if len(mesh.Quads) != 3 || !close(meshArea(mesh), 3) {
 		t.Fatalf("overlapping layers collapsed: %+v", mesh)
 	}
@@ -340,18 +340,18 @@ func TestOverlappingLayersAndOppositeWinding(t *testing.T) {
 }
 
 func TestBlendQuadsRemainSortable(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	q := face(1, 1, 1, [2]float64{}, [2]float64{1, 1}, material.Surface{Mode: material.Blend, Opacity: .5})
 	cells[0].Mesh.Quads = []geometry.Quad{q}
 	cells[256].Mesh.Quads = []geometry.Quad{q}
-	mesh, stats := Build(&cells, Options{})
+	mesh, stats := buildFixture(&cells, Options{})
 	if len(mesh.Quads) != 2 || stats.VisibleQuads != stats.OutputQuads {
 		t.Fatalf("blend quads merged: %+v", stats)
 	}
 }
 
 func TestRotatedNeighborDoesNotMaskOpaqueFace(t *testing.T) {
-	var cells Cells
+	var cells fixtureCells
 	q := face(0, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)
 	cover := face(0, -1, 0, [2]float64{}, [2]float64{1, 1}, opaque)
 	for i, p := range cover.Positions {
@@ -360,7 +360,7 @@ func TestRotatedNeighborDoesNotMaskOpaqueFace(t *testing.T) {
 	}
 	cells[0].Mesh.Quads = []geometry.Quad{q}
 	cells[256].Mesh.Quads = []geometry.Quad{cover}
-	mesh, stats := Build(&cells, Options{})
+	mesh, stats := buildFixture(&cells, Options{})
 	if len(mesh.Quads) != 2 || stats.RemovedQuads != 0 || stats.ClippedQuads != 0 {
 		t.Fatalf("rotated boundary geometry was treated as a solid box: %+v", stats)
 	}
@@ -369,7 +369,7 @@ func TestRotatedNeighborDoesNotMaskOpaqueFace(t *testing.T) {
 func TestOpaqueBoundary(t *testing.T) {
 	left := face(0, 1, 1, [2]float64{}, [2]float64{.4, 1}, opaque)
 	right := face(0, 1, 1, [2]float64{.4, 0}, [2]float64{1, 1}, opaque)
-	left.CullFace, right.CullFace = "", ""
+	left.CullFace, right.CullFace = geometry.NoCullFace, geometry.NoCullFace
 	union := geometry.Mesh{Quads: []geometry.Quad{left, right}}
 	if !OpaqueBoundary(union, "east") || OpaqueBoundary(union, "west") || OpaqueBoundary(union, "invalid") {
 		t.Fatal("boundary union or requested direction incorrect")
@@ -404,4 +404,48 @@ func TestOpaqueBoundary(t *testing.T) {
 	if !OpaqueBoundary(cuboid(.5, opaque), "down") || OpaqueBoundary(cuboid(.5, opaque), "up") {
 		t.Fatal("slab boundary inferred from shape volume instead of face location")
 	}
+}
+
+type fixtureCell struct {
+	Mesh      geometry.Mesh
+	CullGroup uint32
+}
+
+func TestSharedMultipartBoundaryCoverage(t *testing.T) {
+	source := face(0, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)
+	left := face(0, -1, 0, [2]float64{}, [2]float64{.4, 1}, opaque)
+	right := face(0, -1, 0, [2]float64{.4, 0}, [2]float64{1, 1}, opaque)
+	left.CullFace, right.CullFace = geometry.NoCullFace, geometry.NoCullFace
+	var cells Cells
+	cells[0] = Cell{&geometry.Shape{Quads: []geometry.Quad{source}}}
+	for _, quad := range []geometry.Quad{left, right} {
+		mesh := geometry.Mesh{Quads: []geometry.Quad{quad}}
+		cells[256] = append(cells[256], &geometry.Shape{Quads: mesh.Quads, Boundary: BoundaryCoverage(mesh)})
+	}
+	_, stats := Build(&cells, Options{DisableGreedy: true})
+	if stats.RemovedQuads != 1 || stats.ClippedQuads != 0 {
+		t.Fatalf("multipart boundary union lost: %+v", stats)
+	}
+	// 清空覆盖而保留面，确认运行时不会重新扫描邻居补回覆盖。
+	cells[256][1].Boundary = [6][]geometry.BoundaryRect{}
+	_, stats = Build(&cells, Options{DisableGreedy: true})
+	if stats.RemovedQuads != 0 || stats.ClippedQuads != 1 {
+		t.Fatalf("meshing ignored supplied coverage: %+v", stats)
+	}
+}
+
+type fixtureCells [Size * Size * Size]fixtureCell
+
+func buildFixture(fixtures *fixtureCells, options Options) (geometry.Mesh, Stats) {
+	var cells Cells
+	for i, fixture := range fixtures {
+		if len(fixture.Mesh.Quads) != 0 {
+			cells[i] = Cell{&geometry.Shape{
+				Quads:     fixture.Mesh.Quads,
+				Boundary:  BoundaryCoverage(fixture.Mesh),
+				CullGroup: fixture.CullGroup,
+			}}
+		}
+	}
+	return Build(&cells, options)
 }

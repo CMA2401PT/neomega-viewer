@@ -65,7 +65,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 		t.Fatal("download changed block IDs")
 	}
 	call("GET", "/api/subchunks/solid/mesh?cull=invalid", nil, 400)
-	call("GET", "/api/subchunks/solid/mesh?seed=-1", nil, 400)
+	call("GET", "/api/subchunks/solid/mesh?greedy=invalid", nil, 400)
 	call("GET", "/api/subchunks/missing/mesh", nil, 404)
 	call("POST", "/api/subchunk", []byte{1, 2, 3}, 400)
 	call("POST", "/api/subchunk", make([]byte, subchunk.IDsByteSize+1), 400)

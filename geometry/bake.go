@@ -10,6 +10,10 @@ import (
 	"neomega-viewer/model"
 )
 
+var cullFaces = map[string]CullFace{
+	"west": West, "east": East, "down": Down, "up": Up, "north": North, "south": South,
+}
+
 func blockRotate(v Vec3, application asset.Apply) Vec3 {
 	v = rotate(v, "x", -application.X)
 	v = rotate(v, "y", -application.Y)
@@ -125,7 +129,7 @@ func Bake(resolved *model.Resolved, application asset.Apply, state blockstate.St
 			}
 			quad := Quad{Positions: positions, Normal: normal, ShadeNormal: shadeNormal, Color: materials.Tint(state, tint), Surface: surface}
 			if face.CullFace != "" {
-				quad.CullFace = direction(blockRotate(normals[string(face.CullFace)], application))
+				quad.CullFace = cullFaces[direction(blockRotate(normals[string(face.CullFace)], application))]
 			}
 			uv := defaultUV(side, lo, hi)
 			if face.UV != nil {

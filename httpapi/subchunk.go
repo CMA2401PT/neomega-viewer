@@ -15,13 +15,6 @@ import (
 
 func sectionOptions(r *http.Request) (subchunk.Options, error) {
 	var options subchunk.Options
-	var err error
-	if text := r.URL.Query().Get("vary"); text != "" {
-		options.VaryModels, err = strconv.ParseBool(text)
-		if err != nil {
-			return options, err
-		}
-	}
 	for _, flag := range []struct {
 		Name   string
 		Target *bool
@@ -34,10 +27,7 @@ func sectionOptions(r *http.Request) (subchunk.Options, error) {
 			*flag.Target = !value
 		}
 	}
-	if text := r.URL.Query().Get("seed"); text != "" {
-		options.Seed, err = strconv.ParseUint(text, 10, 64)
-	}
-	return options, err
+	return options, nil
 }
 
 func addSubchunks(mux *http.ServeMux, engine *subchunk.Engine) {
@@ -54,7 +44,9 @@ func addSubchunks(mux *http.ServeMux, engine *subchunk.Engine) {
 			writeError(w, 400, err)
 			return
 		}
-		result, err := engine.Build(layer, options)
+		var plain layer_storage.Plain[uint32]
+		plain.CopyFrom(layer)
+		result, err := engine.Build(&plain, options)
 		if err != nil {
 			writeError(w, 422, err)
 			return

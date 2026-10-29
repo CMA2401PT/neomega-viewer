@@ -137,6 +137,9 @@ func TestTablesWithJavaResources(t *testing.T) {
 			used[id] = true
 		}
 	}
+	for _, id := range tables.FullHeight {
+		used[id] = true
+	}
 	if len(used) != len(tables.Shapes) || references <= len(tables.Shapes) {
 		t.Fatal("geometry table has unused shapes or did not deduplicate")
 	}
@@ -148,13 +151,16 @@ func TestInternComparesAllBakedQuadFields(t *testing.T) {
 	tables := &Tables{}
 	buckets := map[shapeBucket][]ModelID{}
 	original := geometry.Mesh{Quads: []geometry.Quad{{}, {Color: [3]float32{1, 1, 1}}}}
-	first := tables.intern(original, buckets)
+	first := tables.intern(original, 0, buckets)
 	copy := geometry.Mesh{Quads: slices.Clone(original.Quads)}
-	if tables.intern(copy, buckets) != first {
+	if tables.intern(copy, 0, buckets) != first {
 		t.Fatal("identical geometry did not share an ID")
 	}
+	if tables.intern(copy, 1, buckets) == first {
+		t.Fatal("different cull groups shared a shape")
+	}
 	copy.Quads[1].Color = [3]float32{1, 0, 0}
-	if tables.intern(copy, buckets) == first {
+	if tables.intern(copy, 0, buckets) == first {
 		t.Fatal("a difference after the first quad was ignored")
 	}
 }

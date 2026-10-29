@@ -63,8 +63,8 @@ func TestVariantRotationAndUVLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, quad := range mesh.Quads {
-		if quad.CullFace != "" {
-			if quad.CullFace != "east" || !close(quad.Normal[0], 1) {
+		if quad.CullFace != NoCullFace {
+			if quad.CullFace != East || !close(quad.Normal[0], 1) {
 				t.Fatalf("north did not rotate east: %+v", quad)
 			}
 			for _, p := range quad.Positions {

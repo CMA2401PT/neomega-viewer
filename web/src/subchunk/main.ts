@@ -20,7 +20,7 @@ interface Stats {
   visibleQuads: number;
   outputQuads: number;
   blocks: number;
-  bakedShapes: number;
+  shapes: number;
 }
 
 const el = <T extends HTMLElement>(id: string): T =>
@@ -51,9 +51,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="mesh-options">
         <label><input id="cull" type="checkbox" checked><span>剔除遮挡面<small>保留半砖旁没有被盖住的部分</small></span></label>
         <label><input id="greedy" type="checkbox" checked><span>合并相邻面<small>兼容的材质与 UV 才能合并</small></span></label>
-        <label><input id="vary" type="checkbox"><span>按位置变化模型<small>保留候选模型的旋转与镜像差异</small></span></label>
       </div>
-      <div class="field seed-field"><label for="seed">模型选择种子</label><input id="seed" type="number" value="0" min="0" max="4294967295" step="1"></div>
       <div class="divider"></div><h3 class="pipeline-title">四边形的变化</h3>
       <div class="pipeline"><div><label>模型原始面<span id="input-quads">—</span></label><i id="bar-input"></i></div><div><label>剔除后<span id="visible-quads">—</span></label><i id="bar-visible"></i></div><div><label>合并后<span id="output-quads">—</span></label><i id="bar-output"></i></div></div>
       <p class="hint" id="shape-stats"></p><p class="hint">不同颜色的玻璃保留界面。半透明面单独排序；树叶的镂空不会遮掉后面的物体。</p>
@@ -95,8 +93,6 @@ async function load(resetView = false): Promise<void> {
   const query = new URLSearchParams({
     cull: String(checked("cull")),
     greedy: String(checked("greedy")),
-    vary: String(checked("vary")),
-    seed: el<HTMLInputElement>("seed").value,
   });
   try {
     const response = await fetch(
@@ -203,7 +199,7 @@ async function start(): Promise<void> {
     };
     el("scenes").append(button);
   }
-  for (const id of ["cull", "greedy", "vary", "seed"])
+  for (const id of ["cull", "greedy"])
     el<HTMLInputElement>(id).onchange = () => void load();
   el<HTMLInputElement>("wireframe").onchange = () =>
     viewport.showWireframe(checked("wireframe"));

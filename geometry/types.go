@@ -7,6 +7,19 @@ import "neomega-viewer/material"
 type Vec3 [3]float64
 type Vec2 [2]float64
 
+type CullFace uint8
+
+const (
+	// 零值表示不可剔除，六方向编号与 Shape.Boundary 对齐。
+	NoCullFace CullFace = iota
+	West
+	East
+	Down
+	Up
+	North
+	South
+)
+
 type Quad struct {
 	Positions [4]Vec3
 	Normal    Vec3
@@ -17,7 +30,7 @@ type Quad struct {
 	Surface     material.Surface
 	// CullFace is the rotated neighbor direction from the source model. An
 	// isolated preview retains the face; a section mesher may later examine it.
-	CullFace string
+	CullFace CullFace
 }
 
 type Bounds struct {

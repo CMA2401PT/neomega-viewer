@@ -11,10 +11,7 @@ import (
 
 const Size = 16
 
-type Cell struct {
-	Mesh      geometry.Mesh
-	CullGroup string
-}
+type Cell []*geometry.Shape
 
 // Cells uses (x<<8)|(z<<4)|y indexing. Mesh coordinates remain local to a cell.
 type Cells [Size * Size * Size]Cell
@@ -36,77 +33,98 @@ type Stats struct {
 // fully hidden source quads; ClippedQuads counts partially hidden source quads.
 // VisibleQuads counts the remaining pieces before optional greedy merging.
 func Build(cells *Cells, options Options) (geometry.Mesh, Stats) {
-	result := geometry.Mesh{Quads: []geometry.Quad{}}
-	stats := Stats{}
-	// Cache actual boundary geometry, not block-wide solidity. Neighbor faces
-	// need no cullface declaration to cover another cell's cullable face.
-	var boundaries [len(Cells{})][6][]rectangle
-	if !options.DisableCulling {
-		for index := range cells {
-			for _, quad := range cells[index].Mesh.Quads {
-				if rect, ok := inspect(quad); ok {
-					if side := boundary(rect); side >= 0 {
-						boundaries[index][side] = append(boundaries[index][side], rect)
-					}
-				}
-			}
-		}
-	}
-	for index := range cells {
-		cell := &cells[index]
-		position := [3]int{index >> 8, index & 15, (index >> 4) & 15}
-		for _, quad := range cell.Mesh.Quads {
-			stats.InputQuads++
-			pieces := []geometry.Quad{quad}
-			if !options.DisableCulling {
-				if rect, ok := inspect(quad); ok && rect.affine {
-					side := boundary(rect)
-					if side >= 0 && quad.CullFace == sideNames[side] {
-						neighbor := position
-						neighbor[side/2] += 2*(side%2) - 1
-						if neighbor[side/2] >= 0 && neighbor[side/2] < Size {
-							next := &cells[cellIndex(neighbor)]
-							remaining := []box{rect.box}
-							for _, cover := range boundaries[cellIndex(neighbor)][side^1] {
-								if !occludes(cover.quad, quad, next.CullGroup, cell.CullGroup) {
-									continue
-								}
-								var after []box
-								for _, piece := range remaining {
-									after = append(after, subtract(piece, cover.box)...)
-								}
-								remaining = after
-							}
-							if len(remaining) == 0 {
-								stats.RemovedQuads++
-								pieces = nil
-							} else if len(remaining) != 1 || remaining[0] != rect.box {
-								stats.ClippedQuads++
-								pieces = nil
-								for _, piece := range remaining {
-									pieces = append(pieces, rect.makeQuad(piece))
-								}
-							}
-						}
-					}
-				}
-			}
-			for _, piece := range pieces {
-				for vertex := range piece.Positions {
-					for axis := range position {
-						piece.Positions[vertex][axis] += float64(position[axis])
-					}
-				}
-				result.Quads = append(result.Quads, piece)
-			}
-		}
-	}
-	stats.VisibleQuads = len(result.Quads)
+	quads, stats := cullAndPlace(cells, options.DisableCulling)
+	stats.VisibleQuads = len(quads)
 	if !options.DisableGreedy {
-		result.Quads = merge(result.Quads)
+		quads = merge(quads)
 	}
-	stats.OutputQuads = len(result.Quads)
-	return result, stats
+	stats.OutputQuads = len(quads)
+	return geometry.Mesh{Quads: quads}, stats
+}
+
+func cullAndPlace(cells *Cells, disableCulling bool) ([]geometry.Quad, Stats) {
+	quads := []geometry.Quad{}
+	stats := Stats{}
+	for index, cell := range cells {
+		position := [3]int{index >> 8, index & 15, (index >> 4) & 15}
+		for _, shape := range cell {
+			for _, quad := range shape.Quads {
+				stats.InputQuads++
+				pieces := []geometry.Quad{quad}
+				if !disableCulling {
+					pieces = cullQuad(quad, shape.CullGroup, position, cells)
+					if len(pieces) == 0 {
+						stats.RemovedQuads++
+					} else if len(pieces) != 1 || pieces[0] != quad {
+						stats.ClippedQuads++
+					}
+				}
+				for _, piece := range pieces {
+					quads = append(quads, place(piece, position))
+				}
+			}
+		}
+	}
+	return quads, stats
+}
+
+func cullQuad(quad geometry.Quad, group uint32, position [3]int, cells *Cells) []geometry.Quad {
+	unchanged := []geometry.Quad{quad}
+	if quad.CullFace == geometry.NoCullFace {
+		return unchanged
+	}
+	rect, ok := inspect(quad)
+	if !ok || !rect.affine {
+		return unchanged
+	}
+	side := boundary(rect)
+	if side < 0 || quad.CullFace != geometry.CullFace(side+1) {
+		return unchanged
+	}
+	neighbor := position
+	neighbor[side/2] += 2*(side%2) - 1
+	if neighbor[side/2] < 0 || neighbor[side/2] >= Size {
+		return unchanged
+	}
+	remaining := subtractNeighbor(rect.box, quad, group, cells[cellIndex(neighbor)], side^1)
+	if len(remaining) == 1 && remaining[0] == rect.box {
+		return unchanged
+	}
+	pieces := make([]geometry.Quad, 0, len(remaining))
+	for _, piece := range remaining {
+		pieces = append(pieces, rect.makeQuad(piece))
+	}
+	return pieces
+}
+
+func subtractNeighbor(source box, candidate geometry.Quad, group uint32, neighbor Cell, side int) []box {
+	// multipart 各部件的覆盖共同参与裁切，无须逐格复制或重扫邻居几何。
+	remaining := []box{source}
+	for _, shape := range neighbor {
+		for _, cover := range shape.Boundary[side] {
+			if !occludes(shape.Quads[cover.Quad], candidate, shape.CullGroup, group) {
+				continue
+			}
+			var after []box
+			for _, piece := range remaining {
+				after = append(after, subtract(piece, box{lo: [2]float64(cover.Min), hi: [2]float64(cover.Max)})...)
+			}
+			remaining = after
+			if len(remaining) == 0 {
+				return nil
+			}
+		}
+	}
+	return remaining
+}
+
+func place(quad geometry.Quad, position [3]int) geometry.Quad {
+	for vertex := range quad.Positions {
+		for axis := range position {
+			quad.Positions[vertex][axis] += float64(position[axis])
+		}
+	}
+	return quad
 }
 
 var sideNames = [6]string{"west", "east", "down", "up", "north", "south"}
@@ -152,14 +170,14 @@ func fullyOpaque(surface material.Surface) bool {
 	return surface.Mode == material.Opaque && float64(surface.Opacity) >= 1-epsilon
 }
 
-func occludes(cover, candidate geometry.Quad, coverGroup, candidateGroup string) bool {
+func occludes(cover, candidate geometry.Quad, coverGroup, candidateGroup uint32) bool {
 	if fullyOpaque(cover.Surface) {
 		return true
 	}
 	// A transparent medium may remove its own internal interfaces, but never
 	// mask an opaque face even if a caller accidentally reuses its group.
 	return candidate.Surface.Mode != material.Opaque &&
-		candidateGroup != "" && candidateGroup == coverGroup
+		candidateGroup != 0 && candidateGroup == coverGroup
 }
 
 // A small tolerance accepts floating-point noise from right-angle rotations.
