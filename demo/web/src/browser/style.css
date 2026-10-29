@@ -145,7 +145,8 @@ a:focus-visible {
 }
 
 /* ---- top-right view cluster: gizmo + projection + toggles ---- */
-/* 悬浮控件不再画底框:直接浮在场景上,只靠文字与线描标记,整页更干净。 */
+/* gizmo 独立浮在角上;下面的控件成一组,只用极淡的底与一条细线把它们
+   从场景里托起来,避免裸浮在渐变上互相叠字,又不回到厚重的实底卡片。 */
 .view-cluster {
   position: absolute;
   top: 12px;
@@ -154,7 +155,7 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
   pointer-events: none;
 }
 .view-cluster > * {
@@ -164,9 +165,20 @@ a:focus-visible {
   width: 64px;
   height: 64px;
 }
+.view-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border: 1px solid var(--line-soft);
+  backdrop-filter: blur(3px);
+}
 .view-seg {
   display: flex;
-  gap: 10px;
+  gap: 2px;
+  justify-content: flex-end;
 }
 .view-seg button {
   padding: 4px 10px;

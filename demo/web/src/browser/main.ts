@@ -17,12 +17,14 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
   <div class="view-cluster">
     <canvas class="gizmo" id="gizmo" width="64" height="64" aria-hidden="true"></canvas>
+    <div class="view-controls">
     <div class="view-seg" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
     <div class="view-toggles">
       <button class="view-chip on" id="grid" aria-pressed="true"><span class="box"></span>地面网格</button>
       <button class="view-chip" id="frame" aria-pressed="false"><span class="box"></span>形状边界</button>
     </div>
     <button class="view-reset" id="reset">重置视角</button>
+    </div>
   </div>
 
   <button class="panel-open" id="panel-open" aria-label="展开面板" hidden>单方块</button>
