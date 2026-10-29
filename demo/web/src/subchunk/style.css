@@ -1,151 +1,203 @@
+/* Subchunk page extras layered on the shared glass design system. */
 .scene-list {
-  flex: 1;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 230px;
   overflow-y: auto;
-  scrollbar-width: thin;
+  padding-right: 4px;
+  margin: 0 -2px;
 }
 .scene-card {
   display: block;
   width: 100%;
-  padding: 13px 12px;
-  margin-bottom: 7px;
+  padding: 11px 13px;
   text-align: left;
-  background: transparent;
+  border-radius: 11px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  transition:
+    background 0.13s,
+    border-color 0.13s;
 }
 .scene-card:hover {
-  background: #f0f4ee;
+  background: rgba(63, 224, 197, 0.06);
 }
 .scene-card.selected {
-  background: #e7f1e9;
-  border-color: #d6e5d8;
+  background: rgba(63, 224, 197, 0.12);
+  border-color: var(--glass-edge);
 }
 .scene-card strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: #456e58;
-  margin-bottom: 5px;
+  color: var(--ink);
+  margin-bottom: 3px;
 }
 .scene-card span {
-  font-size: 10px;
-  line-height: 1.8;
-  color: #8b9c90;
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-faint);
 }
+
 .upload {
-  border-top: 1px solid #e0e7de;
-  margin-top: 14px;
-  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .upload > label {
   font-size: 11px;
-  color: #667f6a;
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
 }
-.upload .hint {
-  margin-bottom: 8px;
+.upload input[type="file"] {
+  font-size: 11px;
+  color: var(--ink-dim);
 }
-.upload input {
-  width: 100%;
-  font-size: 10px;
-  padding: 6px;
-  background: transparent;
+.upload input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: rgba(63, 224, 197, 0.1);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.14s;
 }
-.stage-heading p {
-  font-family: inherit;
-  line-height: 1.8;
+.upload input[type="file"]::file-selector-button:hover {
+  background: rgba(63, 224, 197, 0.18);
 }
+
+/* mesh option toggles — rendered as switches */
 .mesh-options {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 9px;
 }
-.mesh-options label {
+.toggle {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  font-size: 12px;
-  color: #5f7d65;
+  gap: 11px;
   cursor: pointer;
 }
-.mesh-options input {
-  margin-top: 2px;
-  accent-color: #589477;
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
-.mesh-options small {
-  display: block;
-  font-size: 10px;
-  color: #96a28f;
-  margin-top: 5px;
-  line-height: 1.7;
+.toggle .track {
+  flex: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: rgba(10, 22, 24, 0.7);
+  border: 1px solid var(--glass-edge);
+  transition: background 0.18s;
 }
+.toggle .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition:
+    transform 0.18s,
+    background 0.18s;
+}
+.toggle input:checked + .track {
+  background: rgba(63, 224, 197, 0.25);
+  border-color: var(--accent-soft);
+}
+.toggle input:checked + .track::after {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+.toggle input:focus-visible + .track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.toggle .copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toggle .copy b {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.toggle .copy small {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  line-height: 1.45;
+}
+
 .pipeline-title {
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
-  margin: 0 0 18px;
 }
 .pipeline {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
+}
+.pipeline > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 .pipeline label {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  color: #8c9b88;
+  font-size: 11px;
+  color: var(--ink-dim);
 }
 .pipeline label span {
   font-variant-numeric: tabular-nums;
-  color: #52785e;
+  color: var(--ink);
 }
 .pipeline i {
   display: block;
-  margin-top: 6px;
-  height: 4px;
-  border-radius: 4px;
-  background: #a9c3ad;
-  min-width: 3px;
-  transition: width 0.15s;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  width: 1%;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.pipeline div:nth-child(2) i {
-  background: #71a387;
+.pipeline > div:first-child i {
+  background: rgba(120, 200, 190, 0.3);
 }
-.pipeline div:nth-child(3) i {
-  background: #327b61;
-}
+
 .download {
   display: block;
   width: 100%;
   text-align: center;
-  padding: 10px;
+  padding: 11px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  background: rgba(63, 224, 197, 0.1);
+  border: 1px solid var(--glass-edge);
+  transition:
+    background 0.14s,
+    opacity 0.14s;
+}
+.download + .download {
   margin-top: 8px;
-  font-size: 10px;
-  color: #667f69;
-  background: #f1f5ee;
-  border: 1px solid #dce5d8;
-  border-radius: 6px;
+}
+.download:hover {
+  background: rgba(63, 224, 197, 0.2);
 }
 .download:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-@media (max-width: 1100px) {
-  .mesh-options,
-  .pipeline,
-  .pipeline-title,
-  .download {
-    grid-column: 1/-1;
-  }
-}
-@media (max-width: 650px) {
-  .scene-list {
-    max-height: 220px;
-  }
-  .upload {
-    margin-bottom: 5px;
-  }
-  .stage-heading h2 {
-    font-size: 22px;
-  }
+  opacity: 0.4;
+  cursor: not-allowed;
 }

@@ -1,4 +1,4 @@
-import { BlockViewport, loadAtlas } from "../render";
+import { AxisGizmo, BlockViewport, loadAtlas } from "../render";
 import {
   getJSON,
   type Binding,
@@ -10,38 +10,65 @@ import { propertyChoices } from "./states";
 import "./style.css";
 
 // This page owns selection/network state. The render exports have neither.
+// The whole page is the 3D stage; every control floats over the canvas.
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Neomega 首页"><span class="brandmark">N</span><span>NEOMEGA<span class="brand-sub">BLOCK EXPLORER</span></span></a>
-    <span class="version" id="version">正在连接…</span>
-    <nav class="view-switch" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
-    <span class="static-badge"><i></i>静态方块浏览器</span>
-  </header>
-  <main class="workspace">
-    <aside class="sidebar">
-      <div class="section-heading"><span class="eyebrow">LIBRARY</span><span class="muted" id="catalog-count"></span></div>
-      <h1>选择一个方块</h1><p class="intro">从状态到形状，逐个查看。</p>
-      <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称，如 glass、oak…" aria-label="搜索方块"></label>
-      <div class="quick" id="quick" aria-label="常见方块"></div>
-      <div class="list-heading"><span>方块列表</span><span id="list-count"></span></div>
-      <div class="block-list" id="block-list" role="list" aria-label="方块列表"></div>
-      <div class="sidebar-foot">列表使用 Java block hash。<br>同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
-    </aside>
-    <section class="stage">
-      <div class="stage-heading"><div><span class="eyebrow">SINGLE BLOCK</span><h2 id="block-title">准备预览</h2><p id="java-name" class="muted">加载方块目录与纹理图集</p></div><span id="status" class="status">加载中</span></div>
-      <div class="viewer-shell"><div id="viewport"></div><div class="canvas-note" id="empty-note" hidden>此方块没有可见表面</div><div class="canvas-caption"><span class="axis"><b>X</b><b>Y</b><b>Z</b></span><span>拖动旋转 · 滚轮缩放 · 右键平移</span></div></div>
-      <div class="toolbar"><div class="segments"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div><label><input id="grid" type="checkbox" checked>地面网格</label><label><input id="frame" type="checkbox">形状边界</label><button id="reset" class="reset">↺ 重置视角</button></div>
-      <div class="metrics"><div><span id="quad-count">—</span><small>四边形</small></div><div><span id="triangle-count">—</span><small>三角形</small></div><div><span id="batch-count">—</span><small>材质组</small></div><div><span id="material-modes">—</span><small>表面类型</small></div></div>
-    </section>
-    <aside class="inspector">
-      <div class="section-heading"><span class="eyebrow">INSPECTOR</span><span class="small-dot"></span></div><h2>状态与外观</h2>
-      <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
-      <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
-      <div class="divider"></div><div class="property-heading"><h3>方块属性</h3><button id="restore-properties">还原</button></div><p class="hint">切换属性会选择对应状态的 Java block hash。</p><div id="properties" class="properties"></div>
-      <div class="divider"></div><div class="mapping-label">解析结果</div><div id="renderer-tag" class="renderer-tag">—</div><p class="hint" id="preview-description">Go 查询共享几何，浏览器绘制顶点。</p>
-      <details><summary>查看 Java 状态</summary><pre id="source-state"></pre></details>
-    </aside>
-  </main>
+  <div id="viewport"></div>
+  <div class="empty-note" id="empty-note" hidden>此方块没有可见表面</div>
+
+  <a class="brand glass" href="/" aria-label="Neomega 首页">
+    <span class="brandmark">N</span>
+    <span class="brand-text"><b>NEOMEGA</b><span class="brand-sub">BLOCK EXPLORER</span></span>
+  </a>
+  <nav class="view-switch glass" aria-label="渲染目标"><a href="/" class="active">单方块</a><a href="/subchunk.html">子区块</a></nav>
+
+  <div class="view-cluster">
+    <canvas class="gizmo" id="gizmo" width="72" height="72" aria-hidden="true"></canvas>
+    <div class="view-seg glass" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
+    <div class="view-toggles">
+      <button class="view-chip on" id="grid" aria-pressed="true"><span class="dot"></span>地面网格</button>
+      <button class="view-chip" id="frame" aria-pressed="false"><span class="dot"></span>形状边界</button>
+    </div>
+    <button class="view-reset glass" id="reset">↺ 重置视角</button>
+  </div>
+
+  <aside class="panel glass" aria-label="方块选择与属性">
+    <div class="panel-head">
+      <span class="eyebrow">SINGLE BLOCK</span>
+      <h1 id="block-title">准备预览</h1>
+      <div class="meta"><span class="chip" id="version">连接中</span><span class="chip" id="catalog-count"></span><span class="status" id="status">加载中</span></div>
+      <p class="hint" id="java-name">加载方块目录与纹理图集</p>
+    </div>
+    <div class="panel-scroll scroll">
+    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索名称，如 glass、oak…" aria-label="搜索方块"></label>
+    <div class="quick" id="quick" aria-label="常见方块"></div>
+    <div class="row-head"><b>方块列表</b><span id="list-count"></span></div>
+    <div class="block-list" id="block-list" role="list" aria-label="方块列表"></div>
+
+    <div class="divider"></div>
+    <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
+    <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
+
+    <div class="divider"></div>
+    <div class="sub-head"><h3>方块属性</h3><button id="restore-properties">还原</button></div>
+    <p class="hint">切换属性会选择对应状态的 Java block hash。</p>
+    <div id="properties" class="properties"></div>
+
+    <div class="divider"></div>
+    <div id="renderer-tag" class="renderer-tag">—</div>
+    <p class="hint" id="preview-description">Go 查询共享几何，浏览器绘制顶点。</p>
+    <details><summary>查看 Java 状态</summary><pre id="source-state"></pre></details>
+
+    <div class="divider"></div>
+    <div class="panel-foot">列表使用 Java block hash，同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+    </div>
+  </aside>
+
+  <div class="metrics glass">
+    <div><span id="quad-count">—</span><small>四边形</small></div>
+    <div><span id="triangle-count">—</span><small>三角形</small></div>
+    <div><span id="batch-count">—</span><small>材质组</small></div>
+    <div><span id="material-modes">—</span><small>表面类型</small></div>
+  </div>
 `;
 const el = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -268,6 +295,8 @@ async function start(): Promise<void> {
   catalog = await getJSON<Catalog>("/api/blocks");
   const texture = await loadAtlas(catalog.atlasUrl);
   viewport = new BlockViewport(el("viewport"), texture);
+  const gizmo = new AxisGizmo(el<HTMLCanvasElement>("gizmo"));
+  viewport.observeCamera((q) => gizmo.update(q));
   el("version").textContent = `JAVA ${catalog.version}`;
   el("catalog-count").textContent =
     `${catalog.groups.length.toLocaleString()} 类`;
@@ -301,10 +330,18 @@ async function start(): Promise<void> {
     void showBlock();
   };
   el("reset").onclick = () => viewport.reset();
-  el<HTMLInputElement>("grid").onchange = () =>
-    viewport.showGrid(el<HTMLInputElement>("grid").checked);
-  el<HTMLInputElement>("frame").onchange = () =>
-    viewport.showFrame(el<HTMLInputElement>("frame").checked);
+  // Grid/frame are transparent toggle chips, not form checkboxes.
+  const toggleChip = (id: string, apply: (on: boolean) => void): void => {
+    const chip = el<HTMLButtonElement>(id);
+    chip.onclick = () => {
+      const on = !chip.classList.contains("on");
+      chip.classList.toggle("on", on);
+      chip.setAttribute("aria-pressed", String(on));
+      apply(on);
+    };
+  };
+  toggleChip("grid", (on) => viewport.showGrid(on));
+  toggleChip("frame", (on) => viewport.showFrame(on));
   for (const [id, ortho] of [
     ["perspective", false],
     ["orthographic", true],
@@ -339,6 +376,7 @@ async function start(): Promise<void> {
     "pagehide",
     () => {
       viewport.dispose();
+      gizmo.dispose();
       texture.dispose();
     },
     { once: true },

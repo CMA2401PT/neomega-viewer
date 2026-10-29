@@ -1,4 +1,4 @@
-import { MeshViewport, decodeMesh, loadAtlas } from "../render";
+import { AxisGizmo, MeshViewport, decodeMesh, loadAtlas } from "../render";
 import { getJSON } from "../browser/api";
 import "../browser/style.css";
 import "./style.css";
@@ -25,45 +25,86 @@ interface Stats {
 
 const el = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
+// The whole page is the 3D stage; controls float over the full-bleed canvas.
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
-  <header class="topbar">
-    <a class="brand" href="/"><span class="brandmark">N</span><span>NEOMEGA<span class="brand-sub">GEOMETRY EXPLORER</span></span></a>
-    <span class="version" id="version">正在连接…</span>
-    <nav class="view-switch" aria-label="渲染目标"><a href="/">单方块</a><a href="/subchunk.html" class="active">子区块</a></nav>
-    <span class="static-badge"><i></i>静态子区块浏览器</span>
-  </header>
-  <main class="workspace">
-    <aside class="sidebar">
-      <div class="section-heading"><span class="eyebrow">SUBCHUNK LAB</span><span class="muted">16 × 16 × 16</span></div>
-      <h1>观察面与形状</h1><p class="intro">选择一个场景，比较合并前后的网格。</p>
-      <div id="scenes" class="scene-list"></div>
-      <div class="upload"><label for="layer-file">加载自己的子区块</label><p class="hint">4096 个小端 uint32 Java block hash，顺序为 X-Z-Y。</p><input id="layer-file" type="file" accept=".nvblocks,.bin"></div>
-      <div class="sidebar-foot">场景使用 Java block hash。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
-    </aside>
-    <section class="stage">
-      <div class="stage-heading"><div><span class="eyebrow">ISOLATED SUBCHUNK</span><h2 id="scene-title">准备预览</h2><p id="scene-caption" class="muted">加载静态资源</p></div><span id="status" class="status">加载中</span></div>
-      <div class="viewer-shell"><div id="viewport"></div><div id="empty-note" class="canvas-note" hidden>此子区块没有可见表面</div><div class="canvas-caption"><span class="axis"><b>X</b><b>Y</b><b>Z</b></span><span>拖动旋转 · 滚轮缩放 · 右键平移</span></div></div>
-      <div class="toolbar"><div class="segments"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div><label><input id="wireframe" type="checkbox">三角网格</label><label><input id="frame" type="checkbox">形状边界</label><label><input id="grid" type="checkbox" checked>地面网格</label><button id="reset" class="reset">↺ 重置视角</button></div>
-      <div class="metrics"><div><span id="quad-count">—</span><small>输出四边形</small></div><div><span id="triangle-count">—</span><small>三角形</small></div><div><span id="batch-count">—</span><small>材质组</small></div><div><span id="wire-size">—</span><small>二进制响应</small></div></div>
-    </section>
-    <aside class="inspector">
-      <div class="section-heading"><span class="eyebrow">MESH PIPELINE</span><span class="small-dot"></span></div><h2>比较处理结果</h2>
-      <div class="mesh-options">
-        <label><input id="cull" type="checkbox" checked><span>剔除遮挡面<small>保留半砖旁没有被盖住的部分</small></span></label>
-        <label><input id="greedy" type="checkbox" checked><span>合并相邻面<small>兼容的材质与 UV 才能合并</small></span></label>
-      </div>
-      <div class="divider"></div><h3 class="pipeline-title">四边形的变化</h3>
-      <div class="pipeline"><div><label>模型原始面<span id="input-quads">—</span></label><i id="bar-input"></i></div><div><label>剔除后<span id="visible-quads">—</span></label><i id="bar-visible"></i></div><div><label>合并后<span id="output-quads">—</span></label><i id="bar-output"></i></div></div>
-      <p class="hint" id="shape-stats"></p><p class="hint">不同颜色的玻璃保留界面。半透明面单独排序；树叶的镂空不会遮掉后面的物体。</p>
-      <div class="divider"></div><button id="save-mesh" class="download" disabled>下载当前网格 .nvmesh</button><a id="save-layer" class="download" href="#">下载方块层 .nvblocks</a>
-    </aside>
-  </main>`;
+  <div id="viewport"></div>
+  <div class="empty-note" id="empty-note" hidden>此子区块没有可见表面</div>
+
+  <a class="brand glass" href="/">
+    <span class="brandmark">N</span>
+    <span class="brand-text"><b>NEOMEGA</b><span class="brand-sub">GEOMETRY EXPLORER</span></span>
+  </a>
+  <nav class="view-switch glass" aria-label="渲染目标"><a href="/">单方块</a><a href="/subchunk.html" class="active">子区块</a></nav>
+
+  <div class="view-cluster">
+    <canvas class="gizmo" id="gizmo" width="72" height="72" aria-hidden="true"></canvas>
+    <div class="view-seg glass" role="group" aria-label="投影方式"><button id="perspective" class="active">透视</button><button id="orthographic">正交</button></div>
+    <div class="view-toggles">
+      <button class="view-chip" id="wireframe" aria-pressed="false"><span class="dot"></span>三角网格</button>
+      <button class="view-chip on" id="grid" aria-pressed="true"><span class="dot"></span>地面网格</button>
+      <button class="view-chip" id="frame" aria-pressed="false"><span class="dot"></span>形状边界</button>
+    </div>
+    <button class="view-reset glass" id="reset">↺ 重置视角</button>
+  </div>
+
+  <aside class="panel glass" aria-label="场景与网格流水线">
+    <div class="panel-head">
+      <span class="eyebrow">ISOLATED SUBCHUNK</span>
+      <h1 id="scene-title">准备预览</h1>
+      <div class="meta"><span class="chip" id="version">连接中</span><span class="chip">16³</span><span class="status" id="status">加载中</span></div>
+      <p class="hint" id="scene-caption">加载静态资源</p>
+    </div>
+
+    <div class="panel-scroll scroll">
+    <div class="row-head"><b>场景</b></div>
+    <div id="scenes" class="scene-list"></div>
+
+    <div class="upload">
+      <label for="layer-file">加载自己的子区块</label>
+      <p class="hint">4096 个小端 uint32 Java block hash，顺序为 X-Z-Y。</p>
+      <input id="layer-file" type="file" accept=".nvblocks,.bin">
+    </div>
+
+    <div class="divider"></div>
+    <div class="row-head"><b>网格流水线</b></div>
+    <div class="mesh-options">
+      <label class="toggle"><input id="cull" type="checkbox" checked><span class="track"></span><span class="copy"><b>剔除遮挡面</b><small>保留半砖旁没有被盖住的部分</small></span></label>
+      <label class="toggle"><input id="greedy" type="checkbox" checked><span class="track"></span><span class="copy"><b>合并相邻面</b><small>兼容的材质与 UV 才能合并</small></span></label>
+    </div>
+
+    <div class="divider"></div>
+    <h3 class="pipeline-title">四边形的变化</h3>
+    <div class="pipeline">
+      <div><label>模型原始面<span id="input-quads">—</span></label><i id="bar-input"></i></div>
+      <div><label>剔除后<span id="visible-quads">—</span></label><i id="bar-visible"></i></div>
+      <div><label>合并后<span id="output-quads">—</span></label><i id="bar-output"></i></div>
+    </div>
+    <p class="hint" id="shape-stats"></p>
+    <p class="hint">不同颜色的玻璃保留界面。半透明面单独排序；树叶的镂空不会遮掉后面的物体。</p>
+
+    <div class="divider"></div>
+    <button id="save-mesh" class="download" disabled>下载当前网格 .nvmesh</button>
+    <a id="save-layer" class="download" href="#">下载方块层 .nvblocks</a>
+
+    <div class="divider"></div>
+    <div class="panel-foot">场景使用 Java block hash。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+    </div>
+  </aside>
+
+  <div class="metrics glass">
+    <div><span id="quad-count">—</span><small>输出四边形</small></div>
+    <div><span id="triangle-count">—</span><small>三角形</small></div>
+    <div><span id="batch-count">—</span><small>材质组</small></div>
+    <div><span id="wire-size">—</span><small>二进制响应</small></div>
+  </div>`;
 
 let viewport: MeshViewport;
 let current: Scene;
 let uploaded: ArrayBuffer | undefined;
 let latest: ArrayBuffer | undefined;
 let generation = 0;
+// wireframe/grid/frame are view chips, not form controls; track their state.
+let wireframe = false;
 
 function status(message: string, error = false): void {
   el("status").textContent = message;
@@ -118,7 +159,7 @@ async function load(resetView = false): Promise<void> {
       response.headers.get("X-Neomega-Mesh-Stats")!,
     );
     viewport.set(mesh, { resetView });
-    viewport.showWireframe(checked("wireframe"));
+    viewport.showWireframe(wireframe);
     latest = data;
     el("scene-title").textContent = current.title;
     el("scene-caption").textContent = current.description;
@@ -175,9 +216,11 @@ async function start(): Promise<void> {
   const catalog = await getJSON<Catalog>("/api/subchunks");
   const atlas = await loadAtlas(catalog.atlasUrl);
   viewport = new MeshViewport(el("viewport"), atlas, {
-    gridSize: 32,
+    gridSize: 16,
     label: "独立子区块三维预览，可拖动旋转和滚轮缩放",
   });
+  const gizmo = new AxisGizmo(el<HTMLCanvasElement>("gizmo"));
+  viewport.observeCamera((q) => gizmo.update(q));
   el("version").textContent = `JAVA ${catalog.version}`;
   for (const scene of catalog.scenes) {
     const button = document.createElement("button");
@@ -201,12 +244,22 @@ async function start(): Promise<void> {
   }
   for (const id of ["cull", "greedy"])
     el<HTMLInputElement>(id).onchange = () => void load();
-  el<HTMLInputElement>("wireframe").onchange = () =>
-    viewport.showWireframe(checked("wireframe"));
-  el<HTMLInputElement>("frame").onchange = () =>
-    viewport.showFrame(checked("frame"));
-  el<HTMLInputElement>("grid").onchange = () =>
-    viewport.showGrid(checked("grid"));
+  // View chips toggle their own class and drive the viewport.
+  const toggleChip = (id: string, apply: (on: boolean) => void): void => {
+    const chip = el<HTMLButtonElement>(id);
+    chip.onclick = () => {
+      const on = !chip.classList.contains("on");
+      chip.classList.toggle("on", on);
+      chip.setAttribute("aria-pressed", String(on));
+      apply(on);
+    };
+  };
+  toggleChip("wireframe", (on) => {
+    wireframe = on;
+    viewport.showWireframe(on);
+  });
+  toggleChip("frame", (on) => viewport.showFrame(on));
+  toggleChip("grid", (on) => viewport.showGrid(on));
   el("reset").onclick = () => viewport.reset();
   for (const [id, orthographic] of [
     ["perspective", false],
@@ -251,6 +304,7 @@ async function start(): Promise<void> {
     "pagehide",
     () => {
       viewport.dispose();
+      gizmo.dispose();
       atlas.dispose();
     },
     { once: true },

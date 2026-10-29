@@ -5,9 +5,10 @@ import type { MeshData } from "./types";
 
 /** A geometry viewport. It does not parse blocks, load a world or start workers. */
 export class MeshViewport {
+  // Transparent canvas so the page's CSS backdrop shows through full-bleed.
   private readonly renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: false,
+    alpha: true,
   });
   private readonly scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera =
@@ -16,9 +17,11 @@ export class MeshViewport {
   private readonly grid: THREE.GridHelper;
   private readonly frame = new THREE.Box3Helper(
     new THREE.Box3(new THREE.Vector3(), new THREE.Vector3(1, 1, 1)),
-    0x9caaa9,
+    0x5be0c6,
   );
   private readonly resize: ResizeObserver;
+  // Called every camera change so the host can drive an orientation gizmo.
+  private onCamera?: (quaternion: THREE.Quaternion) => void;
   private current?: MeshObject;
   private bounds = new THREE.Box3(
     new THREE.Vector3(),
@@ -32,13 +35,17 @@ export class MeshViewport {
     private readonly atlas: THREE.Texture,
     options: { gridSize?: number; label?: string } = {},
   ) {
+    const gridSpan = options.gridSize ?? 8;
     this.grid = new THREE.GridHelper(
-      options.gridSize ?? 8,
-      32,
-      0xb8c3c5,
-      0xdde4e4,
+      gridSpan,
+      gridSpan * 4,
+      0x4a6f73,
+      0x2a3d42,
     );
-    this.scene.background = new THREE.Color(0xf0f4f3);
+    const gridMaterial = this.grid.material as THREE.Material;
+    gridMaterial.transparent = true;
+    gridMaterial.opacity = 0.42;
+    // Background stays null so the transparent canvas reveals the CSS scene.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.domElement.setAttribute(
@@ -56,10 +63,14 @@ export class MeshViewport {
 
   private makeControls(): OrbitControls {
     const controls = new OrbitControls(this.camera, this.renderer.domElement);
-    controls.enableDamping = false;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.12;
     controls.minDistance = 0.2;
     controls.maxDistance = 50;
-    controls.addEventListener("change", () => this.render());
+    controls.addEventListener("change", () => {
+      this.onCamera?.(this.camera.quaternion);
+      this.render();
+    });
     return controls;
   }
 
@@ -100,6 +111,7 @@ export class MeshViewport {
     this.camera.lookAt(center);
     this.resizeCanvas();
     this.controls.update();
+    this.onCamera?.(this.camera.quaternion);
     this.render();
   }
 
@@ -157,8 +169,18 @@ export class MeshViewport {
     this.scheduled = true;
     requestAnimationFrame(() => {
       this.scheduled = false;
-      if (!this.disposed) this.renderer.render(this.scene, this.camera);
+      if (this.disposed) return;
+      // update() returns true while damping is still easing the camera; keep
+      // scheduling frames until it settles so motion stays smooth.
+      if (this.controls.update()) this.render();
+      this.renderer.render(this.scene, this.camera);
     });
+  }
+
+  /** Register a listener fired with the camera orientation on every change. */
+  observeCamera(callback: (quaternion: THREE.Quaternion) => void): void {
+    this.onCamera = callback;
+    callback(this.camera.quaternion);
   }
 
   dispose(): void {

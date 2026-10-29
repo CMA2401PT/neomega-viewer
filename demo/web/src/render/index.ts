@@ -11,3 +11,4 @@ export type {
   IndexAttribute,
 } from "./types";
 export { decodeMesh } from "./binary";
+export { AxisGizmo } from "./gizmo";
