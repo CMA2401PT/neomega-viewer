@@ -7,7 +7,6 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	blocks "neomega-blocks/presets/block-converts/v1"
 	"neomega-viewer/blockmesh"
 	"neomega-viewer/demo"
 	"neomega-viewer/meshing"
@@ -28,11 +27,7 @@ func realEngine(t *testing.T) *subchunk.Engine {
 }
 func id(t *testing.T, java string) uint32 {
 	t.Helper()
-	block, ok := blocks.ConvertFromJava(ir.IRBlock(java))
-	if !ok {
-		t.Fatal("unknown test state", java)
-	}
-	return block.Hash()
+	return ir.IRBlock(java).Tidy().Hash()
 }
 
 func TestFilledDefaultAndEveryDemo(t *testing.T) {
@@ -80,17 +75,20 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 	}
 }
 
-func TestTransparentInterfacesAndInferredConnections(t *testing.T) {
+func TestTransparentInterfaces(t *testing.T) {
 	engine := realEngine(t)
 	for _, check := range []struct {
 		A, B    string
 		Removed int
 	}{
-		{"glass", "glass", 2}, {"glass", "red_stained_glass", 0}, {"glass", "stone", 1}, {"oak_leaves", "stone", 1},
+		{"minecraft:glass []", "minecraft:glass []", 2},
+		{"minecraft:glass []", "minecraft:red_stained_glass []", 0},
+		{"minecraft:glass []", "minecraft:stone []", 1},
+		{`minecraft:oak_leaves ["distance"="7","persistent"="false"]`, "minecraft:stone []", 1},
 	} {
 		layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
-		layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), id(t, "minecraft:"+check.A+" []"))
-		layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), id(t, "minecraft:"+check.B+" []"))
+		layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), id(t, check.A))
+		layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), id(t, check.B))
 		result, err := engine.Build(layer, subchunk.Options{Meshing: meshing.Options{DisableGreedy: true}})
 		if err != nil {
 			t.Fatal(err)
@@ -99,19 +97,67 @@ func TestTransparentInterfacesAndInferredConnections(t *testing.T) {
 			t.Fatalf("%s/%s: %+v", check.A, check.B, result.Stats)
 		}
 	}
-	layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
-	fence := id(t, "minecraft:oak_fence []")
-	layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), fence)
-	layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), fence)
-	connected, err := engine.Build(layer, subchunk.Options{})
-	if err != nil {
-		t.Fatal(err)
+}
+
+func TestConnectionsComeFromJavaHash(t *testing.T) {
+	engine := realEngine(t)
+	for _, name := range []string{"oak_fence", "glass_pane"} {
+		t.Run(name, func(t *testing.T) {
+			air := id(t, "minecraft:air []")
+			isolated := id(t, "minecraft:"+name+` ["east"="false","north"="false","south"="false","west"="false"]`)
+			east := id(t, "minecraft:"+name+` ["east"="true","north"="false","south"="false","west"="false"]`)
+			west := id(t, "minecraft:"+name+` ["east"="false","north"="false","south"="false","west"="true"]`)
+			layer := layer_storage.MakePaletteStorage(air)
+			a, b := celler.ToSubChunkBlockPos(4, 4, 4), celler.ToSubChunkBlockPos(5, 4, 4)
+			layer.Set(a, isolated)
+			layer.Set(b, isolated)
+			stored, err := engine.Build(layer, subchunk.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			layer.Set(a, east)
+			layer.Set(b, west)
+			connected, err := engine.Build(layer, subchunk.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if connected.Stats.InputQuads <= stored.Stats.InputQuads {
+				t.Fatal("Java connection states did not add multipart geometry")
+			}
+			layer.Set(b, air)
+			single, err := engine.Build(layer, subchunk.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if single.Stats.InputQuads*2 != connected.Stats.InputQuads {
+				t.Fatal("removing a neighbor changed the stored connection")
+			}
+		})
 	}
-	stored, err := engine.Build(layer, subchunk.Options{KeepConnections: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if connected.Stats.InputQuads <= stored.Stats.InputQuads {
-		t.Fatal("fence links were not inferred")
+}
+
+func TestFluidHeightWithJavaHashes(t *testing.T) {
+	engine := realEngine(t)
+	for _, name := range []string{"water", "lava"} {
+		t.Run(name, func(t *testing.T) {
+			layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
+			fluid := id(t, "minecraft:"+name+` ["level"="0"]`)
+			layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), fluid)
+			single, err := engine.Build(layer, subchunk.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if single.Mesh.Buffers().Bounds.Max[1] != 4+8.0/9 {
+				t.Fatal("isolated fluid height changed")
+			}
+			layer.Set(celler.ToSubChunkBlockPos(4, 5, 4), fluid)
+			stacked, err := engine.Build(layer, subchunk.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stacked.Stats.RemovedQuads != 2 {
+				t.Fatalf("stacked fluid did not fill the lower cell: %+v", stacked.Stats)
+			}
+		})
 	}
 }

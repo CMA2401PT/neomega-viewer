@@ -25,7 +25,7 @@ func sectionOptions(r *http.Request) (subchunk.Options, error) {
 	for _, flag := range []struct {
 		Name   string
 		Target *bool
-	}{{"cull", &options.Meshing.DisableCulling}, {"greedy", &options.Meshing.DisableGreedy}, {"links", &options.KeepConnections}} {
+	}{{"cull", &options.Meshing.DisableCulling}, {"greedy", &options.Meshing.DisableGreedy}} {
 		if text := r.URL.Query().Get(flag.Name); text != "" {
 			value, err := strconv.ParseBool(text)
 			if err != nil {

@@ -57,9 +57,12 @@ func Open(options OpenOptions) (*Resolver, error) {
 	}
 	if options.Resolver == nil {
 		if assets.BuildInfo.Version != blocks.JavaTargetVersion {
-			return nil, fmt.Errorf("resources are Java %s; NEMC converter targets %s", assets.BuildInfo.Version, blocks.JavaTargetVersion)
+			return nil, fmt.Errorf("resources are Java %s; Java states target %s", assets.BuildInfo.Version, blocks.JavaTargetVersion)
 		}
-		options.Resolver = blockstate.NEMC{}
+		options.Resolver, err = blockstate.Java()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if options.Policy == nil {
 		options.Policy = resources.PreviewPolicy{}
@@ -80,8 +83,7 @@ func (engine *Resolver) Resolve(id uint32, options Options) (*Block, error) {
 	return engine.Bake(binding, options)
 }
 
-// Binding resolves identity only. Subchunk callers use it to inspect neighbors
-// before selecting static multipart connections.
+// Binding resolves identity only, without selecting or baking models.
 func (engine *Resolver) Binding(id uint32) (blockstate.Binding, error) {
 	return engine.identity.Resolve(id)
 }

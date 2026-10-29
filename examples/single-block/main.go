@@ -1,4 +1,4 @@
-// This example converts and bakes a block without starting an HTTP server.
+// This example hashes and bakes a Java block without starting an HTTP server.
 package main
 
 import (
@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"neomega-blocks/ir"
-	blocks "neomega-blocks/presets/block-converts/v1"
 	"neomega-viewer/singleblock"
 )
 
@@ -17,15 +16,12 @@ func main() {
 	java := flag.String("java", "minecraft:stone []", "Java state in neomega-blocks IR syntax")
 	seed := flag.Uint64("seed", 0, "deterministic model choice seed")
 	flag.Parse()
-	bedrock, ok := blocks.ConvertFromJava(ir.IRBlock(*java))
-	if !ok {
-		log.Fatalf("cannot convert Java state %q", *java)
-	}
+	state := ir.IRBlock(*java).Tidy()
 	engine, err := singleblock.Open(singleblock.OpenOptions{AssetsDir: *assets})
 	if err != nil {
 		log.Fatal(err)
 	}
-	block, err := engine.Build(bedrock.Hash(), singleblock.Options{Seed: *seed})
+	block, err := engine.Build(state.Hash(), singleblock.Options{Seed: *seed})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	entries, err := catalog.NEMC()
+	entries, err := catalog.Java()
 	if err != nil {
 		log.Fatal(err)
 	}

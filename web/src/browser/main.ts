@@ -24,7 +24,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="quick" id="quick" aria-label="常见方块"></div>
       <div class="list-heading"><span>方块列表</span><span id="list-count"></span></div>
       <div class="block-list" id="block-list" role="list" aria-label="方块列表"></div>
-      <div class="sidebar-foot">列表使用实际存储的方块 ID。<br>同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      <div class="sidebar-foot">列表使用 Java block hash。<br>同一名称可包含多种状态。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
     </aside>
     <section class="stage">
       <div class="stage-heading"><div><span class="eyebrow">SINGLE BLOCK</span><h2 id="block-title">准备预览</h2><p id="java-name" class="muted">加载方块目录与纹理图集</p></div><span id="status" class="status">加载中</span></div>
@@ -35,11 +35,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <aside class="inspector">
       <div class="section-heading"><span class="eyebrow">INSPECTOR</span><span class="small-dot"></span></div><h2>状态与外观</h2>
       <div class="field"><label for="states">存储的方块状态</label><select id="states" aria-label="存储的方块状态"></select></div>
-      <div class="field"><label for="block-id">Block ID</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
+      <div class="field"><label for="block-id">Java block hash</label><div class="id-input"><input id="block-id" inputmode="numeric" aria-label="Block ID"><button id="load-id" title="按 ID 加载">加载</button></div></div>
       <div class="divider"></div><div class="property-heading"><h3>静态预览属性</h3><button id="restore-properties">还原</button></div><p class="hint">只调整当前预览，不改变存储的 ID。</p><div id="properties" class="properties"></div>
       <div class="field seed-field"><label for="seed">模型选择种子</label><input id="seed" type="number" value="0" min="0" max="4294967295" step="1"></div>
       <div class="divider"></div><div class="mapping-label">解析结果</div><div id="renderer-tag" class="renderer-tag">—</div><p class="hint" id="preview-description">Go 解析状态与模型，浏览器绘制顶点。</p>
-      <details><summary>查看来源与模型</summary><h4>Bedrock</h4><pre id="source-state"></pre><h4>Java</h4><pre id="target-state"></pre><h4>选中的模型</h4><pre id="models"></pre></details>
+      <details><summary>查看来源与模型</summary><h4>Java 原始状态</h4><pre id="source-state"></pre><h4>预览状态</h4><pre id="target-state"></pre><h4>选中的模型</h4><pre id="models"></pre></details>
     </aside>
   </main>
 `;
@@ -142,12 +142,10 @@ async function selectGroup(
     const select = el<HTMLSelectElement>("states");
     select.replaceChildren();
     for (const binding of states) {
-      const description = binding.bedrock.slice(
-        binding.bedrock.indexOf(" ") + 1,
-      );
+      const description = JSON.stringify(binding.java.properties);
       select.add(
         new Option(
-          description === "[]" ? "默认状态" : description,
+          description === "{}" ? "默认状态" : description,
           String(binding.id),
         ),
       );
@@ -207,7 +205,7 @@ async function showBlock(): Promise<void> {
       packet.renderer.kind === "special"
         ? "使用固定外形展示，不包含动画或实时外观。"
         : "状态、模型和纹理引用均在 Go 中解析。";
-    el("source-state").textContent = packet.binding.bedrock;
+    el("source-state").textContent = JSON.stringify(packet.binding.java, null, 2);
     el("target-state").textContent = JSON.stringify(packet.state, null, 2);
     el("models").textContent =
       packet.applications.map((application) => application.model).join("\n") ||
@@ -234,7 +232,9 @@ async function showBlock(): Promise<void> {
       el("material-modes").textContent = "无可用几何";
       el("renderer-tag").textContent = "预览不可用";
       el("properties").replaceChildren();
-      el("source-state").textContent = binding?.bedrock ?? "";
+      el("source-state").textContent = binding
+        ? JSON.stringify(binding.java, null, 2)
+        : "";
       el("target-state").textContent = binding
         ? JSON.stringify(binding.java, null, 2)
         : "";
@@ -335,7 +335,7 @@ async function start(): Promise<void> {
       );
       if (token !== generation) return;
       const group = catalog.groups.find(
-        (group) => group.name === binding.bedrock.split(" ")[0],
+        (group) => group.name === binding.java.name,
       );
       if (group) await selectGroup(group, undefined, binding.id);
     } catch (error) {

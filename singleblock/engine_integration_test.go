@@ -22,7 +22,7 @@ func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := catalog.NEMC()
+	entries, err := catalog.Java()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,13 +105,13 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 		profile := engine.Assets.Renderers.Blocks[binding.Java.Name]
 		if profile.Kind == asset.RendererDynamic {
 			if err == nil {
-				t.Fatalf("runtime-only shape silently accepted: %s", binding.Bedrock)
+				t.Fatalf("runtime-only shape silently accepted: %+v", binding.Java)
 			}
 			unsupported++
 			continue
 		}
 		if err != nil {
-			t.Fatalf("%d %s -> %s: %v", id, binding.Bedrock, binding.Java.Name, err)
+			t.Fatalf("%d %+v: %v", id, binding.Java, err)
 		}
 		for _, quad := range block.Mesh.Quads {
 			for _, position := range quad.Positions {

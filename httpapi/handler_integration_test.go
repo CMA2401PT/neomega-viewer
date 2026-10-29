@@ -25,7 +25,7 @@ func TestBrowserTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := catalog.NEMC()
+	entries, err := catalog.Java()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,6 @@ export interface State {
 }
 export interface Binding {
   id: number;
-  bedrock: string;
   java: State;
 }
 export interface Group {

@@ -37,8 +37,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="section-heading"><span class="eyebrow">SUBCHUNK LAB</span><span class="muted">16 × 16 × 16</span></div>
       <h1>观察面与形状</h1><p class="intro">选择一个场景，比较合并前后的网格。</p>
       <div id="scenes" class="scene-list"></div>
-      <div class="upload"><label for="layer-file">加载自己的子区块</label><p class="hint">4096 个小端 uint32 方块 ID，顺序为 X-Z-Y。</p><input id="layer-file" type="file" accept=".nvblocks,.bin"></div>
-      <div class="sidebar-foot">场景使用真实 NEMC 方块 ID。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
+      <div class="upload"><label for="layer-file">加载自己的子区块</label><p class="hint">4096 个小端 uint32 Java block hash，顺序为 X-Z-Y。</p><input id="layer-file" type="file" accept=".nvblocks,.bin"></div>
+      <div class="sidebar-foot">场景使用 Java block hash。<br><a href="/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">代码许可</a> · <a href="/assets/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">资源来源</a></div>
     </aside>
     <section class="stage">
       <div class="stage-heading"><div><span class="eyebrow">ISOLATED SUBCHUNK</span><h2 id="scene-title">准备预览</h2><p id="scene-caption" class="muted">加载静态资源</p></div><span id="status" class="status">加载中</span></div>
@@ -51,7 +51,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="mesh-options">
         <label><input id="cull" type="checkbox" checked><span>剔除遮挡面<small>保留半砖旁没有被盖住的部分</small></span></label>
         <label><input id="greedy" type="checkbox" checked><span>合并相邻面<small>兼容的材质与 UV 才能合并</small></span></label>
-        <label><input id="links" type="checkbox" checked><span>按邻接连接<small>推断栅栏、玻璃板的连接方向</small></span></label>
         <label><input id="vary" type="checkbox"><span>按位置变化模型<small>保留候选模型的旋转与镜像差异</small></span></label>
       </div>
       <div class="field seed-field"><label for="seed">模型选择种子</label><input id="seed" type="number" value="0" min="0" max="4294967295" step="1"></div>
@@ -96,7 +95,6 @@ async function load(resetView = false): Promise<void> {
   const query = new URLSearchParams({
     cull: String(checked("cull")),
     greedy: String(checked("greedy")),
-    links: String(checked("links")),
     vary: String(checked("vary")),
     seed: el<HTMLInputElement>("seed").value,
   });
@@ -205,7 +203,7 @@ async function start(): Promise<void> {
     };
     el("scenes").append(button);
   }
-  for (const id of ["cull", "greedy", "links", "vary", "seed"])
+  for (const id of ["cull", "greedy", "vary", "seed"])
     el<HTMLInputElement>(id).onchange = () => void load();
   el<HTMLInputElement>("wireframe").onchange = () =>
     viewport.showWireframe(checked("wireframe"));

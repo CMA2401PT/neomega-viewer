@@ -6,7 +6,9 @@
 
 ## 先运行浏览器
 
-需要两份配套数据：`neomega-blocks` 将存储的 ID 转成 Java 状态，`neomega-assets` 提供对应版本的资源。默认适配器使用 **NEMC 的 uint32 网络哈希**，Java 目标为 **1.21.4**。ID 来自 Go 预设及目录接口，前端保存并回传它，不计算哈希或执行方块转换。
+需要两份配套数据：`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的资源。输入 ID 是 **Java block hash**，即完整 Java 状态（名称与属性）先 `Tidy()`、再 `Hash()` 得到的 uint32 值。`Tidy()` 将属性按字典序规范化，确保书写顺序不影响 ID。
+
+默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，viewer 将它们建成共享查找表，供渲染与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。
 
 需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
 
@@ -60,8 +62,8 @@ go run ./cmd/neomega-viewer \
 要让单方块和子区块使用相同的解释规则，首先需要一个没有场景调度职责的解析器。`blockmesh.Resolver` 组合以下步骤，并共享只读的资源、模型继承缓存和材质库。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
 
 ```text
-uint32 ID
-  │ blockstate：查回 Bedrock 状态，转换成 Java 名称与属性
+uint32 Java block hash
+  │ blockstate：查表取得 Java 名称与属性
   ▼
 Java 状态 + 静态预览属性
   │ model.Select：选择 variant，收集命中的 multipart 部件
@@ -95,13 +97,15 @@ Java 状态 + 静态预览属性
 
 这里的静态指**给定状态和选项后，外观保持不变**。箱子使用固定姿态，告示牌展示牌体，动画纹理使用固定帧。库不接收方块实体的实时外观或动画状态，也不计划增加这些能力。水和岩浆使用静止预览表面；子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
 
-PyMCTranslate 的主方块输出可能没有附加水层。当模型条件需要 `waterlogged` 而转换结果缺少它时，预览补为 `false`。修改该属性只影响模型选择，不会自行添加水层。`air` 等不可见类别返回空几何；NEMC 的 `micro_block` 视为空气。`moving_piston` 缺少决定移动内容的数据，会返回无法确定静态外形的错误。
+状态全集暂不包含 `waterlogged`，这是涉及前景、背景方块表示的历史约定。当模型条件需要它时，预览仍补为 `false`。修改该属性只影响模型选择，不会自行添加水层。`air` 等不可见类别返回空几何。`moving_piston` 缺少决定移动内容的数据，会返回无法确定静态外形的错误。
+
+水和岩浆的状态包含 `level=0…15`，资源的空 variant 不按 level 选择模型。流体预览使用 level 决定高度，子区块仍在上方存在同类流体时通过预览属性将当前格补满。
 
 ## 多个方块放在一起时
 
 直接叠加 4096 份方块网格，会保留大量完全看不见的内面。子区块入口先读取所有逻辑位置，再解析和缓存局部形状。这里不能只遍历 `IterNonDefault`：Palette 的默认值可以是石头，默认填满的格子同样需要参与渲染。
 
-Bedrock ID 没有编码栅栏和玻璃板的连接方向。默认的 `resources.Connections` 根据邻居类别、朝向和实际完整不透明侧面选择这些部件。墙等已有连接状态沿用转换结果。`KeepConnections` 可以保留存储状态，`Engine.Connections` 可以替换整套静态连接策略。这些预览规则不等同于游戏全部放置与连接规则。
+栅栏、玻璃板和墙的连接方向已经包含在输入 ID 对应的 Java 状态中。调用者写入确定的连接状态，渲染时直接选择对应部件。
 
 确定形状后，`meshing` 分两步减少面：
 
@@ -120,7 +124,7 @@ Bedrock ID 没有编码栅栏和玻璃板的连接方向。默认的 `resources.
 
 浏览器的 `decodeMesh` 在常见的小端平台上为响应 `ArrayBuffer` 建立 `Float32Array`、`Uint32Array` 视图。Three.js 适配层直接保留这些视图；GPU 上传仍由 Three.js 完成。协议不依赖 HTTP，同一份数据也可以写入 `.nvmesh` 文件。布局与解析接口见 [meshwire/README.md](meshwire/README.md)。
 
-网格合并与编码解决的是不同问题。以 Java 1.21.4 资源、当前 NEMC preset、默认种子且关闭位置变化的满石头层为例：
+网格合并与编码解决的是不同问题。以 Java 1.21.4 资源、当前 Java 状态全集、默认种子且关闭位置变化的满石头层为例：
 
 | 开启的处理 | 输出四边形 | NVMS 字节数 |
 |---|---:|---:|
@@ -163,10 +167,10 @@ block, err := blockBuilder.Build(blockID, singleblock.Options{
 })
 ```
 
-`block.Binding.Java` 保留 ID 的转换结果，`block.State` 是应用预览选项后的状态。现成示例会先通过 `neomega-blocks` 将 Java 文本转换成目标 ID，然后输出 JSON：
+`block.Binding.Java` 保留 ID 对应的原始状态，`block.State` 是应用预览选项后的状态。现成示例会将字段齐全的 Java 文本规范化、计算哈希，再输出 JSON。属性名和值使用 IR 的双引号语法：
 
 ```sh
-go run ./examples/single-block -java 'minecraft:oak_slab [type=bottom]' > /tmp/slab.json
+go run ./examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
 ```
 
 子区块直接接收调用者已有的 `*layer_storage.Palette[uint32]`。这个类型来自 `neomega-celler`，Go 导入路径为 `celler/layer_storage`：
@@ -180,9 +184,9 @@ if err != nil {
 encoded, err := meshwire.Encode(result.Mesh.Buffers())
 ```
 
-构建期间调用者应保持 Palette 不变。读取和网格处理不会修改它。解析器及连接策略配置后视为只读，同一个构建器可以并发处理不同输入。
+构建期间调用者应保持 Palette 不变。读取和网格处理不会修改它。解析器与共享状态表初始化后视为只读，同一个构建器可以并发处理不同输入。
 
-需要跨工具交换方块层时，`subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`subchunk.ParseIDs` 将其还原成 Palette。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
+需要跨工具交换方块层时，`subchunk.EncodeIDs` 输出恰好 **4096 个小端 uint32 ID，共 16,384 字节**。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢。`subchunk.ParseIDs` 将其还原成 Palette。每个 ID 都是 Java block hash。原有 NEMC ID 文件需要由调用者重新生成。这个 `.nvblocks` 格式保存逻辑值，不依赖 Palette 的内部内存或原生 dump 布局。
 
 例如，生成后在网页上传 `/tmp/solid.nvblocks`，或在命令行再次读取它：
 
@@ -222,7 +226,7 @@ atlas.dispose();
 
 ## 接口与扩展位置
 
-更换 ID 的含义，应替换 `blockmesh.OpenOptions.Resolver`，实现 `blockstate.Resolver`。调用者负责让返回的 Java 状态与资源版本匹配。固定颜色和材质语义通过 `material.Policy` 替换，连接规则通过子区块构建器的 `Connections` 替换。
+需要提供另一套 Java 状态表时，通过 `blockmesh.OpenOptions.Resolver` 实现 `blockstate.Resolver`。输入仍为规范化 Java 状态的哈希，调用者负责让返回的状态与资源版本匹配。固定颜色和材质语义通过 `material.Policy` 替换。
 
 其他变化可以按职责定位：
 
@@ -243,7 +247,7 @@ atlas.dispose();
 |---|---|
 | `GET /api/blocks` | JSON 名称分组、示例 ID、版本和图集地址 |
 | `GET /api/states?name=minecraft:oak_fence` | JSON 状态列表与真实 ID |
-| `GET /api/state?id=<uint32>` | JSON ID 转换结果 |
+| `GET /api/state?id=<uint32>` | JSON Java hash 对应的状态 |
 | `GET /api/block?id=<uint32>` 或 `POST /api/block` | JSON 单方块来源、模型和几何 |
 | `GET /api/subchunks` | JSON 子区块示例目录 |
 | `GET /api/subchunks/{scene}/mesh` | NVMS 二进制几何 |
@@ -251,7 +255,7 @@ atlas.dispose();
 | `POST /api/subchunk` | 提交 `.nvblocks` 原始字节，返回 NVMS |
 | `GET /assets/atlas.png` | 与材质区域配套的 PNG |
 
-子区块网格接口接受 `cull`、`greedy`、`links`、`vary` 布尔查询参数，以及 `seed`。前三项默认开启，`vary` 默认关闭。统计值通过 `X-Neomega-Mesh-Stats` 响应头返回；完全移除的源面与局部裁切的源面分别计数。局部裁切可能产生多个保留片段，因此“原始面减去移除面”不一定等于“剔除后面数”。
+子区块网格接口接受 `cull`、`greedy`、`vary` 布尔查询参数，以及 `seed`。前两项默认开启，`vary` 默认关闭。统计值通过 `X-Neomega-Mesh-Stats` 响应头返回；完全移除的源面与局部裁切的源面分别计数。局部裁切可能产生多个保留片段，因此“原始面减去移除面”不一定等于“剔除后面数”。
 
 上传已有方块层时，直接发送二进制正文：
 
@@ -282,7 +286,7 @@ NEOMEGA_ASSETS_DIR="$PWD/../neomega-assets/dist/final" \
   go test -race -v ./... -count=1 -timeout=90s
 ```
 
-Java 1.21.4 与当前 NEMC preset 的单方块全表检查生成 15,155 个静态结果，另有 1 个 `moving_piston` 明确返回静态能力边界。实际数量以更换数据后重新运行的输出为准。
+Java 1.21.4 状态全集的单方块全表检查生成 18,242 个静态结果，另有 12 个 `moving_piston` 状态明确返回静态能力边界。实际数量以更换数据后重新运行的输出为准。
 
 要检查 Go 编码器与 TypeScript 解码器的配合，可使用前面生成的满石头网格：
 

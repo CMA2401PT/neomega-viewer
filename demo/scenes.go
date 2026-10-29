@@ -8,7 +8,6 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	blocks "neomega-blocks/presets/block-converts/v1"
 )
 
 type Scene struct {
@@ -38,33 +37,18 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		return nil, fmt.Errorf("unknown demo %q", name)
 	}
 	ids := map[string]uint32{}
-	blockID := func(java string) (uint32, error) {
+	blockID := func(java string) uint32 {
 		if id, found := ids[java]; found {
-			return id, nil
+			return id
 		}
-		block, ok := blocks.ConvertFromJava(ir.IRBlock(java))
-		if !ok {
-			return 0, fmt.Errorf("demo state cannot convert: %s", java)
-		}
-		ids[java] = block.Hash()
-		return block.Hash(), nil
+		id := ir.IRBlock(java).Tidy().Hash()
+		ids[java] = id
+		return id
 	}
-	air, err := blockID("minecraft:air []")
-	if err != nil {
-		return nil, err
-	}
+	air := blockID("minecraft:air []")
 	layer := layer_storage.MakePaletteStorage(air)
-	var buildError error
 	put := func(x, y, z int, java string) {
-		if buildError != nil {
-			return
-		}
-		id, err := blockID(java)
-		if err != nil {
-			buildError = err
-			return
-		}
-		layer.Set(celler.ToSubChunkBlockPos(x, y, z), id)
+		layer.Set(celler.ToSubChunkBlockPos(x, y, z), blockID(java))
 	}
 	box := func(x0, y0, z0, x1, y1, z1 int, java string) {
 		for x := x0; x < x1; x++ {
@@ -78,10 +62,7 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 	switch name {
 	case "empty":
 	case "solid":
-		stone, err := blockID("minecraft:stone []")
-		if err != nil {
-			return nil, err
-		}
+		stone := blockID("minecraft:stone []")
 		layer.InitWithDefault(stone)
 	case "checker":
 		for x := 0; x < 16; x++ {
@@ -98,9 +79,9 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 	case "slabs":
 		box(2, 0, 2, 14, 1, 14, "minecraft:stone []")
 		box(3, 1, 4, 7, 2, 11, "minecraft:stone []")
-		box(7, 1, 4, 11, 2, 7, "minecraft:oak_slab [type=bottom]")
-		box(7, 1, 8, 11, 2, 11, "minecraft:oak_slab [type=top]")
-		box(4, 2, 4, 7, 3, 7, "minecraft:stone_slab [type=bottom]")
+		box(7, 1, 4, 11, 2, 7, `minecraft:oak_slab ["type"="bottom"]`)
+		box(7, 1, 8, 11, 2, 11, `minecraft:oak_slab ["type"="top"]`)
+		box(4, 2, 4, 7, 3, 7, `minecraft:stone_slab ["type"="bottom"]`)
 	case "glass":
 		box(2, 0, 2, 14, 1, 14, "minecraft:stone []")
 		box(4, 1, 4, 12, 8, 12, "minecraft:glass []")
@@ -110,31 +91,42 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		box(11, 1, 8, 12, 7, 11, "minecraft:blue_stained_glass []")
 	case "foliage":
 		box(2, 0, 2, 14, 1, 14, "minecraft:stone []")
-		box(3, 1, 4, 13, 4, 7, "minecraft:oak_leaves []")
+		box(3, 1, 4, 13, 4, 7, `minecraft:oak_leaves ["distance"="7","persistent"="false"]`)
 		box(4, 1, 7, 12, 3, 9, "minecraft:stone []")
 		for x := 3; x < 13; x += 2 {
 			put(x, 1, 11, "minecraft:short_grass []")
 		}
-		put(12, 1, 11, "minecraft:fire []")
+		put(12, 1, 11, `minecraft:fire ["age"="0","east"="false","north"="false","south"="false","up"="false","west"="false"]`)
 	case "mixed":
 		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
 		box(2, 1, 3, 3, 5, 12, "minecraft:glass []")
-		box(3, 1, 3, 6, 2, 8, "minecraft:oak_slab [type=bottom]")
-		box(3, 1, 9, 6, 2, 12, "minecraft:oak_slab [type=top]")
+		box(3, 1, 3, 6, 2, 8, `minecraft:oak_slab ["type"="bottom"]`)
+		box(3, 1, 9, 6, 2, 12, `minecraft:oak_slab ["type"="top"]`)
 		for x := 7; x < 14; x++ {
-			put(x, 1, 3, "minecraft:oak_fence []")
-			put(x, 1, 12, "minecraft:oak_fence []")
+			// 场景直接写入连接状态，渲染入口只消费这些状态。
+			put(x, 1, 3, fmt.Sprintf(
+				`minecraft:oak_fence ["east"="%t","north"="false","south"="%t","west"="%t"]`,
+				x < 13,
+				x == 13,
+				x > 7,
+			))
+			put(x, 1, 12, fmt.Sprintf(
+				`minecraft:oak_fence ["east"="%t","north"="%t","south"="false","west"="%t"]`,
+				x < 13,
+				x == 13,
+				x > 7,
+			))
 		}
 		for z := 4; z < 12; z++ {
-			put(13, 1, z, "minecraft:oak_fence []")
+			put(13, 1, z, `minecraft:oak_fence ["east"="false","north"="true","south"="true","west"="false"]`)
 		}
-		box(10, 1, 5, 12, 4, 8, "minecraft:oak_leaves []")
+		box(10, 1, 5, 12, 4, 8, `minecraft:oak_leaves ["distance"="7","persistent"="false"]`)
 		put(7, 1, 6, "minecraft:short_grass []")
 		put(8, 1, 7, "minecraft:short_grass []")
-		put(8, 1, 10, "minecraft:candle [candles=4]")
-		put(4, 1, 13, "minecraft:chest [facing=south]")
-		put(7, 1, 9, "minecraft:red_bed [part=foot,facing=north]")
-		put(7, 1, 8, "minecraft:red_bed [part=head,facing=north]")
+		put(8, 1, 10, `minecraft:candle ["candles"="4","lit"="false"]`)
+		put(4, 1, 13, `minecraft:chest ["facing"="south","type"="single"]`)
+		put(7, 1, 9, `minecraft:red_bed ["part"="foot","facing"="north","occupied"="false"]`)
+		put(7, 1, 8, `minecraft:red_bed ["part"="head","facing"="north","occupied"="false"]`)
 	}
-	return layer, buildError
+	return layer, nil
 }

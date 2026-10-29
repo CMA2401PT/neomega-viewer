@@ -14,7 +14,6 @@ import (
 	"neomega-viewer/geometry"
 	"neomega-viewer/meshing"
 	"neomega-viewer/model"
-	"neomega-viewer/resources"
 )
 
 type Options struct {
@@ -23,9 +22,6 @@ type Options struct {
 	VaryModels bool
 	Seed       uint64
 	Meshing    meshing.Options
-	// KeepConnections preserves explicit Java links instead of deriving the
-	// fence/pane parts from this layer's neighbors.
-	KeepConnections bool
 }
 
 type Stats struct {
@@ -41,12 +37,10 @@ type Result struct {
 }
 type Engine struct {
 	Blocks *blockmesh.Resolver
-	// Connections is configured before concurrent use; nil preserves stored links.
-	Connections resources.ConnectionPolicy
 }
 
 func New(blocks *blockmesh.Resolver) *Engine {
-	return &Engine{Blocks: blocks, Connections: resources.Connections}
+	return &Engine{Blocks: blocks}
 }
 
 type shapeKey struct {
@@ -56,14 +50,6 @@ type shapeKey struct {
 }
 type cachedShape struct {
 	Block *blockmesh.Block
-	Solid map[string]bool
-}
-
-var horizontal = []struct {
-	Name, Opposite string
-	X, Z           int
-}{
-	{"north", "south", 0, -1}, {"east", "west", 1, 0}, {"south", "north", 0, 1}, {"west", "east", -1, 0},
 }
 
 func hasAlternatives(state asset.BlockState) bool {
@@ -113,10 +99,7 @@ func (engine *Engine) Build(layer *layer_storage.Palette[uint32], options Option
 		if err != nil {
 			return nil, err
 		}
-		shape := &cachedShape{Block: block, Solid: map[string]bool{}}
-		for _, side := range horizontal {
-			shape.Solid[side.Name] = meshing.OpaqueBoundary(block.Mesh, side.Name)
-		}
+		shape := &cachedShape{Block: block}
 		shapes[key] = shape
 		return shape, nil
 	}
@@ -149,20 +132,6 @@ func (engine *Engine) Build(layer *layer_storage.Palette[uint32], options Option
 		p := position(i)
 		state := base.Block.State
 		properties := map[string]string{}
-		if !options.KeepConnections && engine.Connections != nil {
-			neighbors := map[string]resources.Neighbor{}
-			for _, side := range horizontal {
-				x, z := int(p.X)+side.X, int(p.Z)+side.Z
-				if x < 0 || x >= Size || z < 0 || z >= Size {
-					continue
-				}
-				other := bases[index(x, int(p.Y), z)]
-				neighbors[side.Name] = resources.Neighbor{State: other.Block.State, Solid: other.Solid[side.Opposite]}
-			}
-			for key, value := range engine.Connections(state, neighbors) {
-				properties[key] = value
-			}
-		}
 		if base.Block.Renderer.Kind == asset.RendererFluid && p.Y < 15 {
 			above := bases[index(int(p.X), int(p.Y)+1, int(p.Z))]
 			if above.Block.Renderer.Kind == asset.RendererFluid && above.Block.Renderer.Family == base.Block.Renderer.Family {
