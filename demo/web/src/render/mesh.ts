@@ -25,6 +25,9 @@ const fragmentShader = `
   uniform sampler2D atlasMap;
   uniform vec4 region;
   uniform vec2 atlasSize;
+  uniform float frames;
+  uniform float frameTime;
+  uniform float time;
   uniform float opacity;
   uniform float cutoff;
   uniform float unlit;
@@ -38,11 +41,16 @@ const fragmentShader = `
     return fract(value);
   }
   void main() {
-    // Repeat within this sprite, including model UVs outside [0,1]. Keep
-    // nearest sampling inside its border rather than sampling another tile.
-    vec2 inset = vec2(0.5) / (region.zw * atlasSize);
+    vec4 frameRegion = region;
+    if (frames > 1.0) {
+      float frame = mod(floor(time / (frameTime / 20.0)), frames);
+      frameRegion.w = region.w / frames;
+      frameRegion.y += frame * frameRegion.w;
+    }
+    // 在当前帧内平铺，半像素内缩避免采到相邻帧。
+    vec2 inset = vec2(0.5) / (frameRegion.zw * atlasSize);
     vec2 uv = clamp(vec2(spriteUV(localUV.x), spriteUV(localUV.y)), inset, vec2(1.0) - inset);
-    vec4 texel = texture2D(atlasMap, region.xy + uv * region.zw);
+    vec4 texel = texture2D(atlasMap, frameRegion.xy + uv * frameRegion.zw);
     float alpha = texel.a * opacity;
     if (alpha < cutoff) discard;
     vec3 n = normalize(faceNormal);
@@ -57,6 +65,7 @@ const fragmentShader = `
 function surfaceMaterial(
   surface: Surface,
   atlas: THREE.Texture,
+  time: THREE.IUniform<number>,
 ): THREE.ShaderMaterial {
   const image = atlas.image as { width: number; height: number };
   return new THREE.ShaderMaterial({
@@ -66,6 +75,9 @@ function surfaceMaterial(
       atlasMap: { value: atlas },
       region: { value: new THREE.Vector4(...surface.region) },
       atlasSize: { value: new THREE.Vector2(image.width, image.height) },
+      frames: { value: surface.frames },
+      frameTime: { value: surface.frameTime },
+      time,
       opacity: { value: surface.opacity },
       cutoff: {
         value:
@@ -138,6 +150,9 @@ function buffers(
 
 export interface MeshObject {
   object: THREE.Group;
+  readonly animated: boolean;
+  /** 由宿主在每次绘制前传入时间，单位为秒。 */
+  updateTime(seconds: number): void;
   /** Dispose this object's buffers/materials. The shared atlas remains owned by the caller. */
   dispose(): void;
 }
@@ -150,8 +165,11 @@ export function createMeshObject(
   const object = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
+  // 所有批次共享时钟，透明面拆分后仍保持同一动画相位。
+  const time = { value: 0 };
+  const animated = data.batches.some((batch) => batch.surface.frames > 1);
   for (const batch of data.batches) {
-    const material = surfaceMaterial(batch.surface, atlas);
+    const material = surfaceMaterial(batch.surface, atlas, time);
     materials.push(material);
     const count = batch.positions.length / 3;
     if (batch.surface.mode === "blend") {
@@ -170,6 +188,10 @@ export function createMeshObject(
   }
   return {
     object,
+    animated,
+    updateTime(seconds: number) {
+      time.value = seconds;
+    },
     dispose() {
       geometries.forEach((g) => g.dispose());
       materials.forEach((m) => m.dispose());

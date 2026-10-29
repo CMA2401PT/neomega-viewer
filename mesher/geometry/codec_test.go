@@ -18,7 +18,7 @@ func sampleQuad() geometry.Quad {
 		Positions: [4]geometry.Vec3{{0, 0, 0}, {0, 0.5, 0}, {1, 0.5, 0}, {1, 0, 0}},
 		Normal:    geometry.Vec3{0, 0, -1}, Color: [3]float32{0.25, 0.5, 1},
 		UV:      [4]geometry.Vec2{{0, 0}, {0, 0.5}, {2, 0.5}, {2, 0}},
-		Surface: material.Surface{Texture: "minecraft:block/stone", Region: [4]float32{0.25, 0.5, 0.125, 0.125}, Mode: material.Opaque, Opacity: 1},
+		Surface: material.Surface{Texture: "minecraft:block/stone", Region: [4]float32{0.25, 0.5, 0.125, 0.125}, Mode: material.Opaque, Opacity: 1, Frames: 1},
 	}
 }
 
@@ -29,6 +29,8 @@ func sampleMesh() geometry.Mesh {
 	second.Surface.Mode = material.Blend
 	second.Surface.DoubleSided = true
 	second.Surface.Opacity = 0.5
+	second.Surface.Frames = 32
+	second.Surface.FrameTime = 3
 	second.ShadeNormal = geometry.Vec3{0, 1, 0}
 	for i := range second.Positions {
 		second.Positions[i][2] = 1.0 / 3
@@ -80,7 +82,7 @@ func TestRoundTripFractionalGeometryAndEmptyMesh(t *testing.T) {
 }
 
 func TestMarshalMatchesMeshwireV1(t *testing.T) {
-	// 样本由迁移前的 meshwire.Encode(sampleMesh().Buffers()) 生成。
+	// 样本保留旧 meshwire 的几何字节，材质 JSON 补入图集帧信息。
 	want, err := os.ReadFile("testdata/meshwire-v1.nvmesh")
 	if err != nil {
 		t.Fatal(err)

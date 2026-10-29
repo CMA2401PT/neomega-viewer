@@ -165,13 +165,13 @@ go run ./scripts/gen-geometry \
 wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json resources/geometry.nvsolid
 ```
 
-`resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,787,277 字节（5.52 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,865,634 字节（5.59 MiB）。更换输入后以命令输出为准。
+`resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,796,205 字节（5.53 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,874,562 字节（5.60 MiB）。更换输入后以命令输出为准。
 
 为了让 fixer 查询邻居的实心面，生成器将每个成功状态的全部部件合并，再对六个方向调用 `meshing.OpaqueBoundary`。同一命令还生成 `resources/geometry.nvsolid`，使用上述资源得到 **18,242 条、91,222 字节**。输出路径与 `-output` 同目录、同主文件名，扩展名改为 `.nvsolid`。资源包将它内嵌，供 fixer 默认加载。
 
 实心表由 `solidtable.Table` 的 `Encode(io.Writer)` 和 `solidtable.Decode(io.Reader)` 读写。NVST v1 使用小端布局：4 字节 magic `NVST`、uint32 版本、uint32 条目数，随后是按 hash 排序的 N 条 `(uint32 javaHash, uint8 solid)`，每条 5 字节。位域 bit0…bit5 对应 west/east/down/up/north/south；置位表示该面被不透明矩形完整覆盖。
 
-NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质参数保留 float32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v1 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
+NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质采样区域保留 float32，动画帧数与每帧 tick 数保存为 uint32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v2 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
 
 演示加载器通过 `go:embed` 读取资源，与工作目录无关；`sync.OnceValues` 缓存几何表解码结果。重新生成仓库表后，重新构建演示程序即可带入新表。演示命令的 `-tables` 指定外部文件时，同时读取 `<表路径>.java.json`。直接使用 mesher 的程序只需几何文件。
 
@@ -271,7 +271,9 @@ Java 状态全集
 
 箱子、床和告示牌等方块的完整外观由游戏代码绘制，JAR 未必包含完整模型。`neomega-assets` 的 `blockRenderers.json` 说明类别并补入社区静态模板，viewer 通过同一模型接口解析它们。图集 PNG 单独加载，不随每个网格重复传输。
 
-这里的静态指**给定完整状态后，外观保持不变**。箱子使用固定姿态，告示牌展示牌体，动画纹理使用固定帧。库不接收方块实体的实时外观或动画状态，也不计划增加这些能力。水和岩浆使用静止预览表面；子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
+这里的静态指**给定完整状态后，模型姿态固定**。箱子使用固定姿态，告示牌展示牌体。水、岩浆、火等纹理由浏览器按图集帧信息循环播放，几何保持不变。库不接收方块实体的实时外观或动画状态。子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
+
+动画纹理的全部帧在图集中竖排，Surface 的 Region 覆盖整条区域。生成器直接搬运图集的 Frames 和 FrameTime；后者以 tick 为单位，每 tick 为 1/20 秒。shader 先按时间选择一帧，再在这一帧内重复局部 UV，并按单帧尺寸内缩半像素以免采到相邻帧。静态纹理使用 Frames=1、FrameTime=0。
 
 状态全集暂不包含 `waterlogged`，这是涉及前景、背景方块表示的历史约定。当模型条件需要它时，建表补为 `false`。网页仅提供状态全集中已有的属性选项。`air` 等不可见类别返回空几何。`moving_piston` 缺少决定移动内容的数据，会返回无法确定静态外形的错误。
 
@@ -306,9 +308,9 @@ Java 状态全集
 
 | 开启的处理 | 输出四边形 | NVMS 字节数 |
 |---|---:|---:|
-| 均关闭 | 24,576 | 6,095,048 |
-| 仅面剔除 | 1,536 | 381,128 |
-| 面剔除与合并 | 6 | 1,688 |
+| 均关闭 | 24,576 | 6,095,076 |
+| 仅面剔除 | 1,536 | 381,156 |
+| 面剔除与合并 | 6 | 1,716 |
 
 这些是未压缩的文件大小。下面的命令在仓库根目录生成表中三份文件，并输出各阶段面数：
 
@@ -343,13 +345,19 @@ const atlas = await loadAtlas("/assets/atlas.png");
 const mesh = createMeshObject(data, atlas);
 scene.add(mesh.object);
 
+// 在宿主已有的每帧回调中，先更新时间，再绘制场景。
+function render(timestamp: number): void {
+  mesh.updateTime(timestamp / 1000);
+  renderer.render(scene, camera);
+}
+
 // 不再使用时释放本对象的缓冲与材质；共享图集由调用者管理。
 scene.remove(mesh.object);
 mesh.dispose();
 atlas.dispose();
 ```
 
-`createMeshObject` 也接受单方块 JSON 的数值数组。希望一并复用相机和视口时，使用 `MeshViewport`，再调用 `set(data)`；`BlockViewport` 保留为原有名称的兼容导出。
+`createMeshObject` 也接受单方块 JSON 的数值数组。宿主在 `requestAnimationFrame` 回调中调用 `updateTime(timestamp / 1000)`，让同一网格的材质共享秒数；`animated` 表示是否需要持续绘制。希望一并复用相机、视口和动画驱动时，使用 `MeshViewport`，再调用 `set(data)`；`BlockViewport` 保留为原有名称的兼容导出。视口只在存在动画材质或相机仍在移动时连续请求帧。
 
 ## 接口与扩展位置
 
@@ -412,7 +420,7 @@ npm --prefix demo/web test
 npm --prefix demo/web run build
 ```
 
-依赖命令只列出非标准库包，结果只有 `neomega-viewer/mesher` 及其三个子包。NVMS 测试使用旧编码器生成的固定样本逐字节比较输出，并检查 io 错误传播。
+依赖命令只列出非标准库包，结果只有 `neomega-viewer/mesher` 及其三个子包。NVMS 测试使用固定样本逐字节比较输出，并检查 io 错误传播。样本保留旧编码器的几何字节，材质 JSON 包含动画帧信息。
 
 默认测试使用内嵌表，覆盖完整状态集、全部演示场景、红石颜色和流体高度。加入真实资源后，测试会重新建表，逐项比较全部 ModelIDs、Shape 四边形、Boundary 和 FullHeight，并验证 NVGT 往返、入库文件与内嵌表一致。HTTP 测试同时检查图集、单方块响应、子区块上传和二进制输出：
 

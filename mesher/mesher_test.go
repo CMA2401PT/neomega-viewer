@@ -35,10 +35,12 @@ func checkNumericTables[B BlockID](t *testing.T, id B) {
 		Surface: material.Surface{
 			Texture: "example:纹理", Mode: material.Blend, Region: [4]float32{0.1, 0.2, 0.3, 0.4},
 			DoubleSided: true, Unlit: true, Opacity: 0.75,
+			Frames: 32, FrameTime: 3,
 		},
 		CullFace: geometry.Up,
 	}
 	full := quad
+	full.Surface.Frames = 16
 	for i := range full.Positions {
 		full.Positions[i][1] = 1
 	}
@@ -129,7 +131,7 @@ func TestSubchunkInputLength(t *testing.T) {
 func TestIndependentBinaryLayout(t *testing.T) {
 	// 手写格式样本不经过编码器，独立约束头部和 64 位键的布局。
 	fixture := []byte{
-		'N', 'V', 'G', 'T', 1, 0, 8, 0,
+		'N', 'V', 'G', 'T', 2, 0, 8, 0,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0,
 		8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0,

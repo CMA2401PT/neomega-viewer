@@ -65,6 +65,8 @@ func (library *Library) Surface(state blockstate.State, texture asset.ID, forceB
 		DoubleSided: mode != material.Opaque,
 		Unlit:       unlit,
 		Opacity:     library.policy.Opacity(state),
+		Frames:      entry.Frames,
+		FrameTime:   entry.FrameTime,
 	}, nil
 }
 

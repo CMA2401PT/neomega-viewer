@@ -17,4 +17,7 @@ type Surface struct {
 	DoubleSided bool       `json:"doubleSided"`
 	Unlit       bool       `json:"unlit"`
 	Opacity     float32    `json:"opacity"`
+	// 图集帧信息；静态纹理为 1 帧、0 tick。
+	Frames    int `json:"frames"`
+	FrameTime int `json:"frameTime"`
 }

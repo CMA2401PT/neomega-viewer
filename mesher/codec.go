@@ -15,7 +15,7 @@ import (
 )
 
 const tableMagic = "NVGT"
-const tableVersion = 1
+const tableVersion = 2
 
 type tableHeader struct {
 	Magic      [4]byte
@@ -109,6 +109,8 @@ func (tables *Tables[B]) Encode(w io.Writer) error {
 		writer.write(surface.DoubleSided)
 		writer.write(surface.Unlit)
 		writer.write(surface.Opacity)
+		writer.write(uint32(surface.Frames))
+		writer.write(uint32(surface.FrameTime))
 	}
 	writer.write(vec3s)
 	writer.write(vec2s)
@@ -183,6 +185,11 @@ func DecodeTables[B BlockID](r io.Reader) (*Tables[B], error) {
 		reader.read(&surface.DoubleSided)
 		reader.read(&surface.Unlit)
 		reader.read(&surface.Opacity)
+		var frames, frameTime uint32
+		reader.read(&frames)
+		reader.read(&frameTime)
+		surface.Frames = int(frames)
+		surface.FrameTime = int(frameTime)
 	}
 	vec3s := make([]geometry.Vec3, header.Vec3s)
 	vec2s := make([]geometry.Vec2, header.Vec2s)

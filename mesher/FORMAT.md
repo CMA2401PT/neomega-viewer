@@ -1,4 +1,4 @@
-# NVGT v1 几何表格式
+# NVGT v2 几何表格式
 
 NVGT 保存渲染需要的两张表：数值 block ID 到 ModelID 列表的索引，以及 ModelID 到 Shape 的几何。一个 Shape 是可共享的局部四边形集合，附带消面组和六方向边界覆盖。运行时查询这些表，再按邻居覆盖裁切、合并。文件扩展名为 `.nvtables`。
 
@@ -27,7 +27,7 @@ FullHeight 映射
 | 偏移 | 宽度 | 类型 | 含义 |
 |---:|---:|---|---|
 | 0 | 4 | bytes | ASCII `NVGT`（`4e 56 47 54`） |
-| 4 | 2 | u16 | 格式版本，当前为 1 |
+| 4 | 2 | u16 | 格式版本，当前为 2 |
 | 6 | 1 | u8 | block ID 字节宽度 W，4 或 8 |
 | 7 | 1 | u8 | 保留，编码器写 0 |
 | 8 | 4 | u32 | 索引条目数 I |
@@ -41,7 +41,7 @@ FullHeight 映射
 
 ## Surface 字典（M 条）
 
-材质定义如何采样图集以及透明度、双面和光照行为。四边形存其字典下标，多个 Shape 可以共用同一条材质。
+材质定义如何采样图集以及透明度、双面和光照行为。四边形存其字典下标，多个 Shape 可以共用同一条材质。动画纹理的 Region 覆盖竖排的全部帧；绘制端用帧数和每帧时长选择其中一帧。
 
 令 T 为 Texture 的 UTF-8 字节数，K 为 Mode 的 UTF-8 字节数：
 
@@ -55,8 +55,10 @@ FullHeight 映射
 | 24+T+K | 1 | u8 | DoubleSided：0=false，1=true |
 | 25+T+K | 1 | u8 | Unlit：0=false，1=true |
 | 26+T+K | 4 | f32 | Opacity |
+| 30+T+K | 4 | u32 | Frames：帧数，静态纹理为 1 |
+| 34+T+K | 4 | u32 | FrameTime：每帧 tick 数，每 tick 为 1/20 秒，静态纹理为 0 |
 
-一条 Surface 共 `30+T+K` 字节。字符串使用长度前缀直接编码，不是 JSON。
+一条 Surface 共 `38+T+K` 字节。字符串使用长度前缀直接编码，不是 JSON。Frames 和 FrameTime 直接来自图集元数据，并参与 Surface 去重。v1 缺少这两个字段，需要用配套图集重新生成 v2 表。
 
 ## 向量字典
 

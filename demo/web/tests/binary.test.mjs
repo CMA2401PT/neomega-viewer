@@ -15,6 +15,8 @@ function fixture() {
         doubleSided: false,
         unlit: false,
         opacity: 1,
+        frames: 1,
+        frameTime: 0,
       },
     ]),
   );
@@ -109,8 +111,28 @@ test("Three geometry retains the typed views and leaves the shared atlas owned b
   assert.equal(draw.geometry.getAttribute("position").array.buffer, input);
   assert.equal(draw.geometry.getAttribute("uv").array.buffer, input);
   assert.equal(draw.geometry.getIndex().array, data.batches[0].indices);
+  assert.equal(mesh.animated, false);
   mesh.dispose();
   assert.equal(disposed, 0);
   atlas.dispose();
   assert.equal(disposed, 1);
+});
+
+test("animated batches carry frame metadata and share the host time", () => {
+  const data = decodeMesh(fixture());
+  data.batches[0].surface.frames = 32;
+  data.batches[0].surface.frameTime = 2;
+  data.batches[0].surface.mode = "blend";
+  data.batches.push({ ...data.batches[0] });
+  const atlas = new Texture({ width: 16, height: 512 });
+  const mesh = createMeshObject(data, atlas);
+  assert.equal(mesh.animated, true);
+  mesh.updateTime(1.25);
+  for (const draw of mesh.object.children) {
+    assert.equal(draw.material.uniforms.frames.value, 32);
+    assert.equal(draw.material.uniforms.frameTime.value, 2);
+    assert.equal(draw.material.uniforms.time.value, 1.25);
+  }
+  mesh.dispose();
+  atlas.dispose();
 });

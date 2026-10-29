@@ -32,3 +32,20 @@ func TestAlphaHolesAndTranslucencyAreDifferent(t *testing.T) {
 		t.Fatal("glass lost its transparent surface semantics")
 	}
 }
+
+func TestAtlasFrameMetadata(t *testing.T) {
+	atlas := asset.Atlas{Width: 1, Height: 32, Textures: map[string]asset.AtlasTexture{
+		"static":   {SU: 1, SV: 1.0 / 32, Frames: 1},
+		"animated": {SU: 1, SV: 1, Frames: 32, FrameTime: 2},
+	}}
+	library := materials.New(atlas, image.NewNRGBA(image.Rect(0, 0, 1, 32)), resources.PreviewPolicy{})
+	for name, entry := range atlas.Textures {
+		surface, err := library.Surface(blockstate.State{Name: "minecraft:stone"}, asset.ID("minecraft:block/"+name), false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if surface.Frames != entry.Frames || surface.FrameTime != entry.FrameTime || surface.Region != [4]float32{0, 0, 1, float32(entry.SV)} {
+			t.Fatalf("atlas metadata changed: %+v", surface)
+		}
+	}
+}

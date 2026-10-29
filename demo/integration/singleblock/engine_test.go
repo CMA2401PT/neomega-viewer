@@ -85,6 +85,14 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 			if name == "glass" && block.Mesh.Quads[0].Surface.Mode != material.Blend {
 				t.Fatal("glass is not blended")
 			}
+			if name == "water" {
+				frameTimes := map[string]int{"minecraft:block/water_still": 2, "minecraft:block/water_flow": 1}
+				for _, quad := range block.Mesh.Quads {
+					if quad.Surface.Frames != 32 || quad.Surface.FrameTime != frameTimes[quad.Surface.Texture] {
+						t.Fatalf("water lost atlas animation metadata: %+v", quad.Surface)
+					}
+				}
+			}
 			if name == "oak_leaves" && block.Mesh.Quads[0].Surface.Mode != material.Cutout {
 				t.Fatal("leaf alpha holes became full transparency")
 			}

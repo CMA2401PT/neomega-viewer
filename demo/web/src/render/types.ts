@@ -7,6 +7,8 @@ export interface Surface {
   doubleSided: boolean;
   unlit: boolean;
   opacity: number;
+  frames: number;
+  frameTime: number;
 }
 export type FloatAttribute = number[] | Float32Array;
 export type IndexAttribute = number[] | Uint32Array;

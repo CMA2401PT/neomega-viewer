@@ -167,13 +167,16 @@ export class MeshViewport {
   private render(): void {
     if (this.scheduled || this.disposed) return;
     this.scheduled = true;
-    requestAnimationFrame(() => {
+    requestAnimationFrame((timestamp) => {
       this.scheduled = false;
       if (this.disposed) return;
       // update() returns true while damping is still easing the camera; keep
       // scheduling frames until it settles so motion stays smooth.
       if (this.controls.update()) this.render();
+      this.current?.updateTime(timestamp / 1000);
       this.renderer.render(this.scene, this.camera);
+      // 相机静止后，动画材质仍需持续重绘。
+      if (this.current?.animated) this.render();
     });
   }
 
