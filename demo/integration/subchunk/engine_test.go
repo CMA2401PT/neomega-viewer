@@ -1,6 +1,7 @@
 package subchunk_test
 
 import (
+	"math"
 	"slices"
 	"testing"
 
@@ -84,6 +85,51 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 			t.Logf("%s: %+v", scene.ID, result.Stats)
 		})
 	}
+}
+
+func TestWaterCubeExterior(t *testing.T) {
+	layer, err := demo.Build("water_cube")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := realEngine(t).MeshMultiLayerSubchunks(
+		splitlayer.New().SplitSubchunk(plain(layer).Data),
+		mesher.Options{Meshing: meshing.Options{DisableGreedy: true}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 只统计左侧水块，排除石头地板、中央水柱和右侧玻璃缸。
+	tops, sides, bottoms := 0, 0, 0
+	for _, quad := range result.Mesh.Quads {
+		if quad.Surface.Texture != "minecraft:block/water_still" && quad.Surface.Texture != "minecraft:block/water_flow" {
+			continue
+		}
+		inside := true
+		for _, p := range quad.Positions {
+			inside = inside && p[0] >= 2 && p[0] <= 6 && p[2] >= 2 && p[2] <= 6
+		}
+		if !inside {
+			continue
+		}
+		switch quad.Normal[1] {
+		case 1:
+			tops++
+			for _, p := range quad.Positions {
+				if math.Abs(p[1]-(5-1.0/9)) > 1e-9 {
+					t.Fatalf("water cube top Y = %g, want %g", p[1], 5-1.0/9)
+				}
+			}
+		case -1:
+			bottoms++
+		default:
+			sides++
+		}
+	}
+	if tops != 16 || sides != 64 || bottoms != 0 {
+		t.Fatalf("water cube exterior: top=%d sides=%d bottom=%d total=%d, want 16+64+0=80", tops, sides, bottoms, tops+sides+bottoms)
+	}
+	t.Logf("water_cube DisableGreedy: %+v; left cube: 16 tops + 64 sides = 80", result.Stats)
 }
 
 func TestTransparentInterfaces(t *testing.T) {
