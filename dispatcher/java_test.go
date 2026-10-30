@@ -6,7 +6,6 @@ import (
 
 	"neomega-blocks/ir"
 	"neomega-viewer/dispatcher"
-	"neomega-viewer/fixer"
 )
 
 func hash(state string) uint32 { return ir.IRBlock(state).Tidy().Hash() }
@@ -38,7 +37,7 @@ func TestWaterloggedActorAndEffect(t *testing.T) {
 	blocks[123] = hash("minecraft:enchanting_table []")
 	before := slices.Clone(blocks)
 	snbt := `{sherds:["minecraft:brick"]}`
-	got := dispatcher.NewJava(routes).Dispatch(blocks, map[[3]uint8]string{pos: snbt}, nil)
+	got := dispatcher.NewJava(routes).Dispatch(blocks, map[[3]uint8]string{pos: snbt})
 	if len(got.Layers) != 2 || got.Layers[0][index] != hash("minecraft:air []") || got.Layers[1][index] != hash(`minecraft:water ["level"="0"]`) {
 		t.Fatal("actor removal discarded water or retained body")
 	}
@@ -50,45 +49,5 @@ func TestWaterloggedActorAndEffect(t *testing.T) {
 	}
 	if !slices.Equal(blocks, before) {
 		t.Fatal("dispatcher changed caller input")
-	}
-}
-
-func TestFixerBeforeActorRemoval(t *testing.T) {
-	f, err := fixer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	blocks := airBlocks()
-	fence, actor := 4<<8|4<<4|4, 5<<8|4<<4|4
-	blocks[fence] = hash(`minecraft:oak_fence ["east"="false","north"="false","south"="false","west"="false"]`)
-	// 陶罐侧面不满格，栅栏本就不连接；用被认领为 actor 的石头显现移除顺序的差别。
-	for _, name := range []string{"decorated_pot", "stone"} {
-		state := "minecraft:stone []"
-		if name == "decorated_pot" {
-			state = `minecraft:decorated_pot ["cracked"="false","facing"="north"]`
-		}
-		blocks[actor] = hash(state)
-		called := false
-		got := dispatcher.NewJava(dispatcher.JavaRoutes(nil, []string{"minecraft:" + name})).Dispatch(
-			blocks,
-			nil,
-			func(layer []uint32) []uint32 {
-				called = true
-				if layer[actor] != blocks[actor] {
-					t.Fatal("fixer saw removed actor")
-				}
-				return f.Fix(layer, fixer.Neighbours{})
-			},
-		)
-		want := blocks[fence]
-		if name == "stone" {
-			want = hash(`minecraft:oak_fence ["east"="true","north"="false","south"="false","west"="false"]`)
-		}
-		if !called || got.Layers[0][fence] != want || got.Layers[0][actor] != hash("minecraft:air []") {
-			t.Fatalf("%s: fixer did not preserve original neighbor semantics", name)
-		}
-		if name == "stone" && f.Fix(got.Layers[0], fixer.Neighbours{})[fence] == want {
-			t.Fatal("example does not distinguish fixing after removal")
-		}
 	}
 }

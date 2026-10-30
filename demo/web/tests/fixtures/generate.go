@@ -16,7 +16,6 @@ import (
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/dispatcher"
-	"neomega-viewer/fixer"
 )
 
 func main() {
@@ -35,17 +34,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	stateFixer, err := fixer.New()
-	if err != nil {
-		log.Fatal(err)
-	}
 	scene, err := demo.BuildWithNBT("block_entities")
 	if err != nil {
 		log.Fatal(err)
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(scene.Blocks)
-	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas, stateFixer)
+	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas)
 	result, err := pipeline.Build(plain.Data, scene.NBT, dispatcher.Options{})
 	if err != nil {
 		log.Fatal(err)

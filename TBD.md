@@ -8,12 +8,12 @@ viewer 的输入是一个 16×16×16 的 LayerStorage：每格一个 Java block 
 
 1. **映射丢信息**：从其他表达空间（NEMC/Bedrock）映射到本表达空间时，转换器丢了信息。这是转换器的问题，不是渲染器的问题。
    按丢掉的信息还能不能找回来，再细分两类：
-   - **1a. 能从本表达空间补回来**：丢掉的属性可以由周围格子推出来。这是 `fixer` 的职责。
+   - **1a. 能从本表达空间补回来**：丢掉的属性可以由周围格子推出来。这是 neomega-converter 里 `fixer` 的职责。
    - **1b. 信息已彻底丢失**：周围格子推不出来，只能走别的路径，例如改转换器、或读取原存档的 NBT。还没有解决。
 2. **NBT 方块**：在 Java 里，关键信息本来就只存在 block entity NBT 里，本表达空间装不下。架构已初步具备。
 3. **代码驱动渲染的方块**：Java 用 block entity renderer（代码）画出来的部分，静态模型管线画不了。架构已初步具备。
 
-分清是哪一类，就知道该去哪里改：1a 改 `fixer`，1b 改转换器或另辟输入，2 加一个 block actor 处理器，3 加一个前端特效。
+分清是哪一类，就知道该去哪里改：1a 改 neomega-converter 的 `fixer`，1b 改 neomega-converter 的转换器，2 加一个 block actor 处理器，3 加一个前端特效。
 2、3 的通道设计见 `渲染分发方案.md`。
 
 Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标注。
@@ -26,25 +26,30 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 
 ### 1a. 能从本表达空间补回来（fixer 负责）
 
-判据：丢掉的属性完全由当前格周围的方块决定，看邻居就能重算。每项的规则和依据见 `fixer/FIXER.md`。
+判据：丢掉的属性完全由当前格周围的方块决定，看邻居就能重算。每项的规则和依据见 `neomega-converter/fixer/FIXER.md`。
 
 - [x] 栅栏、玻璃板、铁栏杆的连接方向：由四周是否有可连接的方块决定。
 - [x] fire 的附着方向：由四周和上方哪些面可燃决定。
 - [x] 楼梯拐角 `shape`：由前后两格的楼梯朝向决定。`special_nemc` 开启修复后，L 形台阶的拐角与 `special_java` 一致。
-- [x] 红石线连接：只做了保守版，原因见 `fixer/FIXER.md`。
+- [x] 红石线连接：只做了保守版，原因见 `neomega-converter/fixer/FIXER.md`。
 - [x] 门：上下两半各自丢掉一部分属性，正好互补。往返实测：下半格丢 `hinge`，上半格丢 `facing` 和 `open`，两半都丢
   `powered`。所以上半格的 `facing`、`open` 从下半格取，下半格的 `hinge` 从上半格取。`special_nemc` 开启修复后，
   四扇门八格与 `special_java` 一致。
 - [x] 含雪方块的 `snowy`：草方块、菌丝、灰化土的 `snowy` 往返后丢失（`REPORT.md` 共 3 个状态）。原版里它只表示
   正上方是否有雪，看上方一格就能补。
 
-### 1b. 信息已彻底丢失（未解决）
+### 1b. 信息已彻底丢失（进行中）
 
-判据：周围格子推不出来。要解决，只能让转换器带上这份信息，或者从原存档的 NBT 里读。
+判据：周围格子推不出来，信息只在源数据里。要解决，转换时就得读源数据：输入是 Bedrock 的方块 hash 加 NBT，输出是
+Java 的方块 hash 加 NBT，由 neomega-converter 负责。Bedrock 的含水是存档里的第二方块层，所以输入是两层 hash，输出
+一层带 `waterlogged` 的 Java hash，交给 viewer 的 splitlayer 再拆。
 
-- **床的颜色**：Bedrock 把颜色存在 NBT 里，转换后所有床都变成 `red_bed`。`special_nemc` 里的蓝、黄、绿床都变红了。
-- **花盆里的植物**：`potted_cactus`、`potted_poppy` 往返后都变成空的 `flower_pot`。Bedrock 很可能把花盆内容
-  放在 NBT 里，转换没带过来。
+从 Bedrock 存档实测确认的数据位置：
+
+- **床的颜色**：方块状态里只有 `minecraft:bed`，颜色在 block entity 的 `color` 字段（byte，染料编号，例如 8 浅灰、
+  11 蓝）。`special_nemc` 里的蓝、黄、绿床往返后都变成了 `red_bed`。
+- **花盆里的植物**：方块是 `minecraft:flower_pot`，植物在 block entity 的 `PlantBlock` 字段，存的是完整的方块 NBT，
+  例如 `{name: "minecraft:dandelion", states: {}}`。Java 要合成 `potted_dandelion` 这样的方块名。
 - **门、栅栏门、活板门的 `powered`**：表示是否被红石供能，要做红石信号传播才知道，邻居几何给不了（72 种方块、
   1943 个状态）。它不影响外观，渲染上可以接受丢失。
 

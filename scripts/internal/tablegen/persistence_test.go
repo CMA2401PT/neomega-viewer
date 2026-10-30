@@ -10,10 +10,9 @@ import (
 	"slices"
 	"testing"
 
+	"neomega-assets/solidtable"
 	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/mesher"
-	"neomega-viewer/resources"
-	"neomega-viewer/solidtable"
 )
 
 func TestPersistedTablesMatchBuild(t *testing.T) {
@@ -33,15 +32,13 @@ func TestPersistedTablesMatchBuild(t *testing.T) {
 	if err := want.Solid.Encode(&solidBytes); err != nil {
 		t.Fatal(err)
 	}
-	embeddedSolid, err := resources.Files.ReadFile("geometry.nvsolid")
-	if err != nil {
-		t.Fatal(err)
+	got, err := solidtable.Decode(bytes.NewReader(solidBytes.Bytes()))
+	if err != nil || !maps.Equal(got, want.Solid) {
+		t.Fatalf("roundtrip solid table differs: error=%v", err)
 	}
-	for name, data := range map[string][]byte{"roundtrip": solidBytes.Bytes(), "embedded": embeddedSolid} {
-		got, err := solidtable.Decode(bytes.NewReader(data))
-		if err != nil || !maps.Equal(got, want.Solid) {
-			t.Fatalf("%s solid table differs: error=%v", name, err)
-		}
+	embedded, err := solidtable.Bundled()
+	if err != nil || !maps.Equal(embedded, want.Solid) {
+		t.Fatalf("neomega-assets embedded solid table differs: error=%v", err)
 	}
 	if len(want.Solid) != len(want.Index) {
 		t.Fatal("solid table and geometry index contain different numbers of states")

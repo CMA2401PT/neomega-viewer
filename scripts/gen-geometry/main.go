@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"neomega-viewer/scripts/internal/tablegen"
 )
@@ -15,13 +13,14 @@ import (
 func main() {
 	assets := flag.String("assets", "../neomega-assets/dist/final", "matching resource bundle")
 	output := flag.String("output", "resources/geometry.nvtables", "output geometry table")
+	solid := flag.String("solid", "../neomega-assets/solidtable/geometry.nvsolid", "output solid table, embedded by neomega-assets/solidtable")
 	flag.Parse()
-	if err := generate(*assets, *output); err != nil {
+	if err := generate(*assets, *output, *solid); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func generate(assetsDir, output string) error {
+func generate(assetsDir, output, solidPath string) error {
 	builder, err := tablegen.Open(tablegen.OpenOptions{AssetsDir: assetsDir})
 	if err != nil {
 		return err
@@ -41,7 +40,6 @@ func generate(assetsDir, output string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	solidPath := strings.TrimSuffix(output, filepath.Ext(output)) + ".nvsolid"
 	solidFile, err := os.Create(solidPath)
 	if err != nil {
 		return err

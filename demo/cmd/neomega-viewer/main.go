@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"neomega-assets/asset"
+	"neomega-converter/fixer"
 	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/singleblock"
-	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 )
 
@@ -52,7 +52,7 @@ func main() {
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
 			Subchunks: mesher.NewMesher(parser.Tables()),
-			Frames:    httpapi.NewFramePipeline(parser.Tables(), atlas, stateFixer),
+			Frames:    httpapi.NewFramePipeline(parser.Tables(), atlas),
 			Fixer:     stateFixer,
 			Catalog:   entries,
 			AssetsDir: *assets,

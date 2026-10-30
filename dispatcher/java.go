@@ -48,10 +48,6 @@ func JavaRoutes(effectNames, actorNames []string) Routes {
 	return routes
 }
 
-type FixFunc func([]splitlayer.JavaBlockHashRSL) []splitlayer.JavaBlockHashRSL
-
-// 修复函数只接收拆层后的本体，邻域由组装处的闭包提供。
-
 type Inputs struct {
 	// 三条下游各自持有输入；actor 本体已从 Layers 中移除，水层仍保留。
 	Layers  [][]splitlayer.JavaBlockHashRSL
@@ -73,13 +69,9 @@ func NewJava(routes Routes) *Java {
 	}
 }
 
-func (d *Java) Dispatch(blocks []splitlayer.JavaBlockHash, nbt map[[3]uint8]string, fix FixFunc) Inputs {
-	// blocks 按 (x<<8)|(z<<4)|y 排列 4096 格；NBT 用格子坐标索引，fix 可为 nil。
-	// fixer 必须看到原本的邻居，本体移除只影响送入 mesher 的结果。
+func (d *Java) Dispatch(blocks []splitlayer.JavaBlockHash, nbt map[[3]uint8]string) Inputs {
+	// blocks 按 (x<<8)|(z<<4)|y 排列 4096 格，必须是完整的 Java 状态；NBT 用格子坐标索引。
 	result := Inputs{Layers: d.splitter.SplitSubchunk(blocks)}
-	if fix != nil {
-		result.Layers[0] = fix(result.Layers[0])
-	}
 	for index, hash := range blocks {
 		route, found := d.routes[hash]
 		if !found {

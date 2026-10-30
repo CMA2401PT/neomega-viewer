@@ -8,7 +8,7 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 两张表保存为固定小端的 NVGT 二进制。加载文件或 embed 是调用者的职责，mesher 构造时只接收 `*Tables[B]`。Java 演示加载器提供内嵌资源的便捷入口。
 
-转换得到的 Java 状态可能丢失连接方向、楼梯拐角或门的部分属性。调用者可以先用 `fixer` 根据邻居补回这些属性，再把返回的 hash 层交给 mesher。修复时用到的实心面信息在生成阶段计算，单独保存为 `.nvsolid` 文件。
+viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等其他表达转换过来的状态可能丢失连接方向、楼梯拐角或门的部分属性，修复属于转换一侧，由 [neomega-converter](../neomega-converter) 的 `fixer` 负责，调用者修好后再把 hash 层交给 viewer。
 
 含水台阶这类方块没有自己的模型，画面是方块本体叠上一格水。几何表只认单层的 hash（JavaBlockHashRSL），所以带 `waterlogged` 的输入要先经 `splitlayer` 拆成前景层和水层，再交给 mesher 的多层入口。
 
@@ -27,15 +27,13 @@ neomega-viewer/
 │  ├─ material/       # 表面材质，纹理名为 string
 │  └─ meshing/        # 剔面、裁切和合并
 ├─ blockstate/         # 上层 Java 身份与响应元数据
-├─ fixer/              # 可选的 Java 状态修复，按顺序累积各轮改动
 ├─ splitlayer/         # 把含水方块拆成前景层与水层
 ├─ dispatcher/         # 按路由表把方块分给 mesher、effector、block actor，并串起整条流程
 ├─ effector/           # 输出「某格放某特效」的消息
 ├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包（如 decoratedpot/）
 ├─ merger/             # NVFR 快照容器的编解码
 ├─ web/render/         # 前端渲染核心：NVMS/NVFR 解码、材质、视口、特效
-├─ solidtable/         # 六面实心位域及 NVST 编解码
-├─ resources/          # 入库的几何表、实心表、Java 元数据及 embed
+├─ resources/          # 入库的几何表、Java 元数据及 embed
 ├─ demo/
 │  ├─ blockmesh/       # Java 演示加载器，组合表与身份
 │  ├─ singleblock/     # 调用 mesher 并补 Java 响应元数据
@@ -139,31 +137,6 @@ go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]'
 go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
 ```
 
-## 修复转换丢失的连接状态
-
-当 NEMC→Java 转换把连接、拐角或门的属性丢成默认值时，先用 `neomega-viewer/fixer` 修复输入。`New()` 加载内嵌实心表，多个实例共享只读解码结果。`Fix` 返回独立切片，输入层和邻居层都保持原值。状态查询与改写通过 `neomega-blocks/presets/java/v1` 完成，fixer 不依赖几何运行时。
-
-当前层和每个非 nil 邻居层都应包含 4096 个 Java hash，索引与 mesher 相同。`Neighbours` 按 west/east/down/up/north/south 排列，即 -X/+X/-Y/+Y/-Z/+Z；nil 按该侧为空处理。hash 应对应 preset 中的完整状态；无法还原的 hash 保持原值。下面接续前面的 `blocks` 和 `renderer`，增加修复步骤：
-
-```go
-repair, err := fixer.New()
-if err != nil {
-    return err
-}
-clean := repair.Fix(blocks, fixer.Neighbours{})
-result, err := renderer.MeshSubchunk(clean, mesher.Options{})
-if err != nil {
-    return err
-}
-if err := result.Mesh.Marshal(writer); err != nil {
-    return err
-}
-```
-
-修复规则分为内部 pass（一次完整的修复步骤）。每轮读取上一轮的结果，返回“位置 → 新 hash”，由 Fixer 统一应用后交给下一轮。邻居层始终使用调用者传入的快照。增加规则时实现 `pass` 函数并在 `New` 的列表中登记即可。当前内置栅栏/玻璃板/铁栏杆连接、fire 连接、楼梯拐角、门的上下两半互补、含雪方块、红石线六个 pass。
-
-哪些方块需要修及其依据、每个 pass 的具体规则、以及门的通电状态等尚未修复的部分和原因，见 [fixer/FIXER.md](fixer/FIXER.md)。
-
 ## 渲染含水方块：拆层后多层渲染
 
 几何表的键是不带 `waterlogged` 的单层状态，称为 JavaBlockHashRSL（Render Single Layer），一个 RSL 对应一组模型。完整 Java 状态的 hash 可能带 `waterlogged="true"`，它需要台阶和水两组模型，不能直接查表。
@@ -175,12 +148,11 @@ if err := result.Mesh.Marshal(writer); err != nil {
 
 拆层只能做一次：kelp 的 RSL 再拆一次会多出一层水。输入若已丢了 `waterlogged`，拆层也无从得知它原本含水。
 
-`Mesher.MeshMultiLayerSubchunks(layerBlocks [][]B, options)` 接收多层，每层 4096 个 RSL，索引与 `MeshSubchunk` 相同。`MeshSubchunk` 就是只有一层的特例。fixer 修的是方块本体的连接，只需作用于第 0 层。接续前面的 `blocks`、`repair` 和 `renderer`：
+`Mesher.MeshMultiLayerSubchunks(layerBlocks [][]B, options)` 接收多层，每层 4096 个 RSL，索引与 `MeshSubchunk` 相同。`MeshSubchunk` 就是只有一层的特例。接续前面的 `blocks` 和 `renderer`：
 
 ```go
 splitter := splitlayer.New()
 layers := splitter.SplitSubchunk(blocks)
-layers[0] = repair.Fix(layers[0], fixer.Neighbours{})
 result, err := renderer.MeshMultiLayerSubchunks(layers, mesher.Options{})
 if err != nil {
     return err
@@ -200,7 +172,7 @@ if err := result.Mesh.Marshal(writer); err != nil {
 - **effector 段**：特效消息，例如 `{pos: [3,1,3], effect: "enchanting_table_book"}`。本体照常在 mesher 段里，特效由前端程序驱动。
 - **block actor 段**：按 NBT 生成的几何，坐标已是子区块局部坐标。这些格子不再进 mesher。
 
-组装时指定启用哪些特效和 block actor 处理器，路由表据此生成，所以没启用的方块会留在 mesher 里，不会凭空消失。下面的组装与演示服务 `demo/httpapi/frame.go` 相同，`tables` 来自几何表，`surfaces` 把贴图名查成图集里的材质，`repair` 是前面的 fixer：
+组装时指定启用哪些特效和 block actor 处理器，路由表据此生成，所以没启用的方块会留在 mesher 里，不会凭空消失。下面的组装与演示服务 `demo/httpapi/frame.go` 相同，`tables` 来自几何表，`surfaces` 把贴图名查成图集里的材质：
 
 ```go
 pipeline := dispatcher.NewPipeline(
@@ -209,11 +181,8 @@ pipeline := dispatcher.NewPipeline(
         "minecraft:enchanting_table": "enchanting_table_book",
     }),
     blockactor.New(decoratedpot.New(tables, surfaces)),
-    func(blocks []uint32) []uint32 {
-        return repair.Fix(blocks, fixer.Neighbours{})
-    },
 )
-result, err := pipeline.Build(blocks, nbt, dispatcher.Options{Fix: true})
+result, err := pipeline.Build(blocks, nbt, dispatcher.Options{})
 if err != nil {
     return err
 }
@@ -222,7 +191,7 @@ if err := result.Frame.Marshal(writer); err != nil {
 }
 ```
 
-`Build` 内部依次拆层、修复、分流：交给 block actor 的格子只移除本体层，水层仍交给 mesher，fixer 看到的是移除前的原状态。NVFR 的字节布局见 [merger/FORMAT.md](merger/FORMAT.md)。
+`Build` 内部先拆层、再分流：交给 block actor 的格子只移除本体层，水层仍交给 mesher。NVFR 的字节布局见 [merger/FORMAT.md](merger/FORMAT.md)。
 
 新增一种 NBT 方块时，在 `blockactor/` 下新建一个子包，实现 `blockactor.Handler`（报出认领的方块名，按 `Input` 里的状态和 SNBT 返回格内几何），再在组装处传给 `blockactor.New`。陶罐的 NBT 结构与朝向见 [blockactor/decoratedpot/NBT.md](blockactor/decoratedpot/NBT.md)。
 
@@ -234,14 +203,12 @@ if err := result.Frame.Marshal(writer); err != nil {
 go run ./scripts/gen-geometry \
   -assets ../neomega-assets/dist/final \
   -output resources/geometry.nvtables
-wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json resources/geometry.nvsolid
+wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json ../neomega-assets/solidtable/geometry.nvsolid
 ```
 
 `resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,796,205 字节（5.53 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,874,562 字节（5.60 MiB）。更换输入后以命令输出为准。
 
-为了让 fixer 查询邻居的实心面，生成器将每个成功状态的全部部件合并，再对六个方向调用 `meshing.OpaqueBoundary`。同一命令还生成 `resources/geometry.nvsolid`，使用上述资源得到 **18,242 条、91,222 字节**。输出路径与 `-output` 同目录、同主文件名，扩展名改为 `.nvsolid`。资源包将它内嵌，供 fixer 默认加载。
-
-实心表由 `solidtable.Table` 的 `Encode(io.Writer)` 和 `solidtable.Decode(io.Reader)` 读写。NVST v1 使用小端布局：4 字节 magic `NVST`、uint32 版本、uint32 条目数，随后是按 hash 排序的 N 条 `(uint32 javaHash, uint8 solid)`，每条 5 字节。位域 bit0…bit5 对应 west/east/down/up/north/south；置位表示该面被不透明矩形完整覆盖。
+同一命令还生成实心表：每个成功状态的全部部件合并后，对六个方向调用 `meshing.OpaqueBoundary`，记下哪几面被不透明矩形完整覆盖。neomega-converter 的 fixer 靠它判断邻居的某一面是否实心。实心表由几何算出，所以在这里生成；但它属于共享资源，写到 `../neomega-assets/solidtable/geometry.nvsolid`（`-solid` 可改），由 `neomega-assets/solidtable` 内嵌并提供编解码。使用上述资源得到 **18,242 条、91,222 字节**。重新生成后，assets 与 converter 都需重新构建。
 
 NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质采样区域保留 float32，动画帧数与每帧 tick 数保存为 uint32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v2 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
 
@@ -357,7 +324,7 @@ Java 状态全集
 
 栅栏、玻璃板和墙的连接方向已经包含在输入 ID 对应的 Java 状态中。调用者写入确定的连接状态，渲染时直接查表取得已经选好的部件。
 
-若输入的栅栏、玻璃板或铁栏杆连接属性不可靠，调用者可以先经过前述 fixer，再把修复结果交给渲染入口。
+若输入的栅栏、玻璃板或铁栏杆连接属性不可靠，调用者应先用 neomega-converter 的 fixer 修复，再把结果交给渲染入口。
 
 多层输入时，各层的几何按位置并进同一格，再一起剔面与合并，所以含水台阶的水和旁边的普通水之间照常剔掉内面。同一格内，前层的不透明面会裁掉后层与它共面的部分；前层是树叶这类满格镂空方块时，后层改为缩进到 0.99 倍并跳过剔面，避免共面闪烁。上方格任意一层有同类流体，本格流体就切换成满高度。
 
@@ -458,7 +425,7 @@ viewport.setFrame(decodeFrame(await response.arrayBuffer()));
 | 要解决的问题 | 模块 |
 |---|---|
 | ID 对应哪个 Java 状态？ | `blockstate` |
-| 如何修复转换丢失的连接、拐角与门状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
+| 如何修复转换丢失的连接、拐角与门状态？ | neomega-converter 的 `fixer`；实心表在 `neomega-assets/solidtable` |
 | 含水方块怎样拆成多层？ | `splitlayer` |
 | 带 NBT 的方块、特效怎样分流和打包？ | `dispatcher`、`effector`、`blockactor`、`merger` |
 | 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |

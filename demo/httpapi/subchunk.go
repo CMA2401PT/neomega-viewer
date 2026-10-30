@@ -8,9 +8,9 @@ import (
 
 	"celler/layer_storage"
 
+	"neomega-converter/fixer"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
 	"neomega-viewer/splitlayer"

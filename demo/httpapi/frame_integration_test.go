@@ -9,13 +9,13 @@ import (
 
 	"celler/layer_storage"
 	"neomega-assets/asset"
+	"neomega-converter/fixer"
 	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/dispatcher"
-	"neomega-viewer/fixer"
 	"neomega-viewer/merger"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
@@ -37,7 +37,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 			U: float64(i) / 16, V: .5, SU: 1.0 / 16, SV: 1.0 / 16, Frames: 1,
 		}
 	}
-	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas, stateFixer)
+	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
 		Subchunks: mesher.NewMesher(parser.Tables()),
@@ -80,11 +80,14 @@ func TestBlockEntitiesFrame(t *testing.T) {
 				t.Fatalf("pot at %v has %d quads", actor.Pos, len(actor.Mesh.Quads))
 			}
 		}
-		options := dispatcher.Options{Fix: strings.Contains(query, "fix=1")}
+		options, input := dispatcher.Options{}, plain.Data
+		if strings.Contains(query, "fix=1") {
+			input = stateFixer.Fix(input, fixer.Neighbours{})
+		}
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		direct, err := pipeline.Build(plain.Data, scene.NBT, options)
+		direct, err := pipeline.Build(input, scene.NBT, options)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,11 +108,14 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		if response.Code != 200 || response.Header().Get("Content-Type") != merger.ContentType {
 			t.Fatalf("upload frame response: %d %s", response.Code, response.Body.String())
 		}
-		options := dispatcher.Options{Fix: strings.Contains(query, "fix=1")}
+		options, input := dispatcher.Options{}, plain.Data
+		if strings.Contains(query, "fix=1") {
+			input = stateFixer.Fix(input, fixer.Neighbours{})
+		}
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		direct, err := pipeline.Build(plain.Data, nil, options)
+		direct, err := pipeline.Build(input, nil, options)
 		if err != nil {
 			t.Fatal(err)
 		}

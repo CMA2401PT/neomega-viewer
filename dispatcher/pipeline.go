@@ -14,12 +14,10 @@ type Pipeline struct {
 	mesher  *mesher.Mesher[uint32]
 	effects *effector.Effector
 	actors  *blockactor.Dispatcher
-	fix     FixFunc
 }
 
 type Options struct {
 	Mesh mesher.Options
-	Fix  bool
 }
 
 type Result struct {
@@ -31,7 +29,6 @@ func NewPipeline(
 	tables *mesher.Tables[uint32],
 	effects *effector.Effector,
 	actors *blockactor.Dispatcher,
-	fix FixFunc,
 ) *Pipeline {
 	// 从已启用的处理器生成路由，认领范围和实际可调用的处理器保持一致。
 	return &Pipeline{
@@ -39,17 +36,12 @@ func NewPipeline(
 		mesher:  mesher.NewMesher(tables),
 		effects: effects,
 		actors:  actors,
-		fix:     fix,
 	}
 }
 
 func (p *Pipeline) Build(blocks []splitlayer.JavaBlockHash, nbt map[[3]uint8]string, options Options) (*Result, error) {
 	// 输入为 4096 个完整 Java hash，Frame 可直接 Marshal 成 merger 容器。
-	var fix FixFunc
-	if options.Fix {
-		fix = p.fix
-	}
-	inputs := p.java.Dispatch(blocks, nbt, fix)
+	inputs := p.java.Dispatch(blocks, nbt)
 	static, err := p.mesher.MeshMultiLayerSubchunks(inputs.Layers, options.Mesh)
 	if err != nil {
 		return nil, err

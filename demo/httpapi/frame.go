@@ -9,19 +9,19 @@ import (
 
 	"celler/layer_storage"
 	"neomega-assets/asset"
+	"neomega-converter/fixer"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/blockactor/decoratedpot"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/dispatcher"
 	"neomega-viewer/effector"
-	"neomega-viewer/fixer"
 	"neomega-viewer/merger"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/material"
 )
 
-func NewFramePipeline(tables *mesher.Tables[uint32], atlas asset.Atlas, stateFixer *fixer.Fixer) *dispatcher.Pipeline {
+func NewFramePipeline(tables *mesher.Tables[uint32], atlas asset.Atlas) *dispatcher.Pipeline {
 	// demo 在此启用具体方块，框架只认识处理器接口；资源加载仍由应用入口负责。
 	surfaces := func(texture string) (material.Surface, error) {
 		name := strings.TrimPrefix(texture, "minecraft:")
@@ -49,13 +49,10 @@ func NewFramePipeline(tables *mesher.Tables[uint32], atlas asset.Atlas, stateFix
 			"minecraft:enchanting_table": "enchanting_table_book",
 		}),
 		blockactor.New(decoratedpot.New(tables, surfaces)),
-		func(blocks []uint32) []uint32 {
-			return stateFixer.Fix(blocks, fixer.Neighbours{})
-		},
 	)
 }
 
-func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline) {
+func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fixer.Fixer) {
 	send := func(w http.ResponseWriter, r *http.Request, blocks *layer_storage.Palette[uint32], nbt map[[3]uint8]string) {
 		options, err := sectionOptions(r)
 		if err != nil {
@@ -64,10 +61,12 @@ func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline) {
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(blocks)
-		result, err := pipeline.Build(plain.Data, nbt, dispatcher.Options{
-			Mesh: options,
-			Fix:  r.URL.Query().Get("fix") == "1",
-		})
+		data := plain.Data
+		if r.URL.Query().Get("fix") == "1" {
+			// 修复属于转换一侧：演示把 NEMC 往返得到的状态先修成完整 Java 状态，再交给渲染。
+			data = stateFixer.Fix(data, fixer.Neighbours{})
+		}
+		result, err := pipeline.Build(data, nbt, dispatcher.Options{Mesh: options})
 		if err != nil {
 			writeError(w, 422, err)
 			return

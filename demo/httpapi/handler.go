@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"neomega-converter/fixer"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/dispatcher"
-	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 )
 
@@ -45,7 +45,7 @@ func New(options Options) http.Handler {
 		addSubchunks(mux, options.Subchunks, options.Fixer, options.Engine.Version())
 	}
 	if options.Frames != nil {
-		addFrames(mux, options.Frames)
+		addFrames(mux, options.Frames, options.Fixer)
 	}
 	mux.HandleFunc("GET /api/blocks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, struct {

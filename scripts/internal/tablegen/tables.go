@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"neomega-assets/asset"
+	"neomega-assets/solidtable"
 	"neomega-viewer/blockstate"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
@@ -14,7 +15,6 @@ import (
 	"neomega-viewer/scripts/internal/bake"
 	"neomega-viewer/scripts/internal/model"
 	"neomega-viewer/scripts/internal/resources"
-	"neomega-viewer/solidtable"
 )
 
 type shapeBucket struct {
