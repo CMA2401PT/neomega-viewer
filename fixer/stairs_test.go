@@ -21,10 +21,10 @@ func TestStairCorners(t *testing.T) {
 				shape, otherFacing string
 				distance           int
 			}{
-				{shape: "outer_right", otherFacing: orientation.left, distance: 1},
-				{shape: "outer_left", otherFacing: orientation.right, distance: 1},
-				{shape: "inner_right", otherFacing: orientation.left, distance: -1},
-				{shape: "inner_left", otherFacing: orientation.right, distance: -1},
+				{shape: "outer_left", otherFacing: orientation.left, distance: 1},
+				{shape: "outer_right", otherFacing: orientation.right, distance: 1},
+				{shape: "inner_left", otherFacing: orientation.left, distance: -1},
+				{shape: "inner_right", otherFacing: orientation.right, distance: -1},
 			} {
 				t.Run(orientation.facing+"/"+half+"/"+corner.shape, func(t *testing.T) {
 					chunk := airChunk(t)
@@ -58,8 +58,8 @@ func TestStairShapeSelection(t *testing.T) {
 		{name: "isolated", want: "straight"},
 		{name: "different halves", frontFacing: "west", frontHalf: "top", backFacing: "east", backHalf: "top", want: "straight"},
 		{name: "parallel", frontFacing: "north", frontHalf: "bottom", backFacing: "south", backHalf: "bottom", want: "straight"},
-		{name: "outer takes priority", frontFacing: "west", frontHalf: "bottom", backFacing: "east", backHalf: "bottom", want: "outer_right"},
-		{name: "skip front with different half", frontFacing: "west", frontHalf: "top", backFacing: "east", backHalf: "bottom", want: "inner_left"},
+		{name: "outer takes priority", frontFacing: "west", frontHalf: "bottom", backFacing: "east", backHalf: "bottom", want: "outer_left"},
+		{name: "skip front with different half", frontFacing: "west", frontHalf: "top", backFacing: "east", backHalf: "bottom", want: "inner_right"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			chunk := airChunk(t)

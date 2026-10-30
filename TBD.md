@@ -29,8 +29,7 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 
 - [x] 栅栏、玻璃板、铁栏杆的连接方向：由四周是否有可连接的方块决定。
 - [x] fire 的附着方向：由四周和上方哪些面可燃决定。
-- [x] 楼梯拐角 `shape`：由前后两格的楼梯朝向决定。fixer 的 left/right 映射可能整体反了，`special_java`
-  的 L 形台阶按原版规则摆成 `outer_left`，fixer 会算出 `outer_right`，待目视确认后修正。
+- [x] 楼梯拐角 `shape`：由前后两格的楼梯朝向决定。`special_nemc` 开启修复后，L 形台阶的拐角与 `special_java` 一致。
 - [x] 红石线连接：只做了保守版，原因见 `fixer/FIXER.md`。
 - [x] 门：上下两半各自丢掉一部分属性，正好互补。往返实测：下半格丢 `hinge`，上半格丢 `facing` 和 `open`，两半都丢
   `powered`。所以上半格的 `facing`、`open` 从下半格取，下半格的 `hinge` 从上半格取。`special_nemc` 开启修复后，

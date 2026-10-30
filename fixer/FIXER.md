@@ -76,9 +76,11 @@ down/up/north/south 六个方向该面是否被不透明矩形完整覆盖。栅
 inner/outer 和 left/right。坐标约定 X 向东、Z 向南，左右的推导见源码注释。
 
 > 注意：实现只做了「前后有楼梯就拐角」的主干规则，**没有**实现 vanilla 里「如果拐角的
-> 另一侧也有楼梯顶住，就退回 straight」的抵消检查（源码里标了 TODO）。手性（inner↔outer、
-> left↔right 的左右）自洽且过了单测，但在没有 Minecraft 的环境里无法确定性验证，需要在
-> 浏览器里目视确认拐角方向对不对。
+> 另一侧也有楼梯顶住，就退回 straight」的抵消检查（源码里标了 TODO）。
+
+left/right 的约定与原版相同：邻居楼梯的朝向是本块朝向左转 90° 时取 `*_left`。例如朝北的楼梯，前方是朝西的楼梯时
+取 `outer_left`，高出的一角落在西北，与两侧楼梯相接。`special_java` 的 L 形台阶按这个规则摆放，`special_nemc`
+开启修复后应与它一致。
 
 ### doors.go — 门的上下半格互补属性
 

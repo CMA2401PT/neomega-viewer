@@ -41,14 +41,14 @@ func (f *Fixer) stairShapes(subchunk []JavaBlockHash, neighbours Neighbours) map
 
 func stairShape(subchunk []JavaBlockHash, neighbours Neighbours, index int, facing stairDirection, half any) string {
 	// X 向东、Z 向南；面对 F=(x,z)，左为 (z,-x)，右为 (-z,x)。
-	// 例如 north 左为 west，east 左为 north；按约定左转映射 *_right。
+	// 例如 north 左为 west，east 左为 north；与原版一致，邻居朝向为左转方向时取 *_left。
 	// TODO: 尚未实现 vanilla 的额外邻居抵消检查，仅计算前后楼梯的主干规则。
 	for _, candidate := range [...]struct {
 		side        int
 		left, right string
 	}{
-		{side: facing.side, left: "outer_right", right: "outer_left"},
-		{side: facing.side ^ 1, left: "inner_right", right: "inner_left"},
+		{side: facing.side, left: "outer_left", right: "outer_right"},
+		{side: facing.side ^ 1, left: "inner_left", right: "inner_right"},
 	} {
 		hash, exists := neighbour(subchunk, neighbours, index, candidate.side)
 		if !exists {
