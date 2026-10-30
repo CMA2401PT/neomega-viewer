@@ -220,7 +220,7 @@ NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、
 
 浏览器需要几何表与生成它时使用的图集。`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的模型与图集。
 
-默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，`blockstate` 将它们建成共享身份表，供单方块响应与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。
+默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，`blockstate` 将它们建成共享身份表，供单方块响应与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。属性按字典序排列，才能让同一状态的不同书写顺序得到相同的 hash。规范化由调用者安排，便于复用已规范化的状态，避免每次哈希重复排序。
 
 需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
 
@@ -229,6 +229,7 @@ new-world/
 ├─ neomega-assets/
 ├─ neomega-blocks/
 ├─ neomega-celler/
+├─ neomega-converter/
 ├─ neomega-nbt/
 └─ neomega-viewer/
 ```
@@ -239,7 +240,9 @@ new-world/
 go run ./cmd/neomega-assets build -version 1.21.4
 ```
 
-生成器读取交付目录 `neomega-assets/dist/final`，并沿用资源版本与 Java 状态版本的检查。服务只从 assets 目录提供配套图集和来源声明。资源更新方式见 [neomega-assets README](../neomega-assets/README.md)。
+生成器读取交付目录 `neomega-assets/dist/final`，并检查资源版本与 Java 状态版本是否一致。服务从 `-assets` 指定的目录读取 `blocksAtlases.json`，并提供配套的 `blocksAtlasLatest.png` 和 `THIRD_PARTY_NOTICES.txt`。
+
+子区块页面启动时还会加载附魔书贴图。服务从相对于 `-assets` 的 `../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png` 读取它。使用默认资源目录时，这个文件位于 `neomega-assets/dist/works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`。部署资源时需要一并保留这条相对路径。资源更新方式见 [neomega-assets README](../neomega-assets/README.md)。
 
 然后在 `neomega-viewer` 中构建网页并启动服务：
 
@@ -290,7 +293,9 @@ Java 状态全集
 局部四边形 → 去重为 Shape，写入两张表
 ```
 
-`variant` 按状态选择候选模型；`multipart` 分别判断条件，同时叠加命中的部件。建表使用 `SelectFirst` 固定取首项。父模型按模型 ID 缓存，共用几何的状态引用同一个 Shape。
+`variant` 按状态选择候选模型。`multipart` 是按条件叠加多个模型部件的规则。建表使用 `SelectFirst` 固定取首项，并收集所有命中的部件。完整 Java 状态已经包含连接方向、半砖位置等选择条件，所以模型选择在生成时就能确定。运行时按状态 hash 直接取模型列表，属性变化则使用另一个状态的 hash。
+
+索引表与几何表分开，是为了让不同状态共享相同部件。例如栅栏柱出现在多种连接组合里，若每个状态都保存完整几何，就会重复存储同一根柱子。两张表让各状态只保存部件编号，共用的 Shape 保存一份。父模型解析也按模型 ID 缓存。
 
 运行时两个入口都先调用 `Tables.ModelIDs(javaHash)`，再用 `Tables.Shape(modelID)` 取得部件。单方块将部件四边形复制到独立网格，子区块保留共享引用供邻域剔面使用。网页属性选项来自 catalog 的同名状态分组；每次修改属性都会选择另一个完整状态，并把它的 hash 发给 `/api/block`。
 
@@ -328,7 +333,7 @@ Java 状态全集
 
 多层输入时，各层的几何按位置并进同一格，再一起剔面与合并，所以含水台阶的水和旁边的普通水之间照常剔掉内面。同一格内，前层的不透明面会裁掉后层与它共面的部分；前层是树叶这类满格镂空方块时，后层改为缩进到 0.99 倍并跳过剔面，避免共面闪烁。上方格任意一层有同类流体，本格流体就切换成满高度。
 
-`prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。确定形状后，`meshing` 分两步减少面：
+`prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。剔面和合并放在同一个渲染入口内，因为剔面需要直接访问邻居几何，并可能留下半个面这样的局部片段。这样可以直接把剩余面片交给合并步骤，省去另行传递一份裁剪结果。确定形状后，`meshing` 分两步减少面：
 
 1. **剔除实际被盖住的部分。** 模型声明可剔除、且位于格子边界的轴对齐矩形，才会检查邻居。邻居覆盖直接来自 Shape.Boundary，无须逐格重扫几何。完整不透明面可以遮挡；多个部件的矩形并集也可以形成覆盖。石头紧贴底半砖时，只裁掉下半部分，并为保留部分重新插值 UV。斜面和非矩形保守保留。
 2. **合并相邻矩形。** 在同一平面上按实际矩形边界建立二维网格，贪婪地扩展连续区域。只有材质、颜色、法线、光照方向、UV 变化率和重复相位兼容时才合并。合并后的 UV 延伸到多个纹理周期，保持每个方块原有的纹理尺寸。
@@ -418,7 +423,7 @@ viewport.setFrame(decodeFrame(await response.arrayBuffer()));
 
 ## 接口与扩展位置
 
-仓库分发的 Java 几何表使用 `blockstate.Java()` 枚举的完整状态集。Java 演示的输入 hash 必须对应其中的状态。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在生成侧通过 `tablegen.OpenOptions.Policy` 提供 `materials.Policy`，并重新生成表。演示加载器的 `OpenOptions` 选择 `TablesPath`。
+仓库分发的 Java 几何表使用 `blockstate.Java()` 枚举的状态集，其状态不带 `waterlogged`。单方块身份查询与几何接口接受该状态集中的 hash。子区块入口接受完整 Java hash，包括含水变体，经拆层得到 RSL 后查询几何表。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在生成侧通过 `tablegen.OpenOptions.Policy` 提供 `materials.Policy`，并重新生成表。演示加载器的 `OpenOptions` 选择 `TablesPath`。
 
 其他变化可以按职责定位：
 

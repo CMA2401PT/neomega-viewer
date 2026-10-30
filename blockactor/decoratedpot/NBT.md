@@ -13,7 +13,7 @@
 
 ## block entity NBT
 
-下面是 Java 1.21.4 存档里一个陶罐的原样数据（`DataVersion 5023`），坐标字段已省略：
+下面的陶罐样本来自 Java 26.3 存档（`DataVersion 5023`），坐标字段已省略：
 
 ```text
 {
@@ -32,22 +32,22 @@
 
 渲染只用 `sherds`：
 
-- 它是一个 compound，键为 `back`、`left`、`right`、`front`，每个值是一个物品，处理器取物品的 `id`。
+- 它是一个 compound（按键组织的 NBT 复合结构），键为 `back`、`left`、`right`、`front`，每个值是一个物品，处理器取物品的 `id`。
 - `id` 为 `minecraft:<名字>_pottery_sherd` 时，这一面贴 `entity/decorated_pot/<名字>_pottery_pattern`。
 - 其他情况贴素面 `entity/decorated_pot/decorated_pot_side`，包括 `minecraft:brick`、缺少某个键、整个 `sherds` 缺失，以及 SNBT 无法解析。
 
 `item` 是陶罐里装的物品，`keepPacked` 和 `components` 是通用的 block entity 字段，都和外观无关。
 
-### 早期格式
+### 列表形式
 
-1.20 起的早期存档把 `sherds` 存成四个物品 id 的列表，顺序是 back、left、right、front：
+处理器也接受四个物品 id 的 `sherds` 列表，顺序是 back、left、right、front：
 
 ```text
 {sherds: ["minecraft:angler_pottery_sherd", "minecraft:archer_pottery_sherd",
           "minecraft:blade_pottery_sherd", "minecraft:arms_up_pottery_sherd"]}
 ```
 
-处理器两种格式都认，结果相同。哪个版本改成了 compound，Minecraft Wiki 没有记载，我们手里也只有 1.21.4 的存档样本。
+处理器同时接受 compound 和列表形式，结果相同。上面的 26.3 样本只能确认该版本使用 compound。Java 1.21.4 是否已使用 compound 尚未核实。
 
 ## 四个面朝向哪里
 
@@ -55,10 +55,10 @@
 
 | `facing` | front | back | left | right |
 |---|---|---|---|---|
-| `north` | 南 | 北 | 东 | 西 |
-| `east` | 西 | 东 | 南 | 北 |
-| `south` | 北 | 南 | 西 | 东 |
-| `west` | 东 | 西 | 北 | 南 |
+| `north` | 南 | 北 | 西 | 东 |
+| `east` | 西 | 东 | 北 | 南 |
+| `south` | 北 | 南 | 东 | 西 |
+| `west` | 东 | 西 | 南 | 北 |
 
 依据是两方面：
 
