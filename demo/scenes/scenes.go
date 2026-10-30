@@ -27,6 +27,7 @@ var scenes = []Scene{
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
 	{"fluids", "流体与纹理动画", "石池中的水与岩浆展示纹理动画；中央叠放同类流体，检查下层的满高度衔接。"},
+	{"waterlogged", "含水方块", "观察含水模型与水的共面裁切、植物和树叶的重叠，以及水池与叠水的跨层衔接。"},
 	{"slabs", "半砖交界", "半砖与完整方块相邻，只剔除实际覆盖的部分。"},
 	{"foliage", "树叶与交叉平面", "透过镂空贴图观察后面的石头，并检查草和火焰的平面外形。"},
 	{"checker", "交错材质", "内部面仍会剔除，纹理不同的外表面保持分开。"},
@@ -154,6 +155,22 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		// 中央再叠一层，让下方同类流体达到满高度。
 		box(3, 2, 6, 6, 3, 9, `minecraft:water ["level"="0"]`)
 		box(10, 2, 6, 13, 3, 9, `minecraft:lava ["level"="0"]`)
+	case "waterlogged":
+		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
+		put(3, 1, 3, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`)
+		put(7, 1, 3, `minecraft:oak_stairs ["facing"="south","half"="bottom","shape"="straight","waterlogged"="true"]`)
+		put(11, 1, 3, `minecraft:oak_slab ["type"="top","waterlogged"="true"]`)
+		put(3, 1, 7, `minecraft:oak_fence ["waterlogged"="true"]`)
+		put(7, 1, 7, `minecraft:oak_leaves ["waterlogged"="true"]`)
+		put(11, 1, 7, "minecraft:seagrass []")
+		put(13, 1, 7, "minecraft:kelp_plant []")
+		put(13, 2, 7, `minecraft:kelp ["age"="0"]`)
+		// 池内水与台阶水处于不同层，池壁与底面保持真实遮挡关系。
+		box(2, 1, 10, 8, 2, 15, "minecraft:stone []")
+		box(3, 1, 11, 7, 2, 14, `minecraft:water ["level"="0"]`)
+		put(5, 1, 12, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`)
+		put(11, 1, 12, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`)
+		put(11, 2, 12, `minecraft:water ["level"="0"]`)
 	case "foliage":
 		box(2, 0, 2, 14, 1, 14, "minecraft:stone []")
 		box(3, 1, 4, 13, 4, 7, `minecraft:oak_leaves ["distance"="7","persistent"="false"]`)

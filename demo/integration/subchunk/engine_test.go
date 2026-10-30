@@ -12,6 +12,7 @@ import (
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/meshing"
+	"neomega-viewer/splitlayer"
 )
 
 func realEngine(t *testing.T) *mesher.Mesher[uint32] {
@@ -54,9 +55,7 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 			t.Fatalf("solid culling changed: %+v", result.Stats)
 		}
 	}
-	// 诊断场景故意摆入渲染器处理不了的方块(如含水半砖没有几何),用来暴露问题,
-	// 不受「每格都要能渲染」约束;只校验能构造且不改调用方数据。
-	diagnostic := map[string]bool{"special_java": true, "special_nemc": true}
+	layerSplitter := splitlayer.New()
 	for _, scene := range demo.List() {
 		t.Run(scene.ID, func(t *testing.T) {
 			layer, err := demo.Build(scene.ID)
@@ -66,12 +65,8 @@ func TestFilledDefaultAndEveryDemo(t *testing.T) {
 			before := subchunk.EncodeIDs(layer)
 			input := plain(layer)
 			original := slices.Clone(input.Data)
-			result, err := engine.MeshSubchunk(input.Data, mesher.Options{})
+			result, err := engine.MeshMultiLayerSubchunks(layerSplitter.SplitSubchunk(input.Data), mesher.Options{})
 			if err != nil {
-				if diagnostic[scene.ID] {
-					t.Logf("%s: 诊断场景含无几何方块，渲染报错符合预期: %v", scene.ID, err)
-					return
-				}
 				t.Fatal(err)
 			}
 			if string(before) != string(subchunk.EncodeIDs(layer)) {

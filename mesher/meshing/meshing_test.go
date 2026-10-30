@@ -417,10 +417,10 @@ func TestSharedMultipartBoundaryCoverage(t *testing.T) {
 	right := face(0, -1, 0, [2]float64{.4, 0}, [2]float64{1, 1}, opaque)
 	left.CullFace, right.CullFace = geometry.NoCullFace, geometry.NoCullFace
 	var cells Cells
-	cells[0] = Cell{&geometry.Shape{Quads: []geometry.Quad{source}}}
+	cells[0] = Cell{{Shape: &geometry.Shape{Quads: []geometry.Quad{source}}}}
 	for _, quad := range []geometry.Quad{left, right} {
 		mesh := geometry.Mesh{Quads: []geometry.Quad{quad}}
-		cells[256] = append(cells[256], &geometry.Shape{Quads: mesh.Quads, Boundary: BoundaryCoverage(mesh)})
+		cells[256] = append(cells[256], LayerShape{Shape: &geometry.Shape{Quads: mesh.Quads, Boundary: BoundaryCoverage(mesh)}})
 	}
 	_, stats := Build(&cells, Options{DisableGreedy: true})
 	if stats.RemovedQuads != 1 || stats.ClippedQuads != 0 {
@@ -436,15 +436,64 @@ func TestSharedMultipartBoundaryCoverage(t *testing.T) {
 
 type fixtureCells [Size * Size * Size]fixtureCell
 
+func TestSameCellLayerOcclusion(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		surface    material.Surface
+		frontLayer int
+		frontSign  int
+		width      float64
+		removed    int
+		clipped    int
+	}{
+		{"opaque", opaque, 0, 1, 1, 1, 0},
+		{"partial opaque", opaque, 0, 1, .5, 0, 1},
+		{"cutout", material.Surface{Mode: material.Cutout, Opacity: 1}, 0, 1, 1, 0, 0},
+		{"blend", material.Surface{Mode: material.Blend, Opacity: 1}, 0, 1, 1, 0, 0},
+		{"partial opacity", material.Surface{Mode: material.Opaque, Opacity: .5}, 0, 1, 1, 0, 0},
+		{"same layer", opaque, 1, 1, 1, 0, 0},
+		{"later layer", opaque, 2, 1, 1, 0, 0},
+		{"opposite direction", opaque, 0, -1, 1, 0, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// 内部平面与 NoCullFace 保证同格裁切不依赖格子边界或邻格许可。
+			front := face(0, test.frontSign, .5, [2]float64{}, [2]float64{test.width, 1}, test.surface)
+			back := face(0, 1, .5, [2]float64{}, [2]float64{1, 1}, material.Surface{Mode: material.Blend, Opacity: .7})
+			front.CullFace, back.CullFace = geometry.NoCullFace, geometry.NoCullFace
+			var cells Cells
+			cells[0] = Cell{
+				{Shape: &geometry.Shape{Quads: []geometry.Quad{front}}, Layer: test.frontLayer},
+				{Shape: &geometry.Shape{Quads: []geometry.Quad{back}}, Layer: 1},
+			}
+			_, stats := Build(&cells, Options{DisableGreedy: true})
+			if stats.RemovedQuads != test.removed || stats.ClippedQuads != test.clipped || stats.VisibleQuads != 2-test.removed {
+				t.Fatalf("layer coverage: %+v", stats)
+			}
+		})
+	}
+}
+
+func TestGreedyMergesAcrossLayers(t *testing.T) {
+	quad := face(1, 1, 1, [2]float64{}, [2]float64{1, 1}, opaque)
+	shape := &geometry.Shape{Quads: []geometry.Quad{quad}}
+	var cells Cells
+	cells[0] = Cell{{Shape: shape, Layer: 0}}
+	cells[256] = Cell{{Shape: shape, Layer: 1}}
+	_, stats := Build(&cells, Options{})
+	if stats.InputQuads != 2 || stats.VisibleQuads != 2 || stats.OutputQuads != 1 {
+		t.Fatalf("layers did not share a greedy pass: %+v", stats)
+	}
+}
+
 func buildFixture(fixtures *fixtureCells, options Options) (geometry.Mesh, Stats) {
 	var cells Cells
 	for i, fixture := range fixtures {
 		if len(fixture.Mesh.Quads) != 0 {
-			cells[i] = Cell{&geometry.Shape{
+			cells[i] = Cell{{Shape: &geometry.Shape{
 				Quads:     fixture.Mesh.Quads,
 				Boundary:  BoundaryCoverage(fixture.Mesh),
 				CullGroup: fixture.CullGroup,
-			}}
+			}}}
 		}
 	}
 	return Build(&cells, options)

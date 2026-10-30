@@ -20,6 +20,7 @@ import (
 	"neomega-viewer/fixer"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
+	"neomega-viewer/splitlayer"
 )
 
 func TestSubchunkBinaryTransport(t *testing.T) {
@@ -167,6 +168,69 @@ func TestDirtyFenceRepairTransport(t *testing.T) {
 		}
 		if !bytes.Equal(response.Body.Bytes(), check.want) {
 			t.Fatalf("%s: geometry differs from expected fence connections", check.path)
+		}
+	}
+}
+
+func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateFixer, err := fixer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := mesher.NewMesher(parser.Tables())
+	handler := httpapi.New(httpapi.Options{
+		Engine:    singleblock.New(parser),
+		Subchunks: engine,
+		Fixer:     stateFixer,
+	})
+	layer, err := demo.Build("waterlogged")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload := subchunk.EncodeIDs(layer)
+	var plain layer_storage.Plain[uint32]
+	plain.CopyFrom(layer)
+	wetSlab := ir.IRBlock(`minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`).Tidy().Hash()
+	if plain.Get(celler.ToSubChunkBlockPos(3, 1, 3)) != wetSlab {
+		t.Fatal("scene default properties discarded waterlogged")
+	}
+	for _, fix := range []string{"0", "1"} {
+		layers := splitlayer.New().SplitSubchunk(plain.Data)
+		if fix == "1" {
+			layers[0] = stateFixer.Fix(layers[0], fixer.Neighbours{})
+		}
+		want, err := engine.MeshMultiLayerSubchunks(layers, mesher.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var mesh bytes.Buffer
+		if err := want.Mesh.Marshal(&mesh); err != nil {
+			t.Fatal(err)
+		}
+		for _, request := range []struct {
+			method string
+			path   string
+			body   []byte
+		}{
+			{http.MethodGet, "/api/subchunks/waterlogged/mesh?fix=" + fix, nil},
+			{http.MethodPost, "/api/subchunk?fix=" + fix, upload},
+		} {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(request.method, request.path, bytes.NewReader(request.body)))
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s: %d %s", request.path, response.Code, response.Body.String())
+			}
+			if !bytes.Equal(response.Body.Bytes(), mesh.Bytes()) {
+				t.Fatalf("%s: split layers or foreground repair changed", request.path)
+			}
+			var stats mesher.Stats
+			if err := json.Unmarshal([]byte(response.Header().Get("X-Neomega-Mesh-Stats")), &stats); err != nil || stats != want.Stats {
+				t.Fatalf("%s: stats=%+v, error=%v", request.path, stats, err)
+			}
 		}
 	}
 }
