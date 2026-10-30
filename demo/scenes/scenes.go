@@ -173,6 +173,15 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(11, 1, 7, "minecraft:seagrass []")
 		put(13, 1, 7, "minecraft:kelp_plant []")
 		put(13, 2, 7, `minecraft:kelp ["age"="0"]`)
+		// 单侧相接，便于对照有水和无水的那几面。
+		put(3, 1, 4, `minecraft:water ["level"="0"]`)
+		put(7, 1, 4, `minecraft:water ["level"="0"]`)
+		put(11, 1, 4, `minecraft:water ["level"="0"]`)
+		put(3, 1, 8, `minecraft:water ["level"="0"]`)
+		put(7, 1, 8, `minecraft:water ["level"="0"]`)
+		put(11, 1, 8, `minecraft:water ["level"="0"]`)
+		put(13, 1, 8, `minecraft:water ["level"="0"]`)
+		put(13, 2, 8, `minecraft:water ["level"="0"]`)
 		// 池内水与台阶水处于不同层，池壁与底面保持真实遮挡关系。
 		box(2, 1, 10, 8, 2, 15, "minecraft:stone []")
 		box(3, 1, 11, 7, 2, 14, `minecraft:water ["level"="0"]`)
