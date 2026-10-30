@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"neomega-assets/asset"
 	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
@@ -37,11 +39,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	atlasData, err := os.ReadFile(filepath.Join(*assets, "blocksAtlases.json"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	var atlas asset.Atlas
+	if err := json.Unmarshal(atlasData, &atlas); err != nil {
+		log.Fatal(err)
+	}
 	server := &http.Server{
 		Addr: *listen,
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
 			Subchunks: mesher.NewMesher(parser.Tables()),
+			Frames:    httpapi.NewFramePipeline(parser.Tables(), atlas, stateFixer),
 			Fixer:     stateFixer,
 			Catalog:   entries,
 			AssetsDir: *assets,

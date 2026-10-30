@@ -20,6 +20,7 @@ type Scene struct {
 }
 
 var scenes = []Scene{
+	{"block_entities", "方块实体", "附魔台的书特效与四朝向纹样陶罐，并列对照无 NBT 和含水陶罐。"},
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
 	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、覆雪草方块、含水半砖、海晶灯、L 形台阶与多朝向的门、床、花卉及花盆植物，使用原始 Java 状态。"},
@@ -37,7 +38,21 @@ var scenes = []Scene{
 
 func List() []Scene { return append([]Scene(nil), scenes...) }
 
+type Subchunk struct {
+	Blocks *layer_storage.Palette[uint32]
+	NBT    map[[3]uint8]string
+}
+
 func Build(name string) (*layer_storage.Palette[uint32], error) {
+	// 旧入口只取方块层，保持网格预览和下载的输入形式。
+	scene, err := BuildWithNBT(name)
+	if err != nil {
+		return nil, err
+	}
+	return scene.Blocks, nil
+}
+
+func BuildWithNBT(name string) (*Subchunk, error) {
 	valid := false
 	for _, scene := range scenes {
 		valid = valid || scene.ID == name
@@ -140,7 +155,19 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(9, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="outer_left"]`)
 		put(8, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="straight"]`)
 	}
+	nbt := map[[3]uint8]string{}
 	switch name {
+	case "block_entities":
+		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
+		put(3, 1, 3, "minecraft:enchanting_table []")
+		for i, facing := range []string{"north", "east", "south", "west"} {
+			x := 3 + i*3
+			put(x, 1, 7, fmt.Sprintf(`minecraft:decorated_pot ["facing"="%s"]`, facing))
+			nbt[[3]uint8{uint8(x), 1, 7}] = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:arms_up_pottery_sherd","minecraft:prize_pottery_sherd"]}`
+		}
+		put(5, 1, 11, `minecraft:decorated_pot ["facing"="north","cracked"="true"]`)
+		put(10, 1, 11, `minecraft:decorated_pot ["facing"="east","waterlogged"="true"]`)
+		nbt[[3]uint8{10, 1, 11}] = `{sherds:{back:{id:"minecraft:angler_pottery_sherd"},left:{id:"minecraft:archer_pottery_sherd"},right:{id:"minecraft:arms_up_pottery_sherd"},front:{id:"minecraft:prize_pottery_sherd"}}}`
 	case "empty":
 	case "special_java":
 		specialLayout(blockID)
@@ -264,5 +291,5 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(7, 1, 9, `minecraft:red_bed ["part"="foot","facing"="north","occupied"="false"]`)
 		put(7, 1, 8, `minecraft:red_bed ["part"="head","facing"="north","occupied"="false"]`)
 	}
-	return layer, nil
+	return &Subchunk{Blocks: layer, NBT: nbt}, nil
 }
