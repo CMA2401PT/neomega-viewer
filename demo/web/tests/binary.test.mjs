@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { decodeMesh } from "../src/render/binary.ts";
-import { createMeshObject } from "../src/render/mesh.ts";
+import { decodeMesh } from "../../../web/render/binary.ts";
+import { createMeshObject } from "../../../web/render/mesh.ts";
 import { Texture } from "three";
 
 function fixture() {

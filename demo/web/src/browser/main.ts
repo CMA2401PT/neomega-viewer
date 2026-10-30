@@ -1,4 +1,4 @@
-import { AxisGizmo, BlockViewport, loadAtlas } from "../render";
+import { AxisGizmo, BlockViewport, loadAtlas } from "@neomega/viewer/render";
 import {
   getJSON,
   type Binding,

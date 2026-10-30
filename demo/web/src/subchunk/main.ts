@@ -1,4 +1,4 @@
-import { AxisGizmo, MeshViewport, decodeMesh, loadAtlas } from "../render";
+import { AxisGizmo, MeshViewport, decodeMesh, loadAtlas } from "@neomega/viewer/render";
 import { getJSON } from "../browser/api";
 import "../browser/style.css";
 import "./style.css";

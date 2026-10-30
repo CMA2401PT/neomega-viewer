@@ -1,4 +1,4 @@
-import type { MeshData } from "../render";
+import type { MeshData } from "@neomega/viewer/render";
 export interface State {
   name: string;
   properties: Record<string, string>;
