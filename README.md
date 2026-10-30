@@ -10,6 +10,8 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 转换得到的 Java 状态可能丢失连接方向。调用者可以先用 `fixer` 根据邻居修复栅栏、玻璃板和铁栏杆，再把返回的 hash 层交给 mesher。修复时用到的实心面信息在生成阶段计算，单独保存为 `.nvsolid` 文件。
 
+含水台阶这类方块没有自己的模型，画面是方块本体叠上一格水。几何表只认单层的 hash（JavaBlockHashRSL），所以带 `waterlogged` 的输入要先经 `splitlayer` 拆成前景层和水层，再交给 mesher 的多层入口。
+
 浏览器和 HTTP 服务不是库的一部分，是演示它怎么用的示例。
 
 ## 目录职责
@@ -24,6 +26,7 @@ neomega-viewer/
 │  └─ meshing/        # 剔面、裁切和合并
 ├─ blockstate/         # 上层 Java 身份与响应元数据
 ├─ fixer/              # 可选的 Java 状态修复，按顺序累积各轮改动
+├─ splitlayer/         # 把含水方块拆成前景层与水层
 ├─ solidtable/         # 六面实心位域及 NVST 编解码
 ├─ resources/          # 入库的几何表、实心表、Java 元数据及 embed
 ├─ demo/
@@ -153,6 +156,34 @@ if err := result.Mesh.Marshal(writer); err != nil {
 修复规则分为内部 pass（一次完整的修复步骤）。每轮读取上一轮的结果，返回“位置 → 新 hash”，由 Fixer 统一应用后交给下一轮。邻居层始终使用调用者传入的快照。增加规则时实现 `pass` 函数并在 `New` 的列表中登记即可。当前内置栅栏/玻璃板/铁栏杆连接、fire 连接、楼梯拐角、红石线四个 pass。
 
 哪些方块需要修及其依据、每个 pass 的具体规则、以及门的通电状态等尚未修复的部分和原因，见 [fixer/FIXER.md](fixer/FIXER.md)。
+
+## 渲染含水方块：拆层后多层渲染
+
+几何表的键是不带 `waterlogged` 的单层状态，称为 JavaBlockHashRSL（Render Single Layer），一个 RSL 对应一组模型。完整 Java 状态的 hash 可能带 `waterlogged="true"`，它需要台阶和水两组模型，不能直接查表。
+
+`neomega-viewer/splitlayer` 负责把完整状态拆成若干 RSL，下标即层号。规则只看状态：有 `waterlogged` 就去掉它放进第 0 层，值为 `true` 时第 1 层放一格 `minecraft:water ["level"="0"]`；seagrass、tall_seagrass、kelp、kelp_plant 总在水里，同样补一层水；其余方块原样放第 0 层。
+
+- `splitlayer.SplitBlock(block ir.IRBlock)` 直接按规则拆一个状态，适合手里是 blockstate 的调用方。
+- `splitlayer.New()` 把规则对 `presets/java/v1` 的状态全集展开成 hash 表，多个实例共享。`SplitHash(hash)` 拆一个 hash；`SplitSubchunk(blocks)` 拆 4096 格，返回 `[][]uint32`，层数取各格最大值，空位填空气。表里没有的 hash 原样当作 RSL。
+
+拆层只能做一次：kelp 的 RSL 再拆一次会多出一层水。输入若已丢了 `waterlogged`，拆层也无从得知它原本含水。
+
+`Mesher.MeshMultiLayerSubchunks(layerBlocks [][]B, options)` 接收多层，每层 4096 个 RSL，索引与 `MeshSubchunk` 相同。`MeshSubchunk` 就是只有一层的特例。fixer 修的是方块本体的连接，只需作用于第 0 层。接续前面的 `blocks`、`repair` 和 `renderer`：
+
+```go
+splitter := splitlayer.New()
+layers := splitter.SplitSubchunk(blocks)
+layers[0] = repair.Fix(layers[0], fixer.Neighbours{})
+result, err := renderer.MeshMultiLayerSubchunks(layers, mesher.Options{})
+if err != nil {
+    return err
+}
+if err := result.Mesh.Marshal(writer); err != nil {
+    return err
+}
+```
+
+演示服务的子区块接口就按这个顺序处理输入。为什么按位置合并各层、层序在同格里意味着什么、镂空前景下水面为何缩进，见 [多层渲染方案.md](多层渲染方案.md)。
 
 ## 生成和更新几何表
 
@@ -287,6 +318,8 @@ Java 状态全集
 
 若输入的栅栏、玻璃板或铁栏杆连接属性不可靠，调用者可以先经过前述 fixer，再把修复结果交给渲染入口。
 
+多层输入时，各层的几何按位置并进同一格，再一起剔面与合并，所以含水台阶的水和旁边的普通水之间照常剔掉内面。同一格内，前层的不透明面会裁掉后层与它共面的部分；前层是树叶这类满格镂空方块时，后层改为缩进到 0.99 倍并跳过剔面，避免共面闪烁。上方格任意一层有同类流体，本格流体就切换成满高度。
+
 `prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。确定形状后，`meshing` 分两步减少面：
 
 1. **剔除实际被盖住的部分。** 模型声明可剔除、且位于格子边界的轴对齐矩形，才会检查邻居。邻居覆盖直接来自 Shape.Boundary，无须逐格重扫几何。完整不透明面可以遮挡；多个部件的矩形并集也可以形成覆盖。石头紧贴底半砖时，只裁掉下半部分，并为保留部分重新插值 UV。斜面和非矩形保守保留。
@@ -369,11 +402,12 @@ atlas.dispose();
 |---|---|
 | ID 对应哪个 Java 状态？ | `blockstate` |
 | 如何修复转换丢失的连接状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
+| 含水方块怎样拆成多层？ | `splitlayer` |
 | 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
 | 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
 | 怎样编码与查询共享几何？ | `mesher.Tables[B]`；演示文件加载在 `demo/blockmesh` |
 | 如何构建单个方块？ | `Mesher.MeshBlock`；Java 响应薄壳在 `demo/singleblock` |
-| 如何从 4096 个 ID 准备邻域几何？ | `Mesher.MeshSubchunk` |
+| 如何从 4096 个 ID 准备邻域几何？ | `Mesher.MeshSubchunk`；多层用 `Mesher.MeshMultiLayerSubchunks` |
 | 哪些表面被覆盖，哪些矩形能够合并？ | `mesher/meshing` |
 | 几何怎样编码和解码？ | `mesher/geometry` 的 `Mesh.Marshal`、`UnmarshalMesh`；前端 `demo/web/src/render/binary.ts` |
 | 哪些代码只是演示？ | `demo/` 下的服务、目录、场景和网页 |
