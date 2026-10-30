@@ -86,7 +86,7 @@ func layerScale(cell Cell, layer int) float64 {
 	if nearest < 0 {
 		return 1
 	}
-	return math.Pow(.995, float64(layer-nearest))
+	return math.Pow(.99, float64(layer-nearest))
 }
 
 func unitCube(shape *geometry.Shape) bool {

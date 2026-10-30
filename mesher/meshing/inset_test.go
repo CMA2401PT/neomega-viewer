@@ -19,8 +19,8 @@ func TestBackgroundInset(t *testing.T) {
 		removed  int
 		clipped  int
 	}{
-		{"cutout cube", 1, cutout, geometry.Vec3{.0025, .0025, .0025}, geometry.Vec3{.9975, .9975, .9975}, 6, 0, 0},
-		{"opaque cube", 1, opaque, geometry.Vec3{.0025, .0025, .0025}, geometry.Vec3{.9975, .9975, .9975}, 6, 0, 0},
+		{"cutout cube", 1, cutout, geometry.Vec3{.005, .005, .005}, geometry.Vec3{.995, .995, .995}, 6, 0, 0},
+		{"opaque cube", 1, opaque, geometry.Vec3{.005, .005, .005}, geometry.Vec3{.995, .995, .995}, 6, 0, 0},
 		{"cutout slab", .5, cutout, geometry.Vec3{}, geometry.Vec3{1, 1, 1}, 6, 0, 0},
 		{"opaque slab", .5, opaque, geometry.Vec3{0, .5, 0}, geometry.Vec3{1, 1, 1}, 5, 1, 4},
 	} {
@@ -88,9 +88,9 @@ func TestInsetUsesNearestFullCubeLayer(t *testing.T) {
 		var cells Cells
 		cells[0] = Cell{{Shape: back, Layer: 3}, {Shape: front, Layer: 0}, {Shape: middle, Layer: 2}}
 		mesh, _ := Build(&cells, Options{DisableGreedy: true})
-		lo, hi := .0074625625, .9925374375
+		lo, hi := .0148505, .9851495
 		if middleHeight == 1 {
-			lo, hi = .0025, .9975
+			lo, hi = .005, .995
 		}
 		assertBackgroundBounds(t, mesh, geometry.Vec3{lo, lo, lo}, geometry.Vec3{hi, hi, hi}, 6)
 	}
