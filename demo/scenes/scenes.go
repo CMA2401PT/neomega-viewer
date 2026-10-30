@@ -22,8 +22,8 @@ type Scene struct {
 var scenes = []Scene{
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
-	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、两格植物、含雪与含水方块、海晶灯、床、门和花盆植物，使用原始 Java 状态。"},
-	{"special_nemc", "特殊方块 · NEMC 往返", "与 Java 原版使用相同布局，方块状态经过 Java→NEMC→Java 往返，用于对照转换差异。"},
+	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、覆雪草方块、含水半砖、海晶灯与多朝向的门、床、花卉及花盆植物，使用原始 Java 状态。"},
+	{"special_nemc", "特殊方块 · NEMC 往返", "与 Java 原版共用覆雪方块、多朝向门床及花卉布局，状态经过 Java→NEMC→Java 往返，用于对照转换差异。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
 	{"fluids", "流体与纹理动画", "石池中的水与岩浆展示纹理动画；中央叠放同类流体，检查下层的满高度衔接。"},
@@ -105,6 +105,8 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(11, 1, 3, `minecraft:sunflower ["half"="lower"]`)
 		put(11, 2, 3, `minecraft:sunflower ["half"="upper"]`)
 		put(3, 1, 7, `minecraft:grass_block ["snowy"="true"]`)
+		// 含雪草方块的灰度顶面在原版中由上方雪层遮住。
+		put(3, 2, 7, `minecraft:snow ["layers"="1"]`)
 		put(7, 1, 7, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`)
 		put(11, 1, 7, "minecraft:sea_lantern []")
 		// north 朝向负 Z，床头在床尾北侧；门与植物均保留上下两格。
@@ -113,6 +115,26 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(7, 1, 11, `minecraft:oak_door ["half"="lower","facing"="north","hinge"="left","open"="false","powered"="false"]`)
 		put(7, 2, 11, `minecraft:oak_door ["half"="upper","facing"="north","hinge"="left","open"="false","powered"="false"]`)
 		put(11, 1, 11, "minecraft:potted_cactus []")
+		put(13, 1, 2, `minecraft:spruce_door ["half"="lower","facing"="east","hinge"="right","open"="false","powered"="false"]`)
+		put(13, 2, 2, `minecraft:spruce_door ["half"="upper","facing"="east","hinge"="right","open"="false","powered"="false"]`)
+		put(13, 1, 5, `minecraft:birch_door ["half"="lower","facing"="south","hinge"="left","open"="true","powered"="false"]`)
+		put(13, 2, 5, `minecraft:birch_door ["half"="upper","facing"="south","hinge"="left","open"="true","powered"="false"]`)
+		put(13, 1, 8, `minecraft:iron_door ["half"="lower","facing"="west","hinge"="right","open"="false","powered"="false"]`)
+		put(13, 2, 8, `minecraft:iron_door ["half"="upper","facing"="west","hinge"="right","open"="false","powered"="false"]`)
+		// 床头沿 facing 方向相邻，横向与纵向摆放便于对照朝向转换。
+		put(2, 1, 13, `minecraft:blue_bed ["part"="foot","facing"="east","occupied"="false"]`)
+		put(3, 1, 13, `minecraft:blue_bed ["part"="head","facing"="east","occupied"="false"]`)
+		put(5, 1, 13, `minecraft:yellow_bed ["part"="foot","facing"="south","occupied"="false"]`)
+		put(5, 1, 14, `minecraft:yellow_bed ["part"="head","facing"="south","occupied"="false"]`)
+		put(9, 1, 13, `minecraft:lime_bed ["part"="foot","facing"="west","occupied"="false"]`)
+		put(8, 1, 13, `minecraft:lime_bed ["part"="head","facing"="west","occupied"="false"]`)
+		put(3, 1, 5, `minecraft:pink_petals ["facing"="north","flower_amount"="1"]`)
+		put(5, 1, 5, `minecraft:pink_petals ["facing"="east","flower_amount"="2"]`)
+		put(7, 1, 5, `minecraft:pink_petals ["facing"="south","flower_amount"="3"]`)
+		put(9, 1, 5, `minecraft:pink_petals ["facing"="west","flower_amount"="4"]`)
+		put(13, 1, 11, `minecraft:rose_bush ["half"="lower"]`)
+		put(13, 2, 11, `minecraft:rose_bush ["half"="upper"]`)
+		put(13, 1, 14, "minecraft:poppy []")
 	}
 	switch name {
 	case "empty":
