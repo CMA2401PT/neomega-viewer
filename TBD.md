@@ -38,18 +38,15 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 - [x] 含雪方块的 `snowy`：草方块、菌丝、灰化土的 `snowy` 往返后丢失（`REPORT.md` 共 3 个状态）。原版里它只表示
   正上方是否有雪，看上方一格就能补。
 
-### 1b. 信息已彻底丢失（进行中）
+### 1b. 只能从源数据补回（Bedrock 转换器负责）
 
-判据：周围格子推不出来，信息只在源数据里。要解决，转换时就得读源数据：输入是 Bedrock 的方块 hash 加 NBT，输出是
-Java 的方块 hash 加 NBT，由 neomega-converter 负责。Bedrock 的含水是存档里的第二方块层，所以输入是两层 hash，输出
-一层带 `waterlogged` 的 Java hash，交给 viewer 的 splitlayer 再拆。
+判据：周围格子推不出来，信息只在源数据里。`neomega-converter/bedrock` 读取两层 Bedrock 方块状态和 block entity SNBT，
+输出 Java 方块 hash 和 Java SNBT。读存档时用 `Convert`，已有规范化 Bedrock hash 时用 `ConvertHashes`。
+转换结果先交给 fixer 修复邻接状态，再交给 viewer；含水状态由 splitlayer 拆成方块层和水层。
 
-从 Bedrock 存档实测确认的数据位置：
-
-- **床的颜色**：方块状态里只有 `minecraft:bed`，颜色在 block entity 的 `color` 字段（byte，染料编号，例如 8 浅灰、
-  11 蓝）。`special_nemc` 里的蓝、黄、绿床往返后都变成了 `red_bed`。
-- **花盆里的植物**：方块是 `minecraft:flower_pot`，植物在 block entity 的 `PlantBlock` 字段，存的是完整的方块 NBT，
-  例如 `{name: "minecraft:dandelion", states: {}}`。Java 要合成 `potted_dandelion` 这样的方块名。
+- [x] **床的颜色**：从 block entity 的 `color` 染料编号生成 Java 床名，保留基础转换得到的朝向、床头尾和占用状态。
+- [x] **花盆里的植物**：把 block entity 的 `PlantBlock` 转成 Java 植物名，再生成存在于 Java 属性表中的 `potted_` 方块。
+- [x] **含水**：第二方块层是 `water` 或 `flowing_water` 时，输出 Java 状态附带 `waterlogged="true"`。
 - **门、栅栏门、活板门的 `powered`**：表示是否被红石供能，要做红石信号传播才知道，邻居几何给不了（72 种方块、
   1943 个状态）。它不影响外观，渲染上可以接受丢失。
 
