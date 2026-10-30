@@ -103,6 +103,11 @@ func New(options Options) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, filepath.Join(options.AssetsDir, "blocksAtlasLatest.png"))
 	})
+	mux.HandleFunc("GET /assets/entity/enchanting_table_book.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, filepath.Join(options.AssetsDir,
+			"../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png"))
+	})
 	mux.HandleFunc("GET /assets/THIRD_PARTY_NOTICES.txt", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(options.AssetsDir, "THIRD_PARTY_NOTICES.txt"))
 	})

@@ -26,3 +26,17 @@ export interface MeshData {
   bounds: { min: Vec3; max: Vec3 };
   quads: number;
 }
+
+export interface EffectMessage {
+  pos: Vec3;
+  effect: string;
+}
+export interface BlockActor {
+  pos: Vec3;
+  mesh: MeshData;
+}
+export interface FrameData {
+  mesh: MeshData;
+  effects: EffectMessage[];
+  actors: BlockActor[];
+}

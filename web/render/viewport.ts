@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createMeshObject, type MeshObject } from "./mesh";
-import type { MeshData } from "./types";
+import { createFrameObject, type FrameObject } from "./frame.ts";
+import type { FrameData, MeshData } from "./types.ts";
+import type { EffectRegistry } from "./effects/index.ts";
 
 /** A geometry viewport. It does not parse blocks, load a world or start workers. */
 export class MeshViewport {
@@ -22,19 +23,29 @@ export class MeshViewport {
   private readonly resize: ResizeObserver;
   // Called every camera change so the host can drive an orientation gizmo.
   private onCamera?: (quaternion: THREE.Quaternion) => void;
-  private current?: MeshObject;
+  private current?: FrameObject;
+  private readonly effectRegistry: EffectRegistry;
   private bounds = new THREE.Box3(
     new THREE.Vector3(),
     new THREE.Vector3(1, 1, 1),
   );
+  private readonly host: HTMLElement;
+  private readonly atlas: THREE.Texture;
   private scheduled = false;
   private disposed = false;
 
   constructor(
-    private readonly host: HTMLElement,
-    private readonly atlas: THREE.Texture,
-    options: { gridSize?: number; label?: string } = {},
+    host: HTMLElement,
+    atlas: THREE.Texture,
+    options: {
+      gridSize?: number;
+      label?: string;
+      effects?: EffectRegistry;
+    } = {},
   ) {
+    this.host = host;
+    this.atlas = atlas;
+    this.effectRegistry = options.effects ?? new Map();
     const gridSpan = options.gridSize ?? 8;
     // Monochrome ground grid: a darker centre cross over hairline grey lines,
     // tuned to read on the light stage without competing with the geometry.
@@ -77,19 +88,18 @@ export class MeshViewport {
   }
 
   set(data: MeshData, options: { resetView?: boolean } = {}): void {
+    this.setFrame({ mesh: data, actors: [], effects: [] }, options);
+  }
+
+  /** 一次替换三个通道；actor 顶点已带位置，未知特效名直接忽略。 */
+  setFrame(data: FrameData, options: { resetView?: boolean } = {}): void {
     if (this.current) {
       this.scene.remove(this.current.object);
       this.current.dispose();
     }
-    this.current = createMeshObject(data, this.atlas);
+    this.current = createFrameObject(data, this.atlas, this.effectRegistry);
     this.scene.add(this.current.object);
-    this.bounds =
-      data.quads > 0
-        ? new THREE.Box3(
-            new THREE.Vector3(...data.bounds.min),
-            new THREE.Vector3(...data.bounds.max),
-          )
-        : new THREE.Box3(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
+    this.bounds.copy(this.current.bounds);
     this.frame.box.copy(this.bounds);
     this.grid.position.set(
       this.bounds.getCenter(new THREE.Vector3()).x,
@@ -130,7 +140,8 @@ export class MeshViewport {
     this.current?.object.traverse((object) => {
       if (
         object instanceof THREE.Mesh &&
-        object.material instanceof THREE.ShaderMaterial
+        (object.material instanceof THREE.ShaderMaterial ||
+          object.material instanceof THREE.MeshBasicMaterial)
       ) {
         object.material.wireframe = visible;
       }
@@ -177,7 +188,7 @@ export class MeshViewport {
       if (this.controls.update()) this.render();
       this.current?.updateTime(timestamp / 1000);
       this.renderer.render(this.scene, this.camera);
-      // 相机静止后，动画材质仍需持续重绘。
+      // 相机静止后，特效和动画材质仍需持续重绘。
       if (this.current?.animated) this.render();
     });
   }

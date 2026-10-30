@@ -1,1 +1,1 @@
-export * from "../../web/render/index";
+export * from "../../web/render/index.ts";

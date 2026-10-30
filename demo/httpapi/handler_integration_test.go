@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -106,4 +107,25 @@ func TestBrowserTransport(t *testing.T) {
 	call(http.MethodGet, "/api/state?id=4294967296", "", 400)
 	call(http.MethodGet, "/api/states?name=absent", "", 404)
 	call(http.MethodPost, "/api/block", "{", 400)
+}
+
+func TestBookTextureRoute(t *testing.T) {
+	assets := filepath.Join(t.TempDir(), "final")
+	bookPath := filepath.Join(assets, "../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png")
+	if err := os.MkdirAll(filepath.Dir(bookPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	png := []byte("\x89PNG\r\n\x1a\nbook-texture")
+	if err := os.WriteFile(bookPath, png, 0644); err != nil {
+		t.Fatal(err)
+	}
+	handler := httpapi.New(httpapi.Options{AssetsDir: assets})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/assets/entity/enchanting_table_book.png", nil))
+	if response.Code != 200 || response.Header().Get("Content-Type") != "image/png" || !bytes.Equal(response.Body.Bytes(), png) {
+		t.Fatalf("book texture response: %d %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatal("book texture cache policy differs from atlas")
+	}
 }

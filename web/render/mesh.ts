@@ -5,7 +5,7 @@ import type {
   Surface,
   FloatAttribute,
   IndexAttribute,
-} from "./types";
+} from "./types.ts";
 
 const vertexShader = `
   attribute vec3 color;

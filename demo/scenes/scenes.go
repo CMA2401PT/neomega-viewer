@@ -163,11 +163,13 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 		for i, facing := range []string{"north", "east", "south", "west"} {
 			x := 3 + i*3
 			put(x, 1, 7, fmt.Sprintf(`minecraft:decorated_pot ["facing"="%s"]`, facing))
-			nbt[[3]uint8{uint8(x), 1, 7}] = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:arms_up_pottery_sherd","minecraft:prize_pottery_sherd"]}`
+			// 取自 1.21.4 存档的原样数据：front 为举臂纹样，便于和游戏内对照朝向。
+			nbt[[3]uint8{uint8(x), 1, 7}] = `{sherds:{back:{id:"minecraft:angler_pottery_sherd"},left:{id:"minecraft:archer_pottery_sherd"},right:{id:"minecraft:blade_pottery_sherd"},front:{id:"minecraft:arms_up_pottery_sherd"}}}`
 		}
 		put(5, 1, 11, `minecraft:decorated_pot ["facing"="north","cracked"="true"]`)
 		put(10, 1, 11, `minecraft:decorated_pot ["facing"="east","waterlogged"="true"]`)
-		nbt[[3]uint8{10, 1, 11}] = `{sherds:{back:{id:"minecraft:angler_pottery_sherd"},left:{id:"minecraft:archer_pottery_sherd"},right:{id:"minecraft:arms_up_pottery_sherd"},front:{id:"minecraft:prize_pottery_sherd"}}}`
+		// 含水陶罐用 1.20 早期的列表格式，同一条渲染路径兼顾两种 NBT。
+		nbt[[3]uint8{10, 1, 11}] = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:blade_pottery_sherd","minecraft:arms_up_pottery_sherd"]}`
 	case "empty":
 	case "special_java":
 		specialLayout(blockID)

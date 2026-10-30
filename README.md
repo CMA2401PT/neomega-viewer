@@ -12,6 +12,8 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 含水台阶这类方块没有自己的模型，画面是方块本体叠上一格水。几何表只认单层的 hash（JavaBlockHashRSL），所以带 `waterlogged` 的输入要先经 `splitlayer` 拆成前景层和水层，再交给 mesher 的多层入口。
 
+陶罐、旗帜这类方块的外观取决于 block entity NBT，附魔台上的书是动态效果，静态几何画不出来。`dispatcher` 把一个子区块按方块类型分到 mesher、effector、block actor 三条路，`merger` 再把三份结果打包成一个 NVFR 快照。设计见 [渲染分发方案.md](渲染分发方案.md)。
+
 浏览器和 HTTP 服务不是库的一部分，是演示它怎么用的示例。
 
 ## 目录职责
@@ -27,6 +29,11 @@ neomega-viewer/
 ├─ blockstate/         # 上层 Java 身份与响应元数据
 ├─ fixer/              # 可选的 Java 状态修复，按顺序累积各轮改动
 ├─ splitlayer/         # 把含水方块拆成前景层与水层
+├─ dispatcher/         # 按路由表把方块分给 mesher、effector、block actor，并串起整条流程
+├─ effector/           # 输出「某格放某特效」的消息
+├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包（如 decoratedpot/）
+├─ merger/             # NVFR 快照容器的编解码
+├─ web/render/         # 前端渲染核心：NVMS/NVFR 解码、材质、视口、特效
 ├─ solidtable/         # 六面实心位域及 NVST 编解码
 ├─ resources/          # 入库的几何表、实心表、Java 元数据及 embed
 ├─ demo/
@@ -39,7 +46,7 @@ neomega-viewer/
 │  ├─ scenes/          # 示例场景
 │  ├─ examples/        # 命令行示例
 │  ├─ integration/     # 使用目录和场景的集成测试
-│  └─ web/             # 浏览器源码和构建配置
+│  └─ web/             # 演示网页：面板、场景选择、构建配置
 └─ scripts/
    ├─ gen-geometry/    # 生成命令
    └─ internal/        # tablegen、bake、model、materials、resources
@@ -184,6 +191,40 @@ if err := result.Mesh.Marshal(writer); err != nil {
 ```
 
 演示服务的子区块接口就按这个顺序处理输入。为什么按位置合并各层、层序在同格里意味着什么、镂空前景下水面为何缩进，见 [多层渲染方案.md](多层渲染方案.md)。
+
+## 渲染带 NBT 的方块：分发与快照
+
+一个子区块除了方块 hash 层，还可能带 NBT：`map[[3]uint8]string`，键是格子坐标 (x, y, z)，值是 SNBT 文本。`dispatcher.Pipeline` 接收这两样，输出一个 NVFR 快照：
+
+- **mesher 段**：静态几何。普通方块，以及尚未支持的 NBT 方块。
+- **effector 段**：特效消息，例如 `{pos: [3,1,3], effect: "enchanting_table_book"}`。本体照常在 mesher 段里，特效由前端程序驱动。
+- **block actor 段**：按 NBT 生成的几何，坐标已是子区块局部坐标。这些格子不再进 mesher。
+
+组装时指定启用哪些特效和 block actor 处理器，路由表据此生成，所以没启用的方块会留在 mesher 里，不会凭空消失。下面的组装与演示服务 `demo/httpapi/frame.go` 相同，`tables` 来自几何表，`surfaces` 把贴图名查成图集里的材质，`repair` 是前面的 fixer：
+
+```go
+pipeline := dispatcher.NewPipeline(
+    tables,
+    effector.New(map[string]string{
+        "minecraft:enchanting_table": "enchanting_table_book",
+    }),
+    blockactor.New(decoratedpot.New(tables, surfaces)),
+    func(blocks []uint32) []uint32 {
+        return repair.Fix(blocks, fixer.Neighbours{})
+    },
+)
+result, err := pipeline.Build(blocks, nbt, dispatcher.Options{Fix: true})
+if err != nil {
+    return err
+}
+if err := result.Frame.Marshal(writer); err != nil {
+    return err
+}
+```
+
+`Build` 内部依次拆层、修复、分流：交给 block actor 的格子只移除本体层，水层仍交给 mesher，fixer 看到的是移除前的原状态。NVFR 的字节布局见 [merger/FORMAT.md](merger/FORMAT.md)。
+
+新增一种 NBT 方块时，在 `blockactor/` 下新建一个子包，实现 `blockactor.Handler`（报出认领的方块名，按 `Input` 里的状态和 SNBT 返回格内几何），再在组装处传给 `blockactor.New`。陶罐的 NBT 结构与朝向见 [blockactor/decoratedpot/NBT.md](blockactor/decoratedpot/NBT.md)。
 
 ## 生成和更新几何表
 
@@ -358,7 +399,7 @@ wc -c /tmp/solid-raw.nvmesh /tmp/solid-culled.nvmesh /tmp/solid.nvmesh
 
 ## 复用前端绘制
 
-外部页面需要自行管理网络和场景时，可使用 `demo/web` 的 `@neomega/viewer/render` 导出。它只依赖 Three.js，不依赖演示页、方块目录、地图或 worker：
+渲染核心的源码在仓库根的 `web/render/`，和 Go 侧的 `mesher/` 对称；`demo/web` 只放演示网页。外部页面需要自行管理网络和场景时，可使用 `demo/web` 的 `@neomega/viewer/render` 导出，它转导出 `web/render/`，只依赖 Three.js，不依赖演示页、方块目录、地图或 worker：
 
 ```sh
 npm install /path/to/neomega-viewer/demo/web
@@ -390,7 +431,23 @@ mesh.dispose();
 atlas.dispose();
 ```
 
-`createMeshObject` 也接受单方块 JSON 的数值数组。宿主在 `requestAnimationFrame` 回调中调用 `updateTime(timestamp / 1000)`，让同一网格的材质共享秒数；`animated` 表示是否需要持续绘制。希望一并复用相机、视口和动画驱动时，使用 `MeshViewport`，再调用 `set(data)`；`BlockViewport` 保留为原有名称的兼容导出。视口只在存在动画材质或相机仍在移动时连续请求帧。
+`createMeshObject` 也接受单方块 JSON 的数值数组。宿主在 `requestAnimationFrame` 回调中调用 `updateTime(timestamp / 1000)`，让同一网格的材质共享秒数；`animated` 表示是否需要持续绘制。希望一并复用相机、视口和动画驱动时，使用 `MeshViewport`，再调用 `set(data)`；`BlockViewport` 保留为原有名称的兼容导出。视口只在存在动画材质、特效或相机仍在移动时连续请求帧。
+
+NVFR 快照用 `decodeFrame` 解码，三段画进同一个场景，共享深度和透明排序。特效由注册表把特效名映射到工厂，`createEffectRegistry` 内置附魔书，书的贴图由调用方加载并持有：
+
+```ts
+import { MeshViewport, createEffectRegistry, decodeFrame, loadAtlas } from "@neomega/viewer/render";
+
+const [atlas, book] = await Promise.all([
+  loadAtlas("/assets/atlas.png"),
+  loadAtlas("/assets/entity/enchanting_table_book.png"),
+]);
+const viewport = new MeshViewport(host, atlas, { effects: createEffectRegistry(book) });
+const response = await fetch("/api/subchunks/block_entities/frame");
+viewport.setFrame(decodeFrame(await response.arrayBuffer()));
+```
+
+换一个快照会整体替换三段内容，空列表表示清空。不在 Three.js 视口里使用时，`createFrameObject(data, atlas, registry)` 返回一个可放进自己场景的对象。注册其他特效时，往 `createEffectRegistry` 返回的 Map 里添加工厂即可。
 
 ## 接口与扩展位置
 
@@ -403,13 +460,14 @@ atlas.dispose();
 | ID 对应哪个 Java 状态？ | `blockstate` |
 | 如何修复转换丢失的连接、拐角与门状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
 | 含水方块怎样拆成多层？ | `splitlayer` |
+| 带 NBT 的方块、特效怎样分流和打包？ | `dispatcher`、`effector`、`blockactor`、`merger` |
 | 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
 | 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
 | 怎样编码与查询共享几何？ | `mesher.Tables[B]`；演示文件加载在 `demo/blockmesh` |
 | 如何构建单个方块？ | `Mesher.MeshBlock`；Java 响应薄壳在 `demo/singleblock` |
 | 如何从 4096 个 ID 准备邻域几何？ | `Mesher.MeshSubchunk`；多层用 `Mesher.MeshMultiLayerSubchunks` |
 | 哪些表面被覆盖，哪些矩形能够合并？ | `mesher/meshing` |
-| 几何怎样编码和解码？ | `mesher/geometry` 的 `Mesh.Marshal`、`UnmarshalMesh`；前端 `demo/web/src/render/binary.ts` |
+| 几何怎样编码和解码？ | `mesher/geometry` 的 `Mesh.Marshal`、`UnmarshalMesh`；前端 `web/render/binary.ts` |
 | 哪些代码只是演示？ | `demo/` 下的服务、目录、场景和网页 |
 
 演示服务提供以下接口：
@@ -424,7 +482,10 @@ atlas.dispose();
 | `GET /api/subchunks/{scene}/mesh` | NVMS 二进制几何 |
 | `GET /api/subchunks/{scene}/blocks` | `.nvblocks` 逻辑方块层 |
 | `POST /api/subchunk` | 提交 `.nvblocks` 原始字节，返回 NVMS |
+| `GET /api/subchunks/{scene}/frame` | NVFR 快照：静态几何、特效、block actor |
+| `POST /api/subchunk/frame` | 提交 `.nvblocks` 原始字节（无 NBT），返回 NVFR |
 | `GET /assets/atlas.png` | 与材质区域配套的 PNG |
+| `GET /assets/entity/enchanting_table_book.png` | 附魔书特效的贴图 |
 
 `POST /api/block` 的正文为 `{"id": <javaHash>}`。返回的 `binding` 标识完整 Java 状态，`renderer` 描述静态类别，`geometry` 包含绘制数据。
 

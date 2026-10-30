@@ -13,6 +13,7 @@ import (
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/dispatcher"
 	"neomega-viewer/fixer"
 	"neomega-viewer/merger"
@@ -31,7 +32,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	atlas := asset.Atlas{Textures: map[string]asset.AtlasTexture{}}
-	for i, name := range []string{"decorated_pot_side", "angler_pottery_pattern", "archer_pottery_pattern", "arms_up_pottery_pattern", "prize_pottery_pattern"} {
+	for i, name := range []string{"decorated_pot_side", "angler_pottery_pattern", "archer_pottery_pattern", "arms_up_pottery_pattern", "blade_pottery_pattern", "prize_pottery_pattern"} {
 		atlas.Textures["entity/decorated_pot/"+name] = asset.AtlasTexture{
 			U: float64(i) / 16, V: .5, SU: 1.0 / 16, SV: 1.0 / 16, Frames: 1,
 		}
@@ -96,6 +97,49 @@ func TestBlockEntitiesFrame(t *testing.T) {
 			t.Fatalf("stats differ: %+v, %v", stats, err)
 		}
 		t.Logf("%s: NVFR=%d bytes, static=%d quads textures=%v, effects=%d, actors=%d/%d quads", query, response.Body.Len(), len(frame.Mesh.Quads), textures, len(frame.Effects), len(frame.Actors), quads)
+	}
+	// 上传不携带 NBT，仍经同一 pipeline；书消息和无纹样 actor 都应保留。
+	for _, query := range []string{"", "?fix=1", "?cull=false&greedy=false&fix=1"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("POST", "/api/subchunk/frame"+query, bytes.NewReader(subchunk.EncodeIDs(scene.Blocks))))
+		if response.Code != 200 || response.Header().Get("Content-Type") != merger.ContentType {
+			t.Fatalf("upload frame response: %d %s", response.Code, response.Body.String())
+		}
+		options := dispatcher.Options{Fix: strings.Contains(query, "fix=1")}
+		if strings.Contains(query, "cull=false") {
+			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
+		}
+		direct, err := pipeline.Build(plain.Data, nil, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var encoded bytes.Buffer
+		if err := direct.Frame.Marshal(&encoded); err != nil || !bytes.Equal(encoded.Bytes(), response.Body.Bytes()) {
+			t.Fatalf("uploaded frame differs from pipeline: %v", err)
+		}
+		frame, err := merger.Unmarshal(bytes.NewReader(response.Body.Bytes()))
+		if err != nil || len(frame.Actors) != 6 || len(frame.Effects) != 1 {
+			t.Fatalf("uploaded frame contents: %v", err)
+		}
+		var stats mesher.Stats
+		if err := json.Unmarshal([]byte(response.Header().Get("X-Neomega-Mesh-Stats")), &stats); err != nil || stats != direct.Stats {
+			t.Fatalf("upload stats differ: %+v, %v", stats, err)
+		}
+	}
+	for _, test := range []struct {
+		path string
+		body []byte
+	}{
+		{"/api/subchunk/frame", []byte{1, 2, 3}},
+		{"/api/subchunk/frame", make([]byte, subchunk.IDsByteSize+1)},
+		{"/api/subchunk/frame?cull=invalid", subchunk.EncodeIDs(scene.Blocks)},
+		{"/api/subchunk/frame?greedy=invalid", subchunk.EncodeIDs(scene.Blocks)},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("POST", test.path, bytes.NewReader(test.body)))
+		if response.Code != 400 {
+			t.Fatalf("%s -> %d, want 400", test.path, response.Code)
+		}
 	}
 	// 原 mesh 入口仍输出完整静态陶罐，调用者可继续使用旧协议。
 	response := httptest.NewRecorder()

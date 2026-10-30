@@ -1,4 +1,10 @@
-import { AxisGizmo, MeshViewport, decodeMesh, loadAtlas } from "@neomega/viewer/render";
+import {
+  AxisGizmo,
+  MeshViewport,
+  decodeFrame,
+  loadAtlas,
+  createEffectRegistry,
+} from "@neomega/viewer/render";
 import { getJSON } from "../browser/api";
 import "../browser/style.css";
 import "./style.css";
@@ -86,7 +92,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </div>
 
       <div class="section">
-        <button id="save-mesh" class="download" disabled>下载当前网格 .nvmesh</button>
+        <button id="save-mesh" class="download" disabled>下载当前快照 .nvframe</button>
         <a id="save-layer" class="download" href="#">下载方块层 .nvblocks</a>
       </div>
 
@@ -144,8 +150,8 @@ async function load(resetView = false): Promise<void> {
   try {
     const response = await fetch(
       uploaded
-        ? `/api/subchunk?${query}`
-        : `/api/subchunks/${current.id}/mesh?${query}`,
+        ? `/api/subchunk/frame?${query}`
+        : `/api/subchunks/${current.id}/frame?${query}`,
       uploaded
         ? {
             method: "POST",
@@ -160,31 +166,38 @@ async function load(resetView = false): Promise<void> {
     }
     const data = await response.arrayBuffer();
     if (token !== generation) return;
-    const mesh = decodeMesh(data);
+    const frame = decodeFrame(data);
+    const meshes = [frame.mesh, ...frame.actors.map((actor) => actor.mesh)];
+    const actorQuads = frame.actors.reduce(
+      (sum, actor) => sum + actor.mesh.quads,
+      0,
+    );
+    const quads = frame.mesh.quads + actorQuads;
+    const batches = meshes.reduce((sum, mesh) => sum + mesh.batches.length, 0);
     const stats: Stats = JSON.parse(
       response.headers.get("X-Neomega-Mesh-Stats")!,
     );
-    viewport.set(mesh, { resetView });
+    viewport.setFrame(frame, { resetView });
     viewport.showWireframe(wireframe);
     latest = data;
     el("scene-title").textContent = current.title;
     el("empty-note").textContent = "此子区块没有可见表面";
-    el("empty-note").hidden = mesh.quads !== 0;
-    el("quad-count").textContent = mesh.quads.toLocaleString();
-    el("triangle-count").textContent = (mesh.quads * 2).toLocaleString();
-    el("batch-count").textContent = String(mesh.batches.length);
+    el("empty-note").hidden = quads !== 0 || frame.effects.length !== 0;
+    el("quad-count").textContent = quads.toLocaleString();
+    el("triangle-count").textContent = (quads * 2).toLocaleString();
+    el("batch-count").textContent = String(batches);
     el("wire-size").textContent = `${(data.byteLength / 1024).toFixed(1)} KiB`;
     for (const [name, value] of [
-      ["input", stats.inputQuads],
-      ["visible", stats.visibleQuads],
-      ["output", stats.outputQuads],
+      ["input", stats.inputQuads + actorQuads],
+      ["visible", stats.visibleQuads + actorQuads],
+      ["output", quads],
     ] as const) {
       el(`${name}-quads`).textContent = value.toLocaleString();
       el(`bar-${name}`).style.width =
-        `${Math.max(1, (value / Math.max(1, stats.inputQuads)) * 100)}%`;
+        `${Math.max(1, (value / Math.max(1, stats.inputQuads + actorQuads)) * 100)}%`;
     }
     el("shape-stats").textContent =
-      `${stats.blocks.toLocaleString()} 个参与构建的方块 · ${stats.removedQuads.toLocaleString()} 个面完全移除 · ${stats.clippedQuads.toLocaleString()} 个面部分裁切`;
+      `${stats.blocks.toLocaleString()} 个参与静态构建的方块 · ${stats.removedQuads.toLocaleString()} 个面完全移除 · ${stats.clippedQuads.toLocaleString()} 个面部分裁切 · ${frame.actors.length} 个 actor · ${frame.effects.length} 个特效`;
     el<HTMLButtonElement>("save-mesh").disabled = false;
     el<HTMLAnchorElement>("save-layer").href = uploaded
       ? "#"
@@ -218,9 +231,13 @@ async function load(resetView = false): Promise<void> {
 
 async function start(): Promise<void> {
   const catalog = await getJSON<Catalog>("/api/subchunks");
-  const atlas = await loadAtlas(catalog.atlasUrl);
+  const [atlas, bookTexture] = await Promise.all([
+    loadAtlas(catalog.atlasUrl),
+    loadAtlas("/assets/entity/enchanting_table_book.png"),
+  ]);
   viewport = new MeshViewport(el("viewport"), atlas, {
     gridSize: 16,
+    effects: createEffectRegistry(bookTexture),
     label: "独立子区块三维预览，可拖动旋转和滚轮缩放",
   });
   const gizmo = new AxisGizmo(el<HTMLCanvasElement>("gizmo"));
@@ -288,7 +305,7 @@ async function start(): Promise<void> {
     };
   }
   el("save-mesh").onclick = () => {
-    if (latest) download(latest, `${current.id}.nvmesh`);
+    if (latest) download(latest, `${current.id}.nvframe`);
   };
   el("save-layer").onclick = (event) => {
     if (uploaded) {
@@ -328,6 +345,7 @@ async function start(): Promise<void> {
       viewport.dispose();
       gizmo.dispose();
       atlas.dispose();
+      bookTexture.dispose();
     },
     { once: true },
   );

@@ -30,7 +30,7 @@ func (h *Handler) BlockNames() []string {
 }
 
 func decorations(snbt string) [4]string {
-	// 版本间格式发生过变化，目标版本的格式未能确认，因此同时接受列表和按面命名的 compound。
+	// 目标版本把 sherds 存成按面命名的 compound；1.20 起的早期存档是四项列表，一并接受，格式见 NBT.md。
 	var root map[string]any
 	var items [4]string
 	if err := nbt.DecodeFromSNBT(snbt, &root, nbt.OptDecodeFromSNBT{}); err != nil {
