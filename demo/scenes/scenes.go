@@ -9,6 +9,7 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	converts "neomega-blocks/presets/block-converts/v1"
 	java "neomega-blocks/presets/java/v1"
 )
 
@@ -21,6 +22,8 @@ type Scene struct {
 var scenes = []Scene{
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
+	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、两格植物、含雪与含水方块、海晶灯、床、门和花盆植物，使用原始 Java 状态。"},
+	{"special_nemc", "特殊方块 · NEMC 往返", "与 Java 原版使用相同布局，方块状态经过 Java→NEMC→Java 往返，用于对照转换差异。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
 	{"fluids", "流体与纹理动画", "石池中的水与岩浆展示纹理动画；中央叠放同类流体，检查下层的满高度衔接。"},
@@ -40,11 +43,7 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 	if !valid {
 		return nil, fmt.Errorf("unknown demo %q", name)
 	}
-	ids := map[string]uint32{}
-	blockID := func(recipe string) uint32 {
-		if id, found := ids[recipe]; found {
-			return id
-		}
+	javaBlock := func(recipe string) ir.IRBlock {
 		block := ir.IRBlock(recipe).Tidy()
 		// 配方可省略默认属性，渲染和 fixer 需要完整状态的 hash。
 		properties, _ := java.BlockProperties(block.NameWithNameSpace())
@@ -56,14 +55,35 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		for name, value := range block.States().KeyValues {
 			states = states.Set(name, value)
 		}
-		id := ir.IRBlock(block.NameWithNameSpace() + " " + string(states)).Tidy().Hash()
+		return ir.IRBlock(block.NameWithNameSpace() + " " + string(states)).Tidy()
+	}
+	ids := map[string]uint32{}
+	blockID := func(recipe string) uint32 {
+		if id, found := ids[recipe]; found {
+			return id
+		}
+		id := javaBlock(recipe).Hash()
 		ids[recipe] = id
 		return id
 	}
+	blockIDRoundtrip := func(recipe string) uint32 {
+		// 两种来源都先补齐 Java 默认属性，往返失败时保留同一输入状态。
+		input := javaBlock(recipe)
+		bedrock, ok := converts.ConvertFromJava(input)
+		if !ok {
+			return input.Hash()
+		}
+		output, ok := converts.ConvertToJava(bedrock)
+		if !ok {
+			return input.Hash()
+		}
+		return output.Tidy().Hash()
+	}
 	air := blockID("minecraft:air []")
 	layer := layer_storage.MakePaletteStorage(air)
+	toHash := blockID
 	put := func(x, y, z int, java string) {
-		layer.Set(celler.ToSubChunkBlockPos(x, y, z), blockID(java))
+		layer.Set(celler.ToSubChunkBlockPos(x, y, z), toHash(java))
 	}
 	box := func(x0, y0, z0, x1, y1, z1 int, java string) {
 		for x := x0; x < x1; x++ {
@@ -74,8 +94,30 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 			}
 		}
 	}
+	specialLayout := func(hashRecipe func(string) uint32) {
+		// 共用坐标与摆放入口，只替换配方生成 hash 的策略，便于逐格对照。
+		toHash = hashRecipe
+		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
+		put(3, 1, 3, `minecraft:white_banner ["rotation"="0"]`)
+		put(7, 1, 3, "minecraft:enchanting_table []")
+		put(11, 1, 3, `minecraft:sunflower ["half"="lower"]`)
+		put(11, 2, 3, `minecraft:sunflower ["half"="upper"]`)
+		put(3, 1, 7, `minecraft:grass_block ["snowy"="true"]`)
+		put(7, 1, 7, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`)
+		put(11, 1, 7, "minecraft:sea_lantern []")
+		// north 朝向负 Z，床头在床尾北侧；门与植物均保留上下两格。
+		put(3, 1, 11, `minecraft:red_bed ["part"="foot","facing"="north","occupied"="false"]`)
+		put(3, 1, 10, `minecraft:red_bed ["part"="head","facing"="north","occupied"="false"]`)
+		put(7, 1, 11, `minecraft:oak_door ["half"="lower","facing"="north","hinge"="left","open"="false","powered"="false"]`)
+		put(7, 2, 11, `minecraft:oak_door ["half"="upper","facing"="north","hinge"="left","open"="false","powered"="false"]`)
+		put(11, 1, 11, "minecraft:potted_cactus []")
+	}
 	switch name {
 	case "empty":
+	case "special_java":
+		specialLayout(blockID)
+	case "special_nemc":
+		specialLayout(blockIDRoundtrip)
 	case "solid":
 		stone := blockID("minecraft:stone []")
 		layer.InitWithDefault(stone)
