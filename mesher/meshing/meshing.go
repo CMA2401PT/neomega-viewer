@@ -54,10 +54,12 @@ func cullAndPlace(cells *Cells, disableCulling bool) ([]geometry.Quad, Stats) {
 	for index, cell := range cells {
 		position := [3]int{index >> 8, index & 15, (index >> 4) & 15}
 		for _, part := range cell {
+			scale := layerScale(cell, part.Layer)
 			for _, quad := range part.Quads {
 				stats.InputQuads++
 				pieces := []geometry.Quad{quad}
-				if !disableCulling {
+				// 前景镂空使共面无法裁切时，用微小缩进避开深度冲突，缩进层的边界交给前景。
+				if !disableCulling && scale == 1 {
 					pieces = cullQuad(quad, part, position, cells)
 					if len(pieces) == 0 {
 						stats.RemovedQuads++
@@ -66,12 +68,43 @@ func cullAndPlace(cells *Cells, disableCulling bool) ([]geometry.Quad, Stats) {
 					}
 				}
 				for _, piece := range pieces {
-					quads = append(quads, place(piece, position))
+					quads = append(quads, place(piece, position, scale))
 				}
 			}
 		}
 	}
 	return quads, stats
+}
+
+func layerScale(cell Cell, layer int) float64 {
+	nearest := -1
+	for _, part := range cell {
+		if part.Layer < layer && part.Layer > nearest && unitCube(part.Shape) {
+			nearest = part.Layer
+		}
+	}
+	if nearest < 0 {
+		return 1
+	}
+	return math.Pow(.99, float64(layer-nearest))
+}
+
+func unitCube(shape *geometry.Shape) bool {
+	// 六面的矩形并集决定是否满格，镂空和透明材质同样提供缩进依据。
+	for _, covers := range shape.Boundary {
+		remaining := []box{{hi: [2]float64{1, 1}}}
+		for _, cover := range covers {
+			var after []box
+			for _, piece := range remaining {
+				after = append(after, subtract(piece, box{lo: [2]float64(cover.Min), hi: [2]float64(cover.Max)})...)
+			}
+			remaining = after
+		}
+		if len(remaining) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func cullQuad(quad geometry.Quad, part LayerShape, position [3]int, cells *Cells) []geometry.Quad {
@@ -148,9 +181,12 @@ func subtractNeighbor(remaining []box, candidate geometry.Quad, group uint32, ne
 	return remaining
 }
 
-func place(quad geometry.Quad, position [3]int) geometry.Quad {
+func place(quad geometry.Quad, position [3]int, scale float64) geometry.Quad {
 	for vertex := range quad.Positions {
 		for axis := range position {
+			if scale != 1 {
+				quad.Positions[vertex][axis] = .5 + (quad.Positions[vertex][axis]-.5)*scale
+			}
 			quad.Positions[vertex][axis] += float64(position[axis])
 		}
 	}
