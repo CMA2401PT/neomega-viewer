@@ -22,7 +22,7 @@ type Scene struct {
 var scenes = []Scene{
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
-	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、覆雪草方块、含水半砖、海晶灯与多朝向的门、床、花卉及花盆植物，使用原始 Java 状态。"},
+	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、覆雪草方块、含水半砖、海晶灯、L 形台阶与多朝向的门、床、花卉及花盆植物，使用原始 Java 状态。"},
 	{"special_nemc", "特殊方块 · NEMC 往返", "与 Java 原版共用覆雪方块、多朝向门床及花卉布局，状态经过 Java→NEMC→Java 往返，用于对照转换差异。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
@@ -132,9 +132,13 @@ func Build(name string) (*layer_storage.Palette[uint32], error) {
 		put(5, 1, 5, `minecraft:pink_petals ["facing"="east","flower_amount"="2"]`)
 		put(7, 1, 5, `minecraft:pink_petals ["facing"="south","flower_amount"="3"]`)
 		put(9, 1, 5, `minecraft:pink_petals ["facing"="west","flower_amount"="4"]`)
-		put(13, 1, 11, `minecraft:rose_bush ["half"="lower"]`)
-		put(13, 2, 11, `minecraft:rose_bush ["half"="upper"]`)
+		put(13, 1, 11, `minecraft:sunflower ["half"="lower"]`)
+		put(13, 2, 11, `minecraft:sunflower ["half"="upper"]`)
 		put(13, 1, 14, "minecraft:poppy []")
+		put(9, 1, 8, `minecraft:oak_stairs ["facing"="west","half"="bottom","shape"="straight"]`)
+		// 前方台阶朝西，是本块朝向逆时针一格，原版取 outer_left，高出的一角在西北与两侧相接。
+		put(9, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="outer_left"]`)
+		put(8, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="straight"]`)
 	}
 	switch name {
 	case "empty":
