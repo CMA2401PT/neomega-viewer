@@ -47,7 +47,8 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 判据：周围格子推不出来，信息只在源数据里。`neomega-converter/bedrock` 读取两层 Bedrock 方块状态和 block entity SNBT，
 输出 Java 方块 hash。返回值中的 `javaNBT` 当前为空映射。读存档时用 `Convert`，已有规范化 Bedrock hash 时用 `ConvertHashes`。
 转换结果先交给 fixer 修复邻接状态，再交给 viewer；含水状态由 splitlayer 拆成方块层和水层。
-`special_nemc` 场景使用不携带 NBT 和第二方块层的 Java→NEMC→Java 往返路径，因此仍会丢失床颜色、花盆植物和含水信息。
+`special_nemc` 场景直接构造 Bedrock 方块层、第二层水和 block entity SNBT，经 `bedrock.Convert` 转成 Java。
+床颜色、花盆植物和半砖含水状态由源数据恢复，门、楼梯拐角和覆雪草方块的邻接状态交给 fixer 补齐。
 
 - [x] **床的颜色**：从 block entity 的 `color` 染料编号生成 Java 床名，保留基础转换得到的朝向、床头尾和占用状态。
 - [x] **花盆里的植物**：把 block entity 的 `PlantBlock` 转成 Java 植物名，再生成存在于 Java 属性表中的 `potted_` 方块。
@@ -102,9 +103,10 @@ NBT 算出几何。每种方块是 `blockactor/` 下的一个子包，新增一�
 `special_java` 和 `special_nemc` 的方块布局相同，可以逐格对照：
 
 - `special_java`：每个方块直接用正确的 Java 状态摆放。
-- `special_nemc`：同一批方块经过 Java→NEMC→Java 往返后再摆放。在页面上打开修复开关，就能看 fixer 补回了多少。
+- `special_nemc`：用 Bedrock 方块状态摆放，床颜色和花盆植物写在 block entity SNBT 中，半砖的水放在第二方块层。
+  `neomega-converter/bedrock` 把这些源数据转成 Java 状态。
 
-同一位置两个场景都错，是第 2、3 类（Java 侧本来就装不下或画不了）；只有 `special_nemc` 错，是第 1 类。开了修复
-还错，是 1b，或者是 fixer 还没覆盖的 1a。实现见 `demo/scenes/scenes.go`。
+床颜色、花盆植物和含水状态用于检查源数据转换。门、楼梯拐角和覆雪草方块用于检查 fixer：在页面上打开修复开关后，
+`special_nemc` 的方块状态与 `special_java` 逐格一致。两份配方分别见 `demo/scenes/special_nemc.go` 和 `demo/scenes/scenes.go`。
 
 含水方块的叠加效果在 `waterlogged` 和 `water_cube` 场景里看，方块实体与特效在 `block_entities` 场景里看。

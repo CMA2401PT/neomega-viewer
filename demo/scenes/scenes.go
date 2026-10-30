@@ -9,7 +9,6 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	converts "neomega-blocks/presets/block-converts/v1"
 	java "neomega-blocks/presets/java/v1"
 )
 
@@ -24,7 +23,7 @@ var scenes = []Scene{
 	{"mixed", "形状与透明度", "石头、玻璃、半砖、栅栏、草木与特殊模型放在同一个子区块中。"},
 	{"fence_dirty", "脏栅栏 · 未修复输入", "默认状态的栅栏排成直线和 L 形，端点挨着石头；开启修复可连接栏杆，三根孤立栅栏保持不连。"},
 	{"special_java", "特殊方块 · Java 原版", "旗帜、附魔台、覆雪草方块、含水半砖、海晶灯、L 形台阶与多朝向的门、床、花卉及花盆植物，使用原始 Java 状态。"},
-	{"special_nemc", "特殊方块 · NEMC 往返", "与 Java 原版共用覆雪方块、多朝向门床及花卉布局，状态经过 Java→NEMC→Java 往返，用于对照转换差异。"},
+	{"special_nemc", "特殊方块 · NEMC → Java", "源数据是 Bedrock 方块层、第二层水和 block entity NBT，经 neomega-converter/bedrock 转成 Java，与 Java 原版布局逐格对照。"},
 	{"solid", "填满石头", "4096 个石头方块。观察面剔除和网格合并各自减少了什么。"},
 	{"glass", "玻璃与内部物体", "相同玻璃去掉内面，不同颜色保留界面；透过玻璃观察内部形状。"},
 	{"fluids", "流体与纹理动画", "石池中的水与岩浆展示纹理动画；中央叠放同类流体，检查下层的满高度衔接。"},
@@ -83,24 +82,10 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 		ids[recipe] = id
 		return id
 	}
-	blockIDRoundtrip := func(recipe string) uint32 {
-		// 两种来源都先补齐 Java 默认属性，往返失败时保留同一输入状态。
-		input := javaBlock(recipe)
-		bedrock, ok := converts.ConvertFromJava(input)
-		if !ok {
-			return input.Hash()
-		}
-		output, ok := converts.ConvertToJava(bedrock)
-		if !ok {
-			return input.Hash()
-		}
-		return output.Tidy().Hash()
-	}
 	air := blockID("minecraft:air []")
 	layer := layer_storage.MakePaletteStorage(air)
-	toHash := blockID
 	put := func(x, y, z int, java string) {
-		layer.Set(celler.ToSubChunkBlockPos(x, y, z), toHash(java))
+		layer.Set(celler.ToSubChunkBlockPos(x, y, z), blockID(java))
 	}
 	box := func(x0, y0, z0, x1, y1, z1 int, java string) {
 		for x := x0; x < x1; x++ {
@@ -111,9 +96,24 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 			}
 		}
 	}
-	specialLayout := func(hashRecipe func(string) uint32) {
-		// 共用坐标与摆放入口，只替换配方生成 hash 的策略，便于逐格对照。
-		toHash = hashRecipe
+
+	nbt := map[[3]uint8]string{}
+	switch name {
+	case "block_entities":
+		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
+		put(3, 1, 3, "minecraft:enchanting_table []")
+		for i, facing := range []string{"north", "east", "south", "west"} {
+			x := 3 + i*3
+			put(x, 1, 7, fmt.Sprintf(`minecraft:decorated_pot ["facing"="%s"]`, facing))
+			// 取自 1.21.4 存档的原样数据：front 为举臂纹样，便于和游戏内对照朝向。
+			nbt[[3]uint8{uint8(x), 1, 7}] = `{sherds:{back:{id:"minecraft:angler_pottery_sherd"},left:{id:"minecraft:archer_pottery_sherd"},right:{id:"minecraft:blade_pottery_sherd"},front:{id:"minecraft:arms_up_pottery_sherd"}}}`
+		}
+		put(5, 1, 11, `minecraft:decorated_pot ["facing"="north","cracked"="true"]`)
+		put(10, 1, 11, `minecraft:decorated_pot ["facing"="east","waterlogged"="true"]`)
+		// 含水陶罐用 1.20 早期的列表格式，同一条渲染路径兼顾两种 NBT。
+		nbt[[3]uint8{10, 1, 11}] = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:blade_pottery_sherd","minecraft:arms_up_pottery_sherd"]}`
+	case "empty":
+	case "special_java":
 		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
 		put(3, 1, 3, `minecraft:white_banner ["rotation"="0"]`)
 		put(7, 1, 3, "minecraft:enchanting_table []")
@@ -154,27 +154,8 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 		// 前方台阶朝西，是本块朝向逆时针一格，原版取 outer_left，高出的一角在西北与两侧相接。
 		put(9, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="outer_left"]`)
 		put(8, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="straight"]`)
-	}
-	nbt := map[[3]uint8]string{}
-	switch name {
-	case "block_entities":
-		box(1, 0, 1, 15, 1, 15, "minecraft:stone []")
-		put(3, 1, 3, "minecraft:enchanting_table []")
-		for i, facing := range []string{"north", "east", "south", "west"} {
-			x := 3 + i*3
-			put(x, 1, 7, fmt.Sprintf(`minecraft:decorated_pot ["facing"="%s"]`, facing))
-			// 取自 1.21.4 存档的原样数据：front 为举臂纹样，便于和游戏内对照朝向。
-			nbt[[3]uint8{uint8(x), 1, 7}] = `{sherds:{back:{id:"minecraft:angler_pottery_sherd"},left:{id:"minecraft:archer_pottery_sherd"},right:{id:"minecraft:blade_pottery_sherd"},front:{id:"minecraft:arms_up_pottery_sherd"}}}`
-		}
-		put(5, 1, 11, `minecraft:decorated_pot ["facing"="north","cracked"="true"]`)
-		put(10, 1, 11, `minecraft:decorated_pot ["facing"="east","waterlogged"="true"]`)
-		// 含水陶罐用 1.20 早期的列表格式，同一条渲染路径兼顾两种 NBT。
-		nbt[[3]uint8{10, 1, 11}] = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:blade_pottery_sherd","minecraft:arms_up_pottery_sherd"]}`
-	case "empty":
-	case "special_java":
-		specialLayout(blockID)
 	case "special_nemc":
-		specialLayout(blockIDRoundtrip)
+		return buildSpecialNEMC(), nil
 	case "solid":
 		stone := blockID("minecraft:stone []")
 		layer.InitWithDefault(stone)
