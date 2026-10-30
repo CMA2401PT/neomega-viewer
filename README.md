@@ -8,7 +8,7 @@ Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状�
 
 两张表保存为固定小端的 NVGT 二进制。加载文件或 embed 是调用者的职责，mesher 构造时只接收 `*Tables[B]`。Java 演示加载器提供内嵌资源的便捷入口。
 
-转换得到的 Java 状态可能丢失连接方向。调用者可以先用 `fixer` 根据邻居修复栅栏、玻璃板和铁栏杆，再把返回的 hash 层交给 mesher。修复时用到的实心面信息在生成阶段计算，单独保存为 `.nvsolid` 文件。
+转换得到的 Java 状态可能丢失连接方向、楼梯拐角或门的部分属性。调用者可以先用 `fixer` 根据邻居补回这些属性，再把返回的 hash 层交给 mesher。修复时用到的实心面信息在生成阶段计算，单独保存为 `.nvsolid` 文件。
 
 含水台阶这类方块没有自己的模型，画面是方块本体叠上一格水。几何表只认单层的 hash（JavaBlockHashRSL），所以带 `waterlogged` 的输入要先经 `splitlayer` 拆成前景层和水层，再交给 mesher 的多层入口。
 
@@ -134,7 +134,7 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 
 ## 修复转换丢失的连接状态
 
-当 NEMC→Java 转换把连接属性丢成默认值时，先用 `neomega-viewer/fixer` 修复输入。`New()` 加载内嵌实心表，多个实例共享只读解码结果。`Fix` 返回独立切片，输入层和邻居层都保持原值。状态查询与改写通过 `neomega-blocks/presets/java/v1` 完成，fixer 不依赖几何运行时。
+当 NEMC→Java 转换把连接、拐角或门的属性丢成默认值时，先用 `neomega-viewer/fixer` 修复输入。`New()` 加载内嵌实心表，多个实例共享只读解码结果。`Fix` 返回独立切片，输入层和邻居层都保持原值。状态查询与改写通过 `neomega-blocks/presets/java/v1` 完成，fixer 不依赖几何运行时。
 
 当前层和每个非 nil 邻居层都应包含 4096 个 Java hash，索引与 mesher 相同。`Neighbours` 按 west/east/down/up/north/south 排列，即 -X/+X/-Y/+Y/-Z/+Z；nil 按该侧为空处理。hash 应对应 preset 中的完整状态；无法还原的 hash 保持原值。下面接续前面的 `blocks` 和 `renderer`，增加修复步骤：
 
@@ -153,7 +153,7 @@ if err := result.Mesh.Marshal(writer); err != nil {
 }
 ```
 
-修复规则分为内部 pass（一次完整的修复步骤）。每轮读取上一轮的结果，返回“位置 → 新 hash”，由 Fixer 统一应用后交给下一轮。邻居层始终使用调用者传入的快照。增加规则时实现 `pass` 函数并在 `New` 的列表中登记即可。当前内置栅栏/玻璃板/铁栏杆连接、fire 连接、楼梯拐角、红石线四个 pass。
+修复规则分为内部 pass（一次完整的修复步骤）。每轮读取上一轮的结果，返回“位置 → 新 hash”，由 Fixer 统一应用后交给下一轮。邻居层始终使用调用者传入的快照。增加规则时实现 `pass` 函数并在 `New` 的列表中登记即可。当前内置栅栏/玻璃板/铁栏杆连接、fire 连接、楼梯拐角、门的上下两半互补、红石线五个 pass。
 
 哪些方块需要修及其依据、每个 pass 的具体规则、以及门的通电状态等尚未修复的部分和原因，见 [fixer/FIXER.md](fixer/FIXER.md)。
 
@@ -401,7 +401,7 @@ atlas.dispose();
 | 要解决的问题 | 模块 |
 |---|---|
 | ID 对应哪个 Java 状态？ | `blockstate` |
-| 如何修复转换丢失的连接状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
+| 如何修复转换丢失的连接、拐角与门状态？ | `fixer`；实心面查询与编解码在 `solidtable` |
 | 含水方块怎样拆成多层？ | `splitlayer` |
 | 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
 | 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
