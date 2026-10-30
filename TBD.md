@@ -13,7 +13,8 @@ viewer 的输入是一个 16×16×16 的 LayerStorage：每格一个 Java block 
 2. **NBT 方块**：在 Java 里，关键信息本来就只存在 block entity NBT 里，本表达空间装不下。
 3. **代码驱动渲染的方块**：Java 用 block entity renderer（代码）画出来的部分，静态模型管线画不了。
 
-分清是哪一类，就知道该去哪里改：1a 改 `fixer`，1b 改转换器或另辟输入，2、3 要在 LayerStorage 之外另开通道。
+分清是哪一类，就知道该去哪里改：1a 改 `fixer`，1b 改转换器或另辟输入，2、3 要在 LayerStorage 之外另开通道，
+设计见 `渲染分发方案.md`。
 
 Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标注。
 
