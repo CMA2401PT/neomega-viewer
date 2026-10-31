@@ -9,7 +9,6 @@ import (
 	"os"
 	"testing"
 
-	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	blockmesh "neomega-blocks/presets/java/v1/geometry"
@@ -126,7 +125,7 @@ func TestDirtyFenceRepairTransport(t *testing.T) {
 	fence := ir.IRBlock(`minecraft:oak_fence ["east"="false","north"="false","south"="false","west"="false"]`).Hash()
 	setFence := func(x, z int, east, north, south, west bool) {
 		t.Helper()
-		position := celler.ToSubChunkBlockPos(x, 1, z)
+		position := layer_storage.At(x, 1, z)
 		if layer.Get(position) != fence {
 			t.Fatalf("fence at (%d,1,%d) is not the disconnected default", x, z)
 		}
@@ -195,7 +194,7 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(layer)
 	wetSlab := ir.IRBlock(`minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`).Tidy().Hash()
-	if plain.Get(celler.ToSubChunkBlockPos(3, 1, 3)) != wetSlab {
+	if plain.Get(layer_storage.At(3, 1, 3)) != wetSlab {
 		t.Fatal("scene default properties discarded waterlogged")
 	}
 	for _, fix := range []string{"0", "1"} {

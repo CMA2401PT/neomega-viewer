@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
@@ -85,7 +84,7 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 	air := blockID("minecraft:air []")
 	layer := layer_storage.MakePaletteStorage(air)
 	put := func(x, y, z int, java string) {
-		layer.Set(celler.ToSubChunkBlockPos(x, y, z), blockID(java))
+		layer.Set(layer_storage.At(x, y, z), blockID(java))
 	}
 	box := func(x0, y0, z0, x1, y1, z1 int, java string) {
 		for x := x0; x < x1; x++ {

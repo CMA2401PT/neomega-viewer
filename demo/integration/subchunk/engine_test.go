@@ -5,7 +5,6 @@ import (
 	"slices"
 	"testing"
 
-	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	blockmesh "neomega-blocks/presets/java/v1/geometry"
@@ -144,8 +143,8 @@ func TestTransparentInterfaces(t *testing.T) {
 		{`minecraft:oak_leaves ["distance"="7","persistent"="false"]`, "minecraft:stone []", 1},
 	} {
 		layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
-		layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), id(t, check.A))
-		layer.Set(celler.ToSubChunkBlockPos(5, 4, 4), id(t, check.B))
+		layer.Set(layer_storage.At(4, 4, 4), id(t, check.A))
+		layer.Set(layer_storage.At(5, 4, 4), id(t, check.B))
 		result, err := engine.MeshSubchunk(plain(layer).Data, mesher.Options{Meshing: meshing.Options{DisableGreedy: true}})
 		if err != nil {
 			t.Fatal(err)
@@ -165,7 +164,7 @@ func TestConnectionsComeFromJavaHash(t *testing.T) {
 			east := id(t, "minecraft:"+name+` ["east"="true","north"="false","south"="false","west"="false"]`)
 			west := id(t, "minecraft:"+name+` ["east"="false","north"="false","south"="false","west"="true"]`)
 			layer := layer_storage.MakePaletteStorage(air)
-			a, b := celler.ToSubChunkBlockPos(4, 4, 4), celler.ToSubChunkBlockPos(5, 4, 4)
+			a, b := layer_storage.At(4, 4, 4), layer_storage.At(5, 4, 4)
 			layer.Set(a, isolated)
 			layer.Set(b, isolated)
 			stored, err := engine.MeshSubchunk(plain(layer).Data, mesher.Options{})
@@ -199,7 +198,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			layer := layer_storage.MakePaletteStorage(id(t, "minecraft:air []"))
 			fluid := id(t, "minecraft:"+name+` ["level"="0"]`)
-			layer.Set(celler.ToSubChunkBlockPos(4, 4, 4), fluid)
+			layer.Set(layer_storage.At(4, 4, 4), fluid)
 			single, err := engine.MeshSubchunk(plain(layer).Data, mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
@@ -207,7 +206,7 @@ func TestFluidHeightWithJavaHashes(t *testing.T) {
 			if single.Mesh.Buffers().Bounds.Max[1] != 4+8.0/9 {
 				t.Fatal("isolated fluid height changed")
 			}
-			layer.Set(celler.ToSubChunkBlockPos(4, 5, 4), fluid)
+			layer.Set(layer_storage.At(4, 5, 4), fluid)
 			stacked, err := engine.MeshSubchunk(plain(layer).Data, mesher.Options{})
 			if err != nil {
 				t.Fatal(err)
@@ -234,9 +233,9 @@ func TestFluidHeightUsesOnlySameFamilyAbove(t *testing.T) {
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			layer := layer_storage.MakePlainStorage(id(t, "minecraft:air []"))
-			layer.Set(celler.ToSubChunkBlockPos(4, check.y, 4), id(t, "minecraft:"+check.base))
+			layer.Set(layer_storage.At(4, check.y, 4), id(t, "minecraft:"+check.base))
 			if check.y < 15 {
-				layer.Set(celler.ToSubChunkBlockPos(4, check.y+1, 4), id(t, "minecraft:"+check.above))
+				layer.Set(layer_storage.At(4, check.y+1, 4), id(t, "minecraft:"+check.above))
 			}
 			result, err := engine.MeshSubchunk(layer.Data, mesher.Options{Meshing: meshing.Options{DisableCulling: true, DisableGreedy: true}})
 			if err != nil {

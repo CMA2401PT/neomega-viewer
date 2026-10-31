@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/bits"
 
-	"celler"
 	"celler/layer_storage"
 )
 
@@ -13,7 +12,7 @@ const Size = 16
 const Volume = Size * Size * Size
 const IDsByteSize = Volume * 4
 
-type Position = celler.SubChunkBlockPos
+type Position = layer_storage.Position
 
 func position(index int) Position {
 	return Position{X: uint8(index >> 8), Y: uint8(index & 15), Z: uint8((index >> 4) & 15)}
@@ -21,7 +20,7 @@ func position(index int) Position {
 func index(x, y, z int) int { return (x << 8) | (z << 4) | y }
 
 // ParseIDs reads one portable block layer: exactly 4096 little-endian uint32
-// IDs, in X-Z-Y order. It does not depend on Palette's native-memory dump format.
+// IDs, in X-Z-Y order.
 func ParseIDs(data []byte) (*layer_storage.Palette[uint32], error) {
 	if len(data) != IDsByteSize {
 		return nil, fmt.Errorf("block layer must contain %d bytes, got %d", IDsByteSize, len(data))

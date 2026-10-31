@@ -1,10 +1,10 @@
 package subchunk_test
 
 import (
+	"celler/layer_storage"
 	"encoding/binary"
 	"testing"
 
-	"celler"
 	"neomega-viewer/demo/subchunk"
 )
 
@@ -17,7 +17,7 @@ func TestPortableLayerCoordinatesAndDefaultFilledCells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uniform.Level != 0 || uniform.Get(celler.ToSubChunkBlockPos(15, 15, 15)) != 42 {
+	if uniform.Level != 0 || uniform.Get(layer_storage.At(15, 15, 15)) != 42 {
 		t.Fatal("default-filled cells lost")
 	}
 	binary.LittleEndian.PutUint32(data[((3<<8)|(9<<4)|7)*4:], 1234567890)
@@ -25,7 +25,7 @@ func TestPortableLayerCoordinatesAndDefaultFilledCells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layer.Get(celler.ToSubChunkBlockPos(3, 7, 9)) != 1234567890 || layer.Get(celler.ToSubChunkBlockPos(3, 9, 7)) != 42 {
+	if layer.Get(layer_storage.At(3, 7, 9)) != 1234567890 || layer.Get(layer_storage.At(3, 9, 7)) != 42 {
 		t.Fatal("XZY order lost")
 	}
 	encoded := subchunk.EncodeIDs(layer)

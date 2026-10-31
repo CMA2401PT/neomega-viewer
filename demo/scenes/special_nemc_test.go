@@ -3,7 +3,6 @@ package demo_test
 import (
 	"testing"
 
-	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
@@ -32,7 +31,7 @@ func TestSpecialNEMCSourceData(t *testing.T) {
 		{[3]uint8{11, 1, 11}, "minecraft:potted_cactus []"},
 		{[3]uint8{7, 1, 7}, `minecraft:oak_slab ["type"="bottom","waterlogged"="true"]`},
 	} {
-		position := celler.SubChunkBlockPos{X: check.position[0], Y: check.position[1], Z: check.position[2]}
+		position := layer_storage.Position{X: check.position[0], Y: check.position[1], Z: check.position[2]}
 		if got := scene.Blocks.Get(position); got != check.want.Tidy().Hash() {
 			block, _ := java.HashToBlock(got)
 			t.Errorf("%v: got %d (%s), want %s", check.position, got, block, check.want)
