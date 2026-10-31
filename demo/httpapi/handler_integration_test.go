@@ -10,7 +10,8 @@ import (
 	"strconv"
 	"testing"
 
-	"neomega-viewer/blockstate"
+	java "neomega-blocks/presets/java/v1"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/singleblock"
@@ -22,14 +23,11 @@ func TestBrowserTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR to run the real resource transport check")
 	}
-	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: "../../resources/geometry.nvtables"})
+	engine, err := singleblock.Open(blockmesh.OpenOptions{TablesPath: "../../../neomega-blocks/presets/java/v1/geometry/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := catalog.Java()
-	if err != nil {
-		t.Fatal(err)
-	}
+	entries := catalog.Java()
 	handler := httpapi.New(httpapi.Options{Engine: engine, Catalog: entries, AssetsDir: dir, WebDir: t.TempDir()})
 	call := func(method, path, body string, status int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -45,16 +43,16 @@ func TestBrowserTransport(t *testing.T) {
 		Version string          `json:"version"`
 		Groups  []catalog.Group `json:"groups"`
 	}
-	if err := json.Unmarshal(catalogResponse.Body.Bytes(), &listed); err != nil || len(listed.Groups) != len(entries.Groups) || listed.Version != engine.Version() {
+	if err := json.Unmarshal(catalogResponse.Body.Bytes(), &listed); err != nil || len(listed.Groups) != len(entries.Groups) || listed.Version != engine.Metadata.Version {
 		t.Fatalf("catalog contract: %v", err)
 	}
 	stone := entries.ByName["minecraft:stone"][0]
-	id := strconv.FormatUint(uint64(stone.ID), 10)
+	id := strconv.FormatUint(uint64(stone.Hash()), 10)
 	call(http.MethodGet, "/api/states?name=minecraft:stone", "", 200)
 	call(http.MethodGet, "/api/state?id="+id, "", 200)
 	geometry := call(http.MethodGet, "/api/block?id="+id, "", 200)
-	var packet singleblock.Packet
-	if err := json.Unmarshal(geometry.Body.Bytes(), &packet); err != nil || packet.Geometry.Quads != 6 || packet.Binding.ID != stone.ID {
+	var packet httpapi.BlockResponse
+	if err := json.Unmarshal(geometry.Body.Bytes(), &packet); err != nil || packet.Geometry.Quads != 6 || packet.Binding.ID != stone.Hash() {
 		t.Fatalf("geometry contract: %v, %+v", err, packet.Geometry)
 	}
 	for _, batch := range packet.Geometry.Batches {
@@ -63,7 +61,7 @@ func TestBrowserTransport(t *testing.T) {
 		}
 	}
 	statesResponse := call(http.MethodGet, "/api/states?name=minecraft:oak_slab", "", 200)
-	var states []blockstate.Binding
+	var states []httpapi.StateResponse
 	if err := json.Unmarshal(statesResponse.Body.Bytes(), &states); err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +87,9 @@ func TestBrowserTransport(t *testing.T) {
 			}
 		}
 	}
-	for id, binding := range entries.ByID {
-		if binding.Java.Name == "minecraft:moving_piston" {
+	for binding := range java.JavaFullStates() {
+		id := binding.Hash()
+		if binding.NameWithNameSpace() == "minecraft:moving_piston" {
 			call(http.MethodGet, "/api/block?id="+strconv.FormatUint(uint64(id), 10), "", 422)
 			break
 		}

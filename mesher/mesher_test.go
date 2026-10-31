@@ -2,15 +2,13 @@ package mesher
 
 import (
 	"bytes"
-	"encoding/binary"
-	"errors"
-	"io"
 	"math"
 	"reflect"
 	"testing"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 	"neomega-viewer/mesher/meshing"
 )
 
@@ -24,7 +22,7 @@ func TestNumericTablesAndMeshing(t *testing.T) {
 	t.Run("named64", func(t *testing.T) { checkNumericTables[custom64](t, 1<<60+7) })
 }
 
-func checkNumericTables[B BlockID](t *testing.T, id B) {
+func checkNumericTables[B blockgeometry.BlockID](t *testing.T, id B) {
 	t.Helper()
 	quad := geometry.Quad{
 		Positions:   [4]geometry.Vec3{{0, 0.5, 0}, {1, 0.5, 0}, {1, 0.5, 1}, {0, 0.5, 1}},
@@ -44,22 +42,22 @@ func checkNumericTables[B BlockID](t *testing.T, id B) {
 	for i := range full.Positions {
 		full.Positions[i][1] = 1
 	}
-	tables := &Tables[B]{
-		Index: map[B][]ModelID{0: {}, id: {0}},
-		Shapes: []Shape{
+	tables := &blockgeometry.Tables[B]{
+		Index: map[B][]blockgeometry.ModelID{0: {}, id: {0}},
+		Shapes: []blockgeometry.Shape{
 			{Quads: []geometry.Quad{quad}, CullGroup: 7},
 			{Quads: []geometry.Quad{full}, CullGroup: 7},
 		},
-		FullHeight: map[ModelID]ModelID{0: 1},
+		FullHeight: map[blockgeometry.ModelID]blockgeometry.ModelID{0: 1},
 	}
 	for i := range tables.Shapes {
-		tables.Shapes[i].Boundary = meshing.BoundaryCoverage(geometry.Mesh{Quads: tables.Shapes[i].Quads})
+		tables.Shapes[i].Boundary = blockgeometry.BoundaryCoverage(tables.Shapes[i].Quads)
 	}
 	var encoded bytes.Buffer
 	if err := tables.Encode(&encoded); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := DecodeTables[B](bytes.NewReader(encoded.Bytes()))
+	loaded, err := blockgeometry.DecodeTables[B](bytes.NewReader(encoded.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +113,7 @@ func checkNumericTables[B BlockID](t *testing.T, id B) {
 }
 
 func TestSubchunkInputLength(t *testing.T) {
-	m := NewMesher(&Tables[uint32]{Index: map[uint32][]ModelID{0: {}}})
+	m := NewMesher(&blockgeometry.Tables[uint32]{Index: map[uint32][]blockgeometry.ModelID{0: {}}})
 	for _, count := range []int{0, 4095, 4096, 4097} {
 		result, err := m.MeshSubchunk(make([]uint32, count), Options{})
 		if count == 4096 {
@@ -127,52 +125,3 @@ func TestSubchunkInputLength(t *testing.T) {
 		}
 	}
 }
-
-func TestIndependentBinaryLayout(t *testing.T) {
-	// 手写格式样本不经过编码器，独立约束头部和 64 位键的布局。
-	fixture := []byte{
-		'N', 'V', 'G', 'T', 2, 0, 8, 0,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,
-		8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0,
-	}
-	tables, err := DecodeTables[custom64](bytes.NewReader(fixture))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ids, err := tables.ModelIDs(0x0102030405060708); err != nil || len(ids) != 0 {
-		t.Fatalf("64-bit key: %v", err)
-	}
-	var encoded bytes.Buffer
-	if err := tables.Encode(&encoded); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(encoded.Bytes(), fixture) {
-		t.Fatal("layout differs from fixture")
-	}
-	if _, err := DecodeTables[uint32](bytes.NewReader(fixture)); err == nil {
-		t.Fatal("width mismatch accepted")
-	}
-	for _, offset := range []int{0, 4, 6} {
-		bad := bytes.Clone(fixture)
-		bad[offset] = 99
-		if _, err := DecodeTables[uint64](bytes.NewReader(bad)); err == nil {
-			t.Fatalf("header field %d accepted", offset)
-		}
-	}
-	for _, length := range []int{0, 31, len(fixture) - 1} {
-		if _, err := DecodeTables[uint64](bytes.NewReader(fixture[:length])); err == nil {
-			t.Fatalf("truncation at %d accepted", length)
-		}
-	}
-	if binary.Size(tableHeader{}) != 32 || binary.Size(wireQuad{}) != 57 || binary.Size(wireBoundary{}) != 36 {
-		t.Fatal("fixed record widths changed")
-	}
-	if err := tables.Encode(failingWriter{}); !errors.Is(err, io.ErrClosedPipe) {
-		t.Fatalf("write error lost: %v", err)
-	}
-}
-
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }

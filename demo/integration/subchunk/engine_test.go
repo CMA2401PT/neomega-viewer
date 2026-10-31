@@ -8,7 +8,7 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	"neomega-viewer/demo/blockmesh"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
@@ -22,7 +22,7 @@ func realEngine(t *testing.T) *mesher.Mesher[uint32] {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mesher.NewMesher(parser.Tables())
+	return mesher.NewMesher(parser.Tables)
 }
 func id(t *testing.T, java string) uint32 {
 	t.Helper()

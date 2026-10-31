@@ -48,9 +48,9 @@ err := result.Mesh.Marshal(writer)
 mesh, err := geometry.UnmarshalMesh(reader)
 ```
 
-`Quad.Marshal(writer)` 写出单面 NVMS，`geometry.UnmarshalQuad(reader)` 要求输入恰好包含一个面。多面网格必须统一按材质和属性分批，不能拼接单面 NVMS 文件；单面入口因此复用 Mesh 编码器。
+`geometry.MarshalQuad(writer, quad)` 写出单面 NVMS，`geometry.UnmarshalQuad(reader)` 要求输入恰好包含一个面。多面网格必须统一按材质和属性分批，不能拼接单面 NVMS 文件；单面入口因此复用 Mesh 编码器。
 
-解码后的 Quad 顺序为材质批次顺序，同一材质内保留输入顺序。位置、UV 和法线恢复为 float32 所能表示的值；ShadeNormal 是应用默认法线后的值，CullFace 为零。NVMS 用于绘制；保存完整烘焙几何使用 [NVGT](../FORMAT.md)。
+解码后的 Quad 顺序为材质批次顺序，同一材质内保留输入顺序。位置、UV 和法线恢复为 float32 所能表示的值；ShadeNormal 是应用默认法线后的值，CullFace 为零。NVMS 用于绘制；保存完整烘焙几何使用 [NVGT](../../../neomega-blocks/geometry/FORMAT.md)。
 
 浏览器在小端平台上直接建立属性视图，材质表单独解析：
 

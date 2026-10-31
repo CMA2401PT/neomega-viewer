@@ -5,8 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 var opaque = material.Surface{Mode: material.Opaque, Opacity: 1}
@@ -366,46 +367,6 @@ func TestRotatedNeighborDoesNotMaskOpaqueFace(t *testing.T) {
 	}
 }
 
-func TestOpaqueBoundary(t *testing.T) {
-	left := face(0, 1, 1, [2]float64{}, [2]float64{.4, 1}, opaque)
-	right := face(0, 1, 1, [2]float64{.4, 0}, [2]float64{1, 1}, opaque)
-	left.CullFace, right.CullFace = geometry.NoCullFace, geometry.NoCullFace
-	union := geometry.Mesh{Quads: []geometry.Quad{left, right}}
-	if !OpaqueBoundary(union, "east") || OpaqueBoundary(union, "west") || OpaqueBoundary(union, "invalid") {
-		t.Fatal("boundary union or requested direction incorrect")
-	}
-	for _, test := range []struct {
-		name string
-		mesh geometry.Mesh
-	}{
-		{"missing half", geometry.Mesh{Quads: []geometry.Quad{left}}},
-		{"slab side", cuboid(.5, opaque)},
-		{"cutout", cuboid(1, material.Surface{Mode: material.Cutout, Opacity: 1})},
-		{"blend", cuboid(1, material.Surface{Mode: material.Blend, Opacity: .5})},
-		{"reduced opacity", cuboid(1, material.Surface{Mode: material.Opaque, Opacity: .5})},
-		{"hole", geometry.Mesh{Quads: []geometry.Quad{
-			face(0, 1, 1, [2]float64{}, [2]float64{.2, 1}, opaque),
-			face(0, 1, 1, [2]float64{.8, 0}, [2]float64{1, 1}, opaque),
-			face(0, 1, 1, [2]float64{.2, 0}, [2]float64{.8, .2}, opaque),
-			face(0, 1, 1, [2]float64{.2, .8}, [2]float64{.8, 1}, opaque),
-		}}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if OpaqueBoundary(test.mesh, "east") {
-				t.Fatal("incomplete or nonopaque boundary accepted")
-			}
-		})
-	}
-	for _, side := range sideNames {
-		if !OpaqueBoundary(cuboid(1, opaque), side) {
-			t.Fatalf("cube missing opaque %s boundary", side)
-		}
-	}
-	if !OpaqueBoundary(cuboid(.5, opaque), "down") || OpaqueBoundary(cuboid(.5, opaque), "up") {
-		t.Fatal("slab boundary inferred from shape volume instead of face location")
-	}
-}
-
 type fixtureCell struct {
 	Mesh      geometry.Mesh
 	CullGroup uint32
@@ -420,7 +381,7 @@ func TestSharedMultipartBoundaryCoverage(t *testing.T) {
 	cells[0] = Cell{{Shape: &geometry.Shape{Quads: []geometry.Quad{source}}}}
 	for _, quad := range []geometry.Quad{left, right} {
 		mesh := geometry.Mesh{Quads: []geometry.Quad{quad}}
-		cells[256] = append(cells[256], LayerShape{Shape: &geometry.Shape{Quads: mesh.Quads, Boundary: BoundaryCoverage(mesh)}})
+		cells[256] = append(cells[256], LayerShape{Shape: &geometry.Shape{Quads: mesh.Quads, Boundary: blockgeometry.BoundaryCoverage(mesh.Quads)}})
 	}
 	_, stats := Build(&cells, Options{DisableGreedy: true})
 	if stats.RemovedQuads != 1 || stats.ClippedQuads != 0 {
@@ -491,7 +452,7 @@ func buildFixture(fixtures *fixtureCells, options Options) (geometry.Mesh, Stats
 		if len(fixture.Mesh.Quads) != 0 {
 			cells[i] = Cell{{Shape: &geometry.Shape{
 				Quads:     fixture.Mesh.Quads,
-				Boundary:  BoundaryCoverage(fixture.Mesh),
+				Boundary:  blockgeometry.BoundaryCoverage(fixture.Mesh.Quads),
 				CullGroup: fixture.CullGroup,
 			}}}
 		}

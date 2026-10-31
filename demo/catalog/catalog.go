@@ -1,12 +1,12 @@
-// Package catalog enumerates state metadata, without expanding any geometry.
+// Package catalog groups canonical Java IR blocks for browsing, without loading geometry.
 package catalog
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
-	"neomega-viewer/blockstate"
+	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
 )
 
 type Group struct {
@@ -18,25 +18,19 @@ type Group struct {
 
 type Catalog struct {
 	Groups []Group
-	ByName map[string][]blockstate.Binding
-	ByID   map[uint32]blockstate.Binding
+	ByName map[string][]ir.IRBlock
 }
 
-func Java() (*Catalog, error) {
-	table, err := blockstate.Java()
-	if err != nil {
-		return nil, fmt.Errorf("catalog: %w", err)
-	}
-	result := &Catalog{Groups: []Group{}, ByName: map[string][]blockstate.Binding{}, ByID: table.ByID}
-	for _, binding := range table.ByID {
-		name := string(binding.Java.Name)
-		result.ByName[name] = append(result.ByName[name], binding)
+func Java() *Catalog {
+	result := &Catalog{ByName: map[string][]ir.IRBlock{}}
+	for block := range java.JavaFullStates() {
+		name := block.NameWithNameSpace()
+		result.ByName[name] = append(result.ByName[name], block)
 	}
 	for name, states := range result.ByName {
-		slices.SortFunc(states, func(a, b blockstate.Binding) int { return cmp.Compare(a.ID, b.ID) })
-		result.ByName[name] = states
-		result.Groups = append(result.Groups, Group{Name: name, Count: len(states), ExampleID: states[0].ID, JavaNames: []string{name}})
+		slices.SortFunc(states, func(a, b ir.IRBlock) int { return cmp.Compare(a.Hash(), b.Hash()) })
+		result.Groups = append(result.Groups, Group{Name: name, Count: len(states), ExampleID: states[0].Hash(), JavaNames: []string{name}})
 	}
 	slices.SortFunc(result.Groups, func(a, b Group) int { return cmp.Compare(a.Name, b.Name) })
-	return result, nil
+	return result
 }

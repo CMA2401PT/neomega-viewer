@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"celler/layer_storage"
-	"neomega-assets/asset"
+	blockgeometry "neomega-blocks/geometry"
+	jmodel "neomega-blocks/geometry/java_block_model"
+	"neomega-blocks/geometry/material"
 	"neomega-converter/fixer"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/blockactor/decoratedpot"
@@ -17,15 +18,12 @@ import (
 	"neomega-viewer/dispatcher"
 	"neomega-viewer/effector"
 	"neomega-viewer/merger"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/material"
 )
 
-func NewFramePipeline(tables *mesher.Tables[uint32], atlas asset.Atlas) *dispatcher.Pipeline {
+func NewFramePipeline(tables *blockgeometry.Tables[uint32], atlas jmodel.Atlas) *dispatcher.Pipeline {
 	// demo 在此启用具体方块，框架只认识处理器接口；资源加载仍由应用入口负责。
 	surfaces := func(texture string) (material.Surface, error) {
-		name := strings.TrimPrefix(texture, "minecraft:")
-		entry, found := atlas.Textures[name]
+		entry, found := atlas.Textures[jmodel.ResourceID(texture)]
 		if !found {
 			return material.Surface{}, fmt.Errorf("atlas texture %s missing", texture)
 		}

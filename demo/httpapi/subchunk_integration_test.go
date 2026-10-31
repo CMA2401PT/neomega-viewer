@@ -12,8 +12,8 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-converter/fixer"
-	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
@@ -28,7 +28,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR for the binary subchunk transport check")
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../resources/geometry.nvtables"})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../../neomega-blocks/presets/java/v1/geometry/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	}
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
-		Subchunks: mesher.NewMesher(parser.Tables()),
+		Subchunks: mesher.NewMesher(parser.Tables),
 		Fixer:     stateFixer,
 		AssetsDir: dir,
 		WebDir:    t.TempDir(),
@@ -97,7 +97,7 @@ func TestDirtyFenceRepairTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine := mesher.NewMesher(parser.Tables())
+	engine := mesher.NewMesher(parser.Tables)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
 		Subchunks: engine,
@@ -181,7 +181,7 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine := mesher.NewMesher(parser.Tables())
+	engine := mesher.NewMesher(parser.Tables)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
 		Subchunks: engine,

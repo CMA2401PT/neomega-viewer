@@ -1,6 +1,7 @@
 package dispatcher
 
 import (
+	blockgeometry "neomega-blocks/geometry"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/effector"
 	"neomega-viewer/merger"
@@ -26,7 +27,7 @@ type Result struct {
 }
 
 func NewPipeline(
-	tables *mesher.Tables[uint32],
+	tables *blockgeometry.Tables[uint32],
 	effects *effector.Effector,
 	actors *blockactor.Dispatcher,
 ) *Pipeline {

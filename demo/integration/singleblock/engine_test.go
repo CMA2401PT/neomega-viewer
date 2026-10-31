@@ -7,31 +7,30 @@ import (
 	"sync"
 	"testing"
 
-	"neomega-assets/asset"
+	jmodel "neomega-blocks/geometry/java_block_model"
+	"neomega-blocks/geometry/material"
+	java "neomega-blocks/presets/java/v1"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 func openReal(t *testing.T) (*singleblock.Engine, *catalog.Catalog) {
 	t.Helper()
-	engine, err := singleblock.Open(singleblock.OpenOptions{})
+	engine, err := singleblock.Open(blockmesh.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := catalog.Java()
-	if err != nil {
-		t.Fatal(err)
-	}
+	entries := catalog.Java()
 	return engine, entries
 }
 
-func stateID(t *testing.T, entries *catalog.Catalog, name string, properties map[string]string) uint32 {
+func stateID(t *testing.T, entries *catalog.Catalog, name string, properties map[string]any) uint32 {
 	t.Helper()
 	for _, binding := range entries.ByName["minecraft:"+name] {
-		if maps.Equal(binding.Java.Properties, properties) {
-			return binding.ID
+		if maps.Equal(binding.States().GoMap(), properties) {
+			return binding.Hash()
 		}
 	}
 	t.Fatalf("state not found: %s %v", name, properties)
@@ -41,8 +40,9 @@ func stateID(t *testing.T, entries *catalog.Catalog, name string, properties map
 func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 	engine, entries := openReal(t)
 	ids := map[string]uint32{}
-	for id, binding := range entries.ByID {
-		ids[string(binding.Java.Name)] = id
+	for binding := range java.JavaFullStates() {
+		id := binding.Hash()
+		ids[string(binding.NameWithNameSpace())] = id
 	}
 	for _, name := range []string{"stone", "glass", "oak_slab", "oak_fence", "short_grass", "fire", "chest", "red_bed", "oak_wall_hanging_sign", "oak_leaves", "air", "water", "lava"} {
 		t.Run(name, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 				t.Fatal("example is absent from the real catalog")
 			}
 			if name == "oak_slab" {
-				id = stateID(t, entries, name, map[string]string{"type": "bottom"})
+				id = stateID(t, entries, name, map[string]any{"type": "bottom"})
 			}
 			block, err := engine.Build(id)
 			if err != nil {
@@ -71,7 +71,7 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 				t.Fatalf("slab lost its half height: %+v", bounds)
 			}
 			if name == "stone" {
-				if _, exists := block.Binding.Java.Properties["waterlogged"]; exists {
+				if _, exists := block.State.States().Get("waterlogged"); exists {
 					t.Fatal("solid stone exposed a fabricated waterlogged property")
 				}
 			}
@@ -97,11 +97,11 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 				t.Fatal("leaf alpha holes became full transparency")
 			}
 			if name == "oak_fence" {
-				isolated, err := engine.Build(stateID(t, entries, name, map[string]string{"north": "false", "east": "false", "south": "false", "west": "false"}))
+				isolated, err := engine.Build(stateID(t, entries, name, map[string]any{"north": "false", "east": "false", "south": "false", "west": "false"}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				connected, err := engine.Build(stateID(t, entries, name, map[string]string{"north": "true", "east": "true", "south": "false", "west": "false"}))
+				connected, err := engine.Build(stateID(t, entries, name, map[string]any{"north": "true", "east": "true", "south": "false", "west": "false"}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -116,18 +116,19 @@ func TestStaticShapesAndSurfaceTypes(t *testing.T) {
 func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.T) {
 	engine, entries := openReal(t)
 	checked, unsupported := 0, 0
-	for id, binding := range entries.ByID {
+	for binding := range java.JavaFullStates() {
+		id := binding.Hash()
 		block, err := engine.Build(id)
-		profile := engine.Renderer(binding.Java.Name)
-		if profile.Kind == asset.RendererDynamic {
+		profile := engine.Metadata.Renderers[binding.NameWithNameSpace()]
+		if profile.Kind == jmodel.RendererDynamic {
 			if err == nil {
-				t.Fatalf("runtime-only shape silently accepted: %+v", binding.Java)
+				t.Fatalf("runtime-only shape silently accepted: %+v", binding)
 			}
 			unsupported++
 			continue
 		}
 		if err != nil {
-			t.Fatalf("%d %+v: %v", id, binding.Java, err)
+			t.Fatalf("%d %+v: %v", id, binding, err)
 		}
 		for _, quad := range block.Mesh.Quads {
 			for _, position := range quad.Positions {
@@ -157,14 +158,14 @@ func TestEveryPaletteStateHasAStaticResultOrAnExplicitStaticBoundary(t *testing.
 
 func TestBuildUsesSharedShapes(t *testing.T) {
 	engine, entries := openReal(t)
-	tables := engine.Tables()
+	tables := engine.Tables
 	for _, name := range []string{"oak_slab", "oak_fence", "redstone_wire", "water", "air"} {
 		for _, binding := range entries.ByName["minecraft:"+name] {
-			block, err := engine.Build(binding.ID)
+			block, err := engine.Build(binding.Hash())
 			if err != nil {
 				t.Fatal(err)
 			}
-			ids, err := tables.ModelIDs(binding.ID)
+			ids, err := tables.ModelIDs(binding.Hash())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -4,11 +4,12 @@ import (
 	"math"
 	"strings"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 	"neomega-viewer/splitlayer"
 )
 
@@ -21,7 +22,7 @@ type Handler struct {
 	surfaces SurfaceLookup
 }
 
-func New(tables *mesher.Tables[uint32], surfaces SurfaceLookup) *Handler {
+func New(tables *blockgeometry.Tables[uint32], surfaces SurfaceLookup) *Handler {
 	return &Handler{models: mesher.NewMesher(tables), surfaces: surfaces}
 }
 

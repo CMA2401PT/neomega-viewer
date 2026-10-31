@@ -6,13 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-blocks/ir"
+	resources "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/blockactor/decoratedpot"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
-	"neomega-viewer/resources"
 )
 
 const listNBT = `{sherds:["minecraft:angler_pottery_sherd","minecraft:archer_pottery_sherd","minecraft:arms_up_pottery_sherd","minecraft:prize_pottery_sherd"]}`
@@ -24,7 +25,7 @@ func TestDecoratedPot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	tables, err := mesher.DecodeTables[uint32](file)
+	tables, err := blockgeometry.DecodeTables[uint32](file)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,8 +8,7 @@ import (
 	"os"
 
 	"celler/layer_storage"
-
-	"neomega-viewer/demo/blockmesh"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/mesher"
@@ -47,7 +46,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(layer)
-	result, err := mesher.NewMesher(parser.Tables()).MeshSubchunk(plain.Data, mesher.Options{
+	result, err := mesher.NewMesher(parser.Tables).MeshSubchunk(plain.Data, mesher.Options{
 		Meshing: meshing.Options{
 			DisableCulling: !*cull,
 			DisableGreedy:  !*greedy,

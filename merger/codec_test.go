@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"testing"
 
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/effector"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 func TestRoundTripAndAlignment(t *testing.T) {

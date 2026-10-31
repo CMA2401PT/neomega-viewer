@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	java "neomega-blocks/presets/java/v1"
 	"neomega-converter/fixer"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
@@ -42,7 +43,7 @@ func writeError(w http.ResponseWriter, status int, err error) {
 func New(options Options) http.Handler {
 	mux := http.NewServeMux()
 	if options.Subchunks != nil {
-		addSubchunks(mux, options.Subchunks, options.Fixer, options.Engine.Version())
+		addSubchunks(mux, options.Subchunks, options.Fixer, options.Engine.Metadata.Version)
 	}
 	if options.Frames != nil {
 		addFrames(mux, options.Frames, options.Fixer)
@@ -52,7 +53,7 @@ func New(options Options) http.Handler {
 			Version  string          `json:"version"`
 			AtlasURL string          `json:"atlasUrl"`
 			Groups   []catalog.Group `json:"groups"`
-		}{Version: options.Engine.Version(), AtlasURL: "/assets/atlas.png", Groups: options.Catalog.Groups})
+		}{Version: options.Engine.Metadata.Version, AtlasURL: "/assets/atlas.png", Groups: options.Catalog.Groups})
 	})
 	mux.HandleFunc("GET /api/states", func(w http.ResponseWriter, r *http.Request) {
 		states, ok := options.Catalog.ByName[r.URL.Query().Get("name")]
@@ -60,7 +61,11 @@ func New(options Options) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, http.StatusOK, states)
+		responses := make([]StateResponse, 0, len(states))
+		for _, block := range states {
+			responses = append(responses, stateResponse(block))
+		}
+		writeJSON(w, http.StatusOK, responses)
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 32)
@@ -68,12 +73,12 @@ func New(options Options) http.Handler {
 			writeError(w, 400, err)
 			return
 		}
-		binding, ok := options.Catalog.ByID[uint32(id)]
+		binding, ok := java.HashToBlock(uint32(id))
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, 200, binding)
+		writeJSON(w, 200, stateResponse(binding))
 	})
 	build := func(w http.ResponseWriter, r *http.Request) {
 		var input request
@@ -95,7 +100,7 @@ func New(options Options) http.Handler {
 			writeError(w, 422, err)
 			return
 		}
-		writeJSON(w, 200, block.Packet())
+		writeJSON(w, 200, blockResponse(block))
 	}
 	mux.HandleFunc("GET /api/block", build)
 	mux.HandleFunc("POST /api/block", build)

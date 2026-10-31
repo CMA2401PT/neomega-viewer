@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"celler/layer_storage"
-	"neomega-assets/asset"
+	jmodel "neomega-blocks/geometry/java_block_model"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-converter/fixer"
-	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
@@ -31,16 +31,16 @@ func TestBlockEntitiesFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	atlas := asset.Atlas{Textures: map[string]asset.AtlasTexture{}}
+	atlas := jmodel.Atlas{Textures: map[jmodel.ResourceID]jmodel.AtlasTexture{}}
 	for i, name := range []string{"decorated_pot_side", "angler_pottery_pattern", "archer_pottery_pattern", "arms_up_pottery_pattern", "blade_pottery_pattern", "prize_pottery_pattern"} {
-		atlas.Textures["entity/decorated_pot/"+name] = asset.AtlasTexture{
+		atlas.Textures[jmodel.ResourceID("minecraft:entity/decorated_pot/"+name)] = jmodel.AtlasTexture{
 			U: float64(i) / 16, V: .5, SU: 1.0 / 16, SV: 1.0 / 16, Frames: 1,
 		}
 	}
-	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas)
+	pipeline := httpapi.NewFramePipeline(parser.Tables, atlas)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
-		Subchunks: mesher.NewMesher(parser.Tables()),
+		Subchunks: mesher.NewMesher(parser.Tables),
 		Frames:    pipeline,
 		Fixer:     stateFixer,
 	})

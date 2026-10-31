@@ -2,11 +2,9 @@
 
 `neomega-viewer` 把数值方块层转换成静态几何。`mesher` 是连接方块数据与绘制端的可复用窄腰：调用者提供几何表和数值 block ID，它查表取得形状，再按邻居覆盖剔面、合并。`mesher.Mesher[B]` 的 B 可以是 uint32、uint64 或它们的自定义类型，库只把 ID 当查表键。
 
-`mesher/` 自带 `geometry`、`material`、`meshing` 子包，分别负责几何与传输、表面材质、剔面与合并。整个子树除 Go 标准库外没有外部依赖。子区块入口接收 4096 个数值 block ID 的切片，存储类型由调用方选择。Java 状态、模型与图集解析留在外层，其他 ID 系统也可以提供自己的表并复用相同入口。
+`neomega-blocks` 提供单个状态的静态形状、Java 元数据和实心表。viewer 使用共享的 `geometry.Tables[B]`，将这些局部形状放到格子位置，再按邻居覆盖裁切和合并。模型选择、继承解析、图集采样和离线建表由 blocks 负责。
 
-Java 适配层为这条入口准备数据。**生成侧**枚举完整 Java 状态、选模型、解析纹理、烘焙几何，产出 `javaHash → []ModelID` 和 `ModelID → Shape` 两张表。Java hash 是方块名加全部属性先 `Tidy()`、再 `Hash()` 得到的 uint32。模型部件被许多状态共用，所以几何去重后共享。**运行侧**只查表与拼装：单方块返回 Mesh，16×16×16 的子区块返回几何与统计。连接方向、半砖位置、红石颜色等已在生成时定死；流体高度切换和面剔除依赖邻居的数值几何信息。
-
-两张表保存为固定小端的 NVGT 二进制。加载文件或 embed 是调用者的职责，mesher 构造时只接收 `*Tables[B]`。Java 演示加载器提供内嵌资源的便捷入口。
+共享几何表保存为固定小端的 NVGT 二进制。`neomega-blocks/presets/java/v1/geometry.Open` 可以加载内嵌的 Java 表，或加载指定文件及配套元数据。mesher 构造时接收 `*geometry.Tables[B]`；其他数值 ID 系统也可以自行提供表。Java hash 是状态先 `Tidy()` 再 `Hash()` 得到的 uint32。
 
 viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等其他表达转换过来的状态可能丢失连接方向、楼梯拐角或门的部分属性，修复属于转换一侧，由 [neomega-converter](../neomega-converter) 的 `fixer` 负责，调用者修好后再把 hash 层交给 viewer。
 
@@ -18,43 +16,36 @@ viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等�
 
 ## 目录职责
 
-复用几何构建时使用 `mesher/` 及其子包。演示代码集中在 `demo/`。只有生成器需要模型解析和图集采样，这些实现放在 `scripts/internal/`，由 Go 的 internal 边界限制引用。
+需要构建场景网格时，使用 `mesher/` 及其子包。共享形状、材质与表编解码来自 `neomega-blocks/geometry`。演示代码集中在 `demo/`。
 
 ```text
 neomega-viewer/
-├─ mesher/             # 泛型表、NVGT 编解码、单块与子区块入口
-│  ├─ geometry/       # Shape、Mesh、Quad、绘制缓冲与 NVMS 编解码
-│  ├─ material/       # 表面材质，纹理名为 string
-│  └─ meshing/        # 剔面、裁切和合并
-├─ blockstate/         # 上层 Java 身份与响应元数据
+├─ mesher/             # 单块、子区块与多层拼装入口
+│  ├─ geometry/       # 场景 Mesh、绘制缓冲与 NVMS 编解码
+│  └─ meshing/        # 根据邻居剔面、局部裁切和合并
 ├─ splitlayer/         # 把含水方块拆成前景层与水层
-├─ dispatcher/         # 按路由表把方块分给 mesher、effector、block actor，并串起整条流程
+├─ dispatcher/         # 分发 mesher、effector、block actor 输入
 ├─ effector/           # 输出「某格放某特效」的消息
-├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包（如 decoratedpot/）
+├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包
 ├─ merger/             # NVFR 快照容器的编解码
-├─ web/render/         # 前端渲染核心：NVMS/NVFR 解码、材质、视口、特效
-├─ resources/          # 入库的几何表、Java 元数据及 embed
-├─ demo/
-│  ├─ blockmesh/       # Java 演示加载器，组合表与身份
-│  ├─ singleblock/     # 调用 mesher 并补 Java 响应元数据
-│  ├─ subchunk/        # .nvblocks 方块层读写
-│  ├─ cmd/neomega-viewer/
-│  ├─ httpapi/
-│  ├─ catalog/         # 浏览器选择器目录
-│  ├─ scenes/          # 示例场景
-│  ├─ examples/        # 命令行示例
-│  ├─ integration/     # 使用目录和场景的集成测试
-│  └─ web/             # 演示网页：面板、场景选择、构建配置
-└─ scripts/
-   ├─ gen-geometry/    # 生成命令
-   └─ internal/        # tablegen、bake、model、materials、resources
+├─ web/render/         # 前端 NVMS/NVFR 解码、材质、视口和特效
+└─ demo/
+   ├─ singleblock/     # 调用 mesher 并补 Java 响应元数据
+   ├─ subchunk/        # .nvblocks 方块层读写
+   ├─ cmd/neomega-viewer/
+   ├─ httpapi/
+   ├─ catalog/         # 浏览器选择器目录
+   ├─ scenes/          # 示例场景
+   ├─ examples/        # 命令行示例
+   ├─ integration/     # 使用目录和场景的集成测试
+   └─ web/             # 演示网页、面板与构建配置
 ```
 
-依赖方向为演示与生成脚本依赖 `mesher`，`mesher` 不反向依赖它们。内部依赖为 `geometry → material`、`meshing → geometry + material`。`catalog` 的分组和示例 ID 服务于浏览器选择器，因此属于演示。几何类型上的 NVMS 编解码可直接用于文件或网络。根目录的 `resources` 保存生成产物；生成时的预览规则在 `scripts/internal/resources`。
+依赖方向为 viewer 使用 blocks 的共享几何和 preset。`mesher/geometry.Mesh` 保留场景输出的 `Buffers`、`Marshal` 方法；四边形与形状定义复用 blocks。边界矩形识别和覆盖相减也复用 blocks，UV 相容性、邻居裁切与贪婪合并由 viewer 处理。
 
 ## 直接使用 Go 库
 
-几何使用者需要先取得表，再创建一个 Mesher。所有包的导入前缀为 `neomega-viewer/`。下面的完整示例读取 uint32 表，将一个方块写成 NVMS 二进制；ID 来自调用者，必须存在于表中：
+几何使用者需要先取得表，再创建一个 Mesher。表类型和解码来自 `neomega-blocks/geometry`，网格构建入口来自 `neomega-viewer/mesher`。下面的完整示例读取 uint32 表，将一个方块写成 NVMS 二进制；ID 来自调用者，必须存在于表中：
 
 ```go
 package main
@@ -64,17 +55,18 @@ import (
     "log"
     "os"
 
+    blockgeometry "neomega-blocks/geometry"
     "neomega-viewer/mesher"
 )
 
 func main() {
-    path := flag.String("tables", "resources/geometry.nvtables", "geometry table")
+    path := flag.String("tables", "../neomega-blocks/presets/java/v1/geometry/geometry.nvtables", "geometry table")
     id := flag.Uint64("id", 0, "block ID in the table")
     flag.Parse()
     file, err := os.Open(*path)
     if err != nil { log.Fatal(err) }
     defer file.Close()
-    tables, err := mesher.DecodeTables[uint32](file)
+    tables, err := blockgeometry.DecodeTables[uint32](file)
     if err != nil { log.Fatal(err) }
     renderer := mesher.NewMesher(tables)
     mesh, err := renderer.MeshBlock(uint32(*id))
@@ -85,7 +77,7 @@ func main() {
 }
 ```
 
-自己的数值 ID 系统可以直接构建 `mesher.Tables[B]{Index, Shapes, FullHeight}`，用 `tables.Encode(writer)` 保存。`ModelIDs(id)` 和 `Shape(modelID)` 返回共享只读数据；`FullHeight` 把原模型编号映射到满高度编号。`mesher.Shape` 是 `geometry.Shape` 的别名，便于直接组装表而不复制几何类型。自定义 64 位 ID 可写成 `type BlockID uint64`，并使用 `Tables[BlockID]`、`DecodeTables[BlockID]` 和 `[]BlockID`；ModelID 始终是 uint32 的 Shape 下标。
+自己的数值 ID 系统可以直接构建 `geometry.Tables[B]{Index, Shapes, FullHeight}`，用 `tables.Encode(writer)` 保存。`ModelIDs(id)` 和 `Shape(modelID)` 返回共享只读数据；`FullHeight` 把原模型编号映射到满高度编号。`Shape`、`ModelID` 和 `Tables` 都由 `neomega-blocks/geometry` 定义。自定义 64 位 ID 可写成 `type BlockID uint64`，并使用 `Tables[BlockID]`、`DecodeTables[BlockID]` 和 `[]BlockID`；ModelID 始终是 uint32 的 Shape 下标。
 
 多个方块使用同一个 Mesher。`MeshSubchunk(blocks []B, options Options)` 接收恰好 4096 个 ID，长度不足或超出会返回错误。索引为 `(x << 8) | (z << 4) | y`，即 Y 最快、Z 次之、X 最慢，三个坐标均为 0…15。输出目标 `writer` 是任意 `io.Writer`：
 
@@ -115,15 +107,15 @@ if err := result.Mesh.Marshal(writer); err != nil {
 }
 ```
 
-几何传输入口在 `neomega-viewer/mesher/geometry`。`Mesh.Marshal(w io.Writer)` 写出 NVMS，`geometry.UnmarshalMesh(r io.Reader)` 读回 Mesh；文件、HTTP 响应和内存缓冲使用同一接口。`Quad.Marshal(w)` 和 `geometry.UnmarshalQuad(r)` 用于只有一个四边形的 NVMS。`Mesh.Buffers()` 保留为扁平 GPU 属性入口，单方块 JSON 和直接绘制的 Go 调用者仍使用它。
+几何传输入口在 `neomega-viewer/mesher/geometry`。`Mesh.Marshal(w io.Writer)` 写出 NVMS，`geometry.UnmarshalMesh(r io.Reader)` 读回 Mesh；文件、HTTP 响应和内存缓冲使用同一接口。`geometry.MarshalQuad(w, quad)` 和 `geometry.UnmarshalQuad(r)` 用于只有一个四边形的 NVMS。`Mesh.Buffers()` 保留为扁平 GPU 属性入口，单方块 JSON 和直接绘制的 Go 调用者仍使用它。
 
 NVMS 保存 float32 绘制数据，按材质分批后的顺序恢复四边形。它不保留 CullFace，也不保留“零 ShadeNormal 表示使用 Normal”的原始标记；需要保留烘焙精度和剔面信息时，用 NVGT 保存 Tables。
 
-构建期间调用者应保持输入切片和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。两个 Mesh 方法只返回几何和统计，Java 状态由调用者从 `blockstate` 查询。
+构建期间调用者应保持输入切片和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。两个 Mesh 方法只返回几何和统计，Java 状态由调用者从 `neomega-blocks/presets/java/v1.HashToBlock` 查询。
 
-演示程序用 `demo/blockmesh.Open` 加载内嵌表，或通过 `OpenOptions{TablesPath: "/path/to/geometry.nvtables"}` 加载文件及配套的 `.java.json` 旁文件。`demo/singleblock` 是补齐 Binding、Renderer 与 JSON 响应的薄壳；服务和层示例直接调用 mesher。
+演示程序用 `neomega-blocks/presets/java/v1/geometry.Open` 加载内嵌表，或通过 `OpenOptions{TablesPath: "/path/to/geometry.nvtables"}` 加载文件及配套的 `.java.json` 旁文件。`demo/singleblock` 返回 IR 方块、渲染类别和网格；`demo/httpapi` 在发送响应时将 IR 展开为网页使用的名称和属性对象。服务和层示例直接调用 mesher。
 
-Java 示例将完整状态文本规范化、计算 hash，再输出带 Java 元数据的 JSON。属性名和值使用 IR 的双引号语法：
+Java 示例将完整状态文本规范化、计算 hash，再输出 IR 状态与绘制缓冲的 JSON。属性名和值使用 IR 的双引号语法：
 
 ```sh
 go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]' > /tmp/slab.json
@@ -195,32 +187,25 @@ if err := result.Frame.Marshal(writer); err != nil {
 
 新增一种 NBT 方块时，在 `blockactor/` 下新建一个子包，实现 `blockactor.Handler`（报出认领的方块名，按 `Input` 里的状态和 SNBT 返回格内几何），再在组装处传给 `blockactor.New`。陶罐的 NBT 结构与朝向见 [blockactor/decoratedpot/NBT.md](blockactor/decoratedpot/NBT.md)。
 
-## 生成和更新几何表
+## 更新配套几何资源
 
-模型、图集布局或静态材质策略改变后，需要重新生成配套几何。生成器枚举 Java 状态、选择模型、烘焙形状并计算边界覆盖：
+模型、图集布局或静态材质策略改变后，需要在 neomega-blocks 中更新配套几何。先手动把一套匹配的六份 assets 输入复制到 blocks 的生成目录，再从 neomega-blocks 根目录运行：
 
 ```sh
-go run ./scripts/gen-geometry \
-  -assets ../neomega-assets/dist/final \
-  -output resources/geometry.nvtables
-wc -c resources/geometry.nvtables resources/geometry.nvtables.java.json ../neomega-assets/solidtable/geometry.nvsolid
+go generate ./presets/java/v1/geometry
 ```
 
-`resources/geometry.nvtables` 是入库产物。用 Java 1.21.4 的 `../neomega-assets/dist/final` 执行上述命令，得到 18,242 个索引条目、6,414 个 Shape、19 条满高度映射，以及 12 个跳过的 `moving_piston` 状态。几何文件为 **5,796,205 字节（5.53 MiB）**。生成器同时写出 `resources/geometry.nvtables.java.json`，保存 Java 资源版本、渲染类别和跳过原因，大小为 78,357 字节。两文件合计 5,874,562 字节（5.60 MiB）。更换输入后以命令输出为准。
+这个入口直接更新 blocks 的几何表、Java 元数据和实心表。输入列表和真实资源验证命令见[几何生成说明](../neomega-blocks/third_party/gen_resource/geometry/solid_block_table/README.md)。NVGT 的字节布局见 [blocks 的格式说明](../neomega-blocks/geometry/FORMAT.md)。
 
-同一命令还生成实心表：每个成功状态的全部部件合并后，对六个方向调用 `meshing.OpaqueBoundary`，记下哪几面被不透明矩形完整覆盖。neomega-converter 的 fixer 靠它判断邻居的某一面是否实心。实心表由几何算出，所以在这里生成；但它属于共享资源，写到 `../neomega-assets/solidtable/geometry.nvsolid`（`-solid` 可改），由 `neomega-assets/solidtable` 内嵌并提供编解码。使用上述资源得到 **18,242 条、91,222 字节**。重新生成后，assets 与 converter 都需重新构建。
+演示加载器通过 blocks 的 preset 使用内嵌资源，与工作目录无关；共享解码结果由 `sync.OnceValues` 缓存。重新生成后重新构建演示程序即可带入新表。演示命令的 `-tables` 指定外部文件时，同时读取 `<表路径>.java.json`。直接使用 mesher 的程序只需几何表。
 
-NVGT 保存纯数值索引与完整几何，按首次出现顺序共享材质、Vec3、Vec2，按 ID 排序写 map。向量保留 float64 位模式，颜色和材质采样区域保留 float32，动画帧数与每帧 tick 数保存为 uint32。字段偏移、宽度、引用关系和解析顺序见 [NVGT v2 格式说明](mesher/FORMAT.md)，其他语言可以直接按布局实现读取器。
-
-演示加载器通过 `go:embed` 读取资源，与工作目录无关；`sync.OnceValues` 缓存几何表解码结果。重新生成仓库表后，重新构建演示程序即可带入新表。演示命令的 `-tables` 指定外部文件时，同时读取 `<表路径>.java.json`。直接使用 mesher 的程序只需几何文件。
-
-几何中的 UV 区域对应生成时的图集布局。服务的 `-assets` 与 `-tables` 应来自同一套资源。更换图集后需同时更新表文件，单独改变服务的 `-assets` 不会重新烘焙。
+几何中的 UV 区域对应生成时的图集布局。服务的 `-assets` 与几何表应来自同一套资源。单独改变服务的 `-assets` 不会重新烘焙。
 
 ## 运行浏览器
 
 浏览器需要几何表与生成它时使用的图集。`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的模型与图集。
 
-默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器已经规范化状态，`blockstate` 将它们建成共享身份表，供单方块响应与目录使用。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。属性按字典序排列，才能让同一状态的不同书写顺序得到相同的 hash。规范化由调用者安排，便于复用已规范化的状态，避免每次哈希重复排序。
+默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器返回 tidy IR 方块，目录按名称分组，身份反查直接使用 `HashToBlock`。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。属性按字典序排列，才能让同一状态的不同书写顺序得到相同的 hash。规范化由调用者安排，便于复用已规范化的状态，避免每次哈希重复排序。
 
 需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
 
@@ -240,7 +225,7 @@ new-world/
 go run ./cmd/neomega-assets build -version 1.21.4
 ```
 
-生成器读取交付目录 `neomega-assets/dist/final`，并检查资源版本与 Java 状态版本是否一致。服务从 `-assets` 指定的目录读取 `blocksAtlases.json`，并提供配套的 `blocksAtlasLatest.png` 和 `THIRD_PARTY_NOTICES.txt`。
+blocks 的生成器读取手动复制到其输入目录的资源，并检查资源版本与 Java 状态版本是否一致。服务使用 blocks 的图集定义，从 `-assets` 指定的目录读取以完整纹理资源 ID 为键的 `blocksAtlases.json`，并提供配套的 `blocksAtlasLatest.png` 和 `THIRD_PARTY_NOTICES.txt`。
 
 子区块页面启动时还会加载附魔书贴图。服务从相对于 `-assets` 的 `../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png` 读取它。使用默认资源目录时，这个文件位于 `neomega-assets/dist/works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`。部署资源时需要一并保留这条相对路径。资源更新方式见 [neomega-assets README](../neomega-assets/README.md)。
 
@@ -275,27 +260,7 @@ go run ./demo/cmd/neomega-viewer \
 
 ## 一个方块怎样变成几何
 
-`scripts/internal/tablegen.Builder` 组合下面的生成步骤，使用模型继承缓存和材质库。`model`、`bake` 和 `materials` 均指 `scripts/internal/` 下的生成包。模型通过 UV（纹理上的二维坐标）指定每个表面点采样的位置：
-
-```text
-Java 状态全集
-  │ blockstate：枚举名称、属性与规范化 hash
-  ▼
-完整 Java 状态
-  │ model.SelectFirst：选择 variant，收集命中的 multipart 部件
-  ▼
-模型引用 + 旋转 + UV 锁定
-  │ model.Resolver：解析父模型、合并纹理槽、跟随 #纹理别名
-  ▼
-模型元素与面
-  │ bake.Bake + materials.Library
-  ▼
-局部四边形 → 去重为 Shape，写入两张表
-```
-
-`variant` 按状态选择候选模型。`multipart` 是按条件叠加多个模型部件的规则。建表使用 `SelectFirst` 固定取首项，并收集所有命中的部件。完整 Java 状态已经包含连接方向、半砖位置等选择条件，所以模型选择在生成时就能确定。运行时按状态 hash 直接取模型列表，属性变化则使用另一个状态的 hash。
-
-索引表与几何表分开，是为了让不同状态共享相同部件。例如栅栏柱出现在多种连接组合里，若每个状态都保存完整几何，就会重复存储同一根柱子。两张表让各状态只保存部件编号，共用的 Shape 保存一份。父模型解析也按模型 ID 缓存。
+单个状态如何选择模型、解析父模型、烘焙旋转和材质，由 [neomega-blocks/geometry](../neomega-blocks/geometry/README.md) 负责。模型部件按完整四边形共享，多个状态可以引用同一根栅栏柱或同一段栏杆。viewer 读取这些已经固定的局部形状，再按位置与邻居生成场景网格。
 
 运行时两个入口都先调用 `Tables.ModelIDs(javaHash)`，再用 `Tables.Shape(modelID)` 取得部件。单方块将部件四边形复制到独立网格，子区块保留共享引用供邻域剔面使用。网页属性选项来自 catalog 的同名状态分组；每次修改属性都会选择另一个完整状态，并把它的 hash 发给 `/api/block`。
 
@@ -311,9 +276,9 @@ Java 状态全集
 | 镂空 `cutout` | 树叶、草 | 丢弃透明像素，其余像素写入深度 |
 | 半透明 `blend` | 玻璃、水 | 混合颜色，不写入深度，逐面参与远近排序 |
 
-`scripts/internal/materials.Library` 根据图集像素分类。`scripts/internal/resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
+`neomega-blocks/geometry/java_block_model.MaterialLibrary` 根据图集像素分类。blocks 生成目录中的 `internal/resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
 
-箱子、床和告示牌等方块的完整外观由游戏代码绘制，JAR 未必包含完整模型。`neomega-assets` 的 `blockRenderers.json` 说明类别并补入社区静态模板，viewer 通过同一模型接口解析它们。图集 PNG 单独加载，不随每个网格重复传输。
+箱子、床和告示牌等方块的完整外观由游戏代码绘制，JAR 未必包含完整模型。`neomega-assets` 的 `blockRenderers.json` 说明类别并补入社区静态模板，blocks 的生成器通过同一模型接口解析它们。图集 PNG 单独加载，不随每个网格重复传输。
 
 这里的静态指**给定完整状态后，模型姿态固定**。箱子使用固定姿态，告示牌展示牌体。水、岩浆、火等纹理由浏览器按图集帧信息循环播放，几何保持不变。库不接收方块实体的实时外观或动画状态。子区块中的同类流体上方还有流体时，补满当前格的液面高度。这不是游戏的流体曲面模拟。
 
@@ -423,19 +388,19 @@ viewport.setFrame(decodeFrame(await response.arrayBuffer()));
 
 ## 接口与扩展位置
 
-仓库分发的 Java 几何表使用 `blockstate.Java()` 枚举的状态集，其状态不带 `waterlogged`。单方块身份查询与几何接口接受该状态集中的 hash。子区块入口接受完整 Java hash，包括含水变体，经拆层得到 RSL 后查询几何表。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在生成侧通过 `tablegen.OpenOptions.Policy` 提供 `materials.Policy`，并重新生成表。演示加载器的 `OpenOptions` 选择 `TablesPath`。
+仓库分发的 Java 几何表使用 `presets/java/v1.JavaFullStates()` 枚举的状态集，其状态不带 `waterlogged`。单方块身份查询与几何接口接受该状态集中的 hash。子区块入口接受完整 Java hash，包括含水变体，经拆层得到 RSL 后查询几何表。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在 blocks 生成侧通过 `tablegen.OpenOptions.Policy` 提供 `java_block_model.Policy`，并重新生成表。blocks 的 preset 加载器通过 `OpenOptions.TablesPath` 选择外部资源。
 
 其他变化可以按职责定位：
 
 | 要解决的问题 | 模块 |
 |---|---|
-| ID 对应哪个 Java 状态？ | `blockstate` |
-| 如何修复转换丢失的连接、拐角与门状态？ | neomega-converter 的 `fixer`；实心表在 `neomega-assets/solidtable` |
+| ID 对应哪个 Java 状态？ | `neomega-blocks/presets/java/v1.HashToBlock` |
+| 如何修复转换丢失的连接、拐角与门状态？ | neomega-converter 的 `fixer`；实心表在 `neomega-blocks/presets/java/v1/solidtable` |
 | 含水方块怎样拆成多层？ | `splitlayer` |
 | 带 NBT 的方块、特效怎样分流和打包？ | `dispatcher`、`effector`、`blockactor`、`merger` |
-| 状态命中哪些部件，模型怎样继承？ | `scripts/internal/model` |
-| 一个状态怎样烘焙成局部几何？ | `scripts/internal/tablegen`、`bake`、`materials`、`resources` |
-| 怎样编码与查询共享几何？ | `mesher.Tables[B]`；演示文件加载在 `demo/blockmesh` |
+| 状态命中哪些部件，模型怎样继承？ | `neomega-blocks/geometry/java_block_model` |
+| 一个状态怎样烘焙成局部几何？ | blocks 的几何生成器，以及 `geometry/java_block_model` |
+| 怎样编码与查询共享几何？ | `neomega-blocks/geometry.Tables[B]`；Java 加载入口在 `presets/java/v1/geometry` |
 | 如何构建单个方块？ | `Mesher.MeshBlock`；Java 响应薄壳在 `demo/singleblock` |
 | 如何从 4096 个 ID 准备邻域几何？ | `Mesher.MeshSubchunk`；多层用 `Mesher.MeshMultiLayerSubchunks` |
 | 哪些表面被覆盖，哪些矩形能够合并？ | `mesher/meshing` |
@@ -459,7 +424,7 @@ viewport.setFrame(decodeFrame(await response.arrayBuffer()));
 | `GET /assets/atlas.png` | 与材质区域配套的 PNG |
 | `GET /assets/entity/enchanting_table_book.png` | 附魔书特效的贴图 |
 
-`POST /api/block` 的正文为 `{"id": <javaHash>}`。返回的 `binding` 标识完整 Java 状态，`renderer` 描述静态类别，`geometry` 包含绘制数据。
+`POST /api/block` 的正文为 `{"id": <javaHash>}`。返回的 `binding` 标识完整 Java 状态，`renderer` 描述静态类别，`geometry` 包含绘制数据。`binding` 是 HTTP 展示格式，Go 核心与目录内部使用 IRBlock。
 
 子区块网格接口接受 `cull`、`greedy` 布尔查询参数，两项默认开启。统计值通过 `X-Neomega-Mesh-Stats` 响应头返回。`shapes` 表示实际引用的共享 Shape 数量，空气没有 Shape 引用。完全移除的源面与局部裁切的源面分别计数。局部裁切可能产生多个保留片段，因此“原始面减去移除面”不一定等于“剔除后面数”。
 
@@ -476,7 +441,7 @@ curl -fsS http://127.0.0.1:2410/api/subchunk \
 
 ## 验证解析与传输
 
-单元测试覆盖 uint32/uint64 及自定义类型、独立二进制布局样本，并检查模型继承、条件选择、旋转、UV、覆盖并集与孔洞、局部裁切、贪婪兼容条件和二进制布局：
+viewer 测试覆盖 uint32/uint64 及自定义类型的场景拼装、邻居裁切、UV 相容性、贪婪合并和绘制二进制布局：
 
 ```sh
 go build ./...
@@ -487,13 +452,14 @@ npm --prefix demo/web test
 npm --prefix demo/web run build
 ```
 
-依赖命令只列出非标准库包，结果只有 `neomega-viewer/mesher` 及其三个子包。NVMS 测试使用固定样本逐字节比较输出，并检查 io 错误传播。样本保留旧编码器的几何字节，材质 JSON 包含动画帧信息。
+依赖命令只列出非标准库包，可以看到 viewer 的 mesher 使用 blocks 的共享几何与材质。NVMS 测试使用固定样本逐字节比较输出，并检查 io 错误传播。样本保留旧编码器的几何字节，材质 JSON 包含动画帧信息。
 
-默认测试使用内嵌表，覆盖完整状态集、全部演示场景、红石颜色和流体高度。加入真实资源后，测试会重新建表，逐项比较全部 ModelIDs、Shape 四边形、Boundary 和 FullHeight，并验证 NVGT 往返、入库文件与内嵌表一致。HTTP 测试同时检查图集、单方块响应、子区块上传和二进制输出：
+默认测试使用 blocks 的内嵌表，覆盖完整状态集、演示场景、红石颜色和流体高度。HTTP 测试检查图集、单方块响应、子区块上传和二进制输出。模型解析、烘焙和真实资源建表的验证在 blocks 中进行，见[几何生成说明](../neomega-blocks/third_party/gen_resource/geometry/solid_block_table/README.md)。
+
+在工作区根目录可以统一检查：
 
 ```sh
-NEOMEGA_ASSETS_DIR="$PWD/../neomega-assets/dist/final" \
-  go test -race -v ./... -count=1 -timeout=90s
+./check.sh neomega-blocks neomega-viewer neomega-converter neomega-assets
 ```
 
 Java 1.21.4 状态全集的单方块全表检查生成 18,242 个静态结果，另有 12 个 `moving_piston` 状态明确返回静态能力边界。实际数量以更换数据后重新运行的输出为准。

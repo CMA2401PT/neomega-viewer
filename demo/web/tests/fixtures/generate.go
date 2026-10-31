@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 
 	"celler/layer_storage"
-	"neomega-assets/asset"
-	"neomega-viewer/demo/blockmesh"
+	jmodel "neomega-blocks/geometry/java_block_model"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/dispatcher"
@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var atlas asset.Atlas
+	var atlas jmodel.Atlas
 	if err := json.Unmarshal(data, &atlas); err != nil {
 		log.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(scene.Blocks)
-	pipeline := httpapi.NewFramePipeline(parser.Tables(), atlas)
+	pipeline := httpapi.NewFramePipeline(parser.Tables, atlas)
 	result, err := pipeline.Build(plain.Data, scene.NBT, dispatcher.Options{})
 	if err != nil {
 		log.Fatal(err)

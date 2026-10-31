@@ -8,7 +8,7 @@ import (
 	"io"
 	"math"
 
-	"neomega-viewer/mesher/material"
+	"neomega-blocks/geometry/material"
 )
 
 const Version uint32 = 1
@@ -98,7 +98,7 @@ func UnmarshalMesh(r io.Reader) (Mesh, error) {
 	return mesh, nil
 }
 
-func (quad Quad) Marshal(w io.Writer) error {
+func MarshalQuad(w io.Writer, quad Quad) error {
 	// 单面复用 NVMS，避免引入另一种独立格式。
 	return (Mesh{Quads: []Quad{quad}}).Marshal(w)
 }

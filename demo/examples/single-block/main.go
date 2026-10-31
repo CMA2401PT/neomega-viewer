@@ -8,7 +8,9 @@ import (
 	"os"
 
 	"neomega-blocks/ir"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/demo/singleblock"
+	"neomega-viewer/mesher/geometry"
 )
 
 func main() {
@@ -16,7 +18,7 @@ func main() {
 	java := flag.String("java", "minecraft:stone []", "Java state in neomega-blocks IR syntax")
 	flag.Parse()
 	state := ir.IRBlock(*java).Tidy()
-	engine, err := singleblock.Open(singleblock.OpenOptions{TablesPath: *tables})
+	engine, err := singleblock.Open(blockmesh.OpenOptions{TablesPath: *tables})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -24,7 +26,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(block.Packet()); err != nil {
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		State    ir.IRBlock       `json:"state"`
+		Geometry geometry.Buffers `json:"geometry"`
+	}{State: block.State, Geometry: block.Mesh.Buffers()}); err != nil {
 		log.Fatal(err)
 	}
 }

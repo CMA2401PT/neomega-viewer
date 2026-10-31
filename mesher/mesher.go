@@ -1,17 +1,13 @@
 package mesher
 
+import blockgeometry "neomega-blocks/geometry"
 import "neomega-viewer/mesher/geometry"
 
-type BlockID interface {
-	// 调用者决定数值的含义；自定义 uint32/uint64 类型也可以作为表键。
-	~uint32 | ~uint64
+type Mesher[B blockgeometry.BlockID] struct {
+	tables *blockgeometry.Tables[B]
 }
 
-type Mesher[B BlockID] struct {
-	tables *Tables[B]
-}
-
-func NewMesher[B BlockID](tables *Tables[B]) *Mesher[B] {
+func NewMesher[B blockgeometry.BlockID](tables *blockgeometry.Tables[B]) *Mesher[B] {
 	return &Mesher[B]{tables: tables}
 }
 

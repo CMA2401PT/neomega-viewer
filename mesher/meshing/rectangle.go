@@ -1,10 +1,11 @@
 package meshing
 
 import (
-	"math"
-
+	blockgeometry "neomega-blocks/geometry"
 	"neomega-viewer/mesher/geometry"
 )
+
+type box = blockgeometry.Rect
 
 type rectangle struct {
 	quad geometry.Quad
@@ -23,64 +24,24 @@ type rectangle struct {
 // inspect accepts only planar, axis-aligned rectangles with cyclic corners.
 // UV affinity is separate: a geometrically sound face can still occlude.
 func inspect(quad geometry.Quad) (rectangle, bool) {
-	r := rectangle{quad: quad, axis: -1}
-	lo, hi := quad.Positions[0], quad.Positions[0]
-	for _, p := range quad.Positions {
-		for axis := range p {
-			if math.IsNaN(p[axis]) || math.IsInf(p[axis], 0) {
-				return r, false
-			}
-			lo[axis], hi[axis] = min(lo[axis], p[axis]), max(hi[axis], p[axis])
-		}
+	shape, ok := blockgeometry.InspectRectangle(quad.Positions)
+	if !ok {
+		return rectangle{}, false
 	}
-	for axis := range lo {
-		if close(lo[axis], hi[axis]) {
-			if r.axis >= 0 {
-				return r, false
-			}
-			r.axis = axis
-		}
+	r := rectangle{
+		quad: quad, box: shape.Rect,
+		axis: shape.Axis, a: shape.A, b: shape.B,
+		plane: shape.Plane, sign: shape.Sign, corner: shape.Corners,
 	}
-	if r.axis < 0 {
-		return r, false
-	}
-	// Cyclic axes ensure the canonical (a,b) orientation has positive normal.
-	r.a, r.b = (r.axis+1)%3, (r.axis+2)%3
-	r.plane = quad.Positions[0][r.axis]
-	r.box = box{[2]float64{lo[r.a], lo[r.b]}, [2]float64{hi[r.a], hi[r.b]}}
-	var seen [2][2]bool
 	var uv [2][2]geometry.Vec2
-	for i, p := range quad.Positions {
-		for component, axis := range [2]int{r.a, r.b} {
-			switch {
-			case close(p[axis], lo[axis]):
-				r.corner[i][component] = 0
-			case close(p[axis], hi[axis]):
-				r.corner[i][component] = 1
-			default:
-				return r, false
-			}
-		}
-		corner := r.corner[i]
-		if seen[corner[0]][corner[1]] {
-			return r, false
-		}
-		seen[corner[0]][corner[1]] = true
+	for i, corner := range r.corner {
 		uv[corner[0]][corner[1]] = quad.UV[i]
 	}
-	for i, corner := range r.corner {
-		next := r.corner[(i+1)%4]
-		if (corner[0] == next[0]) == (corner[1] == next[1]) {
-			return r, false // diagonal edges / bow-tie ordering
-		}
-	}
-	p, q, s := r.corner[0], r.corner[1], r.corner[2]
-	r.sign = (q[0]-p[0])*(s[1]-p[1]) - (q[1]-p[1])*(s[0]-p[0])
 	r.affine = true
 	for component := 0; component < 2; component++ {
-		r.gradient[0][component] = (uv[1][0][component] - uv[0][0][component]) / (r.hi[0] - r.lo[0])
-		r.gradient[1][component] = (uv[0][1][component] - uv[0][0][component]) / (r.hi[1] - r.lo[1])
-		r.offset[component] = uv[0][0][component] - r.gradient[0][component]*r.lo[0] - r.gradient[1][component]*r.lo[1]
+		r.gradient[0][component] = (uv[1][0][component] - uv[0][0][component]) / (r.Max[0] - r.Min[0])
+		r.gradient[1][component] = (uv[0][1][component] - uv[0][0][component]) / (r.Max[1] - r.Min[1])
+		r.offset[component] = uv[0][0][component] - r.gradient[0][component]*r.Min[0] - r.gradient[1][component]*r.Min[1]
 		if !close(uv[1][1][component], uv[1][0][component]+uv[0][1][component]-uv[0][0][component]) {
 			r.affine = false
 		}
@@ -103,12 +64,12 @@ func (r rectangle) makeQuad(bounds box) geometry.Quad {
 	for i, corner := range r.corner {
 		p := geometry.Vec3{}
 		p[r.axis] = r.plane
-		p[r.a], p[r.b] = bounds.lo[0], bounds.lo[1]
+		p[r.a], p[r.b] = bounds.Min[0], bounds.Min[1]
 		if corner[0] == 1 {
-			p[r.a] = bounds.hi[0]
+			p[r.a] = bounds.Max[0]
 		}
 		if corner[1] == 1 {
-			p[r.b] = bounds.hi[1]
+			p[r.b] = bounds.Max[1]
 		}
 		quad.Positions[i] = p
 		for component := 0; component < 2; component++ {

@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"testing"
 
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 func sampleQuad() geometry.Quad {
@@ -100,7 +100,7 @@ func TestQuadRoundTrip(t *testing.T) {
 	quad := sampleQuad()
 	quad.CullFace = geometry.North
 	var encoded bytes.Buffer
-	if err := quad.Marshal(&encoded); err != nil {
+	if err := geometry.MarshalQuad(&encoded, quad); err != nil {
 		t.Fatal(err)
 	}
 	decoded, err := geometry.UnmarshalQuad(&encoded)

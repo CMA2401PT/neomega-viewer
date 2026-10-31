@@ -4,8 +4,9 @@ import (
 	"reflect"
 	"testing"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 func TestBackgroundInset(t *testing.T) {
@@ -97,7 +98,7 @@ func TestInsetUsesNearestFullCubeLayer(t *testing.T) {
 }
 
 func insetTestShape(mesh geometry.Mesh) *geometry.Shape {
-	return &geometry.Shape{Quads: mesh.Quads, Boundary: BoundaryCoverage(mesh)}
+	return &geometry.Shape{Quads: mesh.Quads, Boundary: blockgeometry.BoundaryCoverage(mesh.Quads)}
 }
 
 func assertBackgroundBounds(t *testing.T, mesh geometry.Mesh, wantMin, wantMax geometry.Vec3, wantFaces int) {

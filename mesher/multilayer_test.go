@@ -5,11 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-blocks/ir"
-	"neomega-viewer/demo/blockmesh"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 	"neomega-viewer/mesher/meshing"
 	"neomega-viewer/splitlayer"
 )
@@ -20,7 +21,7 @@ func multiLayerEngine(t *testing.T) *mesher.Mesher[uint32] {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mesher.NewMesher(parser.Tables())
+	return mesher.NewMesher(parser.Tables)
 }
 
 func hash(block ir.IRBlock) uint32 { return block.Tidy().Hash() }
@@ -171,7 +172,7 @@ func TestFluidHeightAcrossLayersPreservesSlab(t *testing.T) {
 }
 
 func TestMultiLayerErrorsIncludeLayer(t *testing.T) {
-	engine := mesher.NewMesher(&mesher.Tables[uint32]{Index: map[uint32][]mesher.ModelID{0: {}}})
+	engine := mesher.NewMesher(&blockgeometry.Tables[uint32]{Index: map[uint32][]blockgeometry.ModelID{0: {}}})
 	layers := [][]uint32{make([]uint32, 4096), make([]uint32, 4096)}
 	layers[1][cell(2, 3, 4)] = 7
 	_, err := engine.MeshMultiLayerSubchunks(layers, mesher.Options{})

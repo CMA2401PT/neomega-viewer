@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"neomega-assets/asset"
+	jmodel "neomega-blocks/geometry/java_block_model"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-converter/fixer"
-	"neomega-viewer/demo/blockmesh"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/singleblock"
@@ -31,10 +31,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	entries, err := catalog.Java()
-	if err != nil {
-		log.Fatal(err)
-	}
+	entries := catalog.Java()
 	stateFixer, err := fixer.New()
 	if err != nil {
 		log.Fatal(err)
@@ -43,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var atlas asset.Atlas
+	var atlas jmodel.Atlas
 	if err := json.Unmarshal(atlasData, &atlas); err != nil {
 		log.Fatal(err)
 	}
@@ -51,8 +48,8 @@ func main() {
 		Addr: *listen,
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
-			Subchunks: mesher.NewMesher(parser.Tables()),
-			Frames:    httpapi.NewFramePipeline(parser.Tables(), atlas),
+			Subchunks: mesher.NewMesher(parser.Tables),
+			Frames:    httpapi.NewFramePipeline(parser.Tables, atlas),
 			Fixer:     stateFixer,
 			Catalog:   entries,
 			AssetsDir: *assets,
@@ -60,6 +57,6 @@ func main() {
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	log.Printf("Java %s · %d block groups · http://%s", parser.Version(), len(entries.Groups), *listen)
+	log.Printf("Java %s · %d block groups · http://%s", parser.Metadata.Version, len(entries.Groups), *listen)
 	log.Fatal(server.ListenAndServe())
 }

@@ -1,43 +1,31 @@
-// There are no neighbor queries, chunk coordinates or workers in this package.
+// Package geometry adapts shared block geometry to drawing buffers and NVMS.
 package geometry
 
-import "neomega-viewer/mesher/material"
-
-type Vec3 [3]float64
-type Vec2 [2]float64
-
-type CullFace uint8
-
-const (
-	// 零值表示不可剔除，六方向编号与 Shape.Boundary 对齐。
-	NoCullFace CullFace = iota
-	West
-	East
-	Down
-	Up
-	North
-	South
+import (
+	core "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 )
 
-type Quad struct {
-	Positions [4]Vec3
-	Normal    Vec3
-	// ShadeNormal overrides lighting only; zero uses the geometric normal.
-	ShadeNormal Vec3
-	UV          [4]Vec2
-	Color       [3]float32
-	Surface     material.Surface
-	// CullFace is the rotated neighbor direction from the source model. An
-	// isolated preview retains the face; a section mesher may later examine it.
-	CullFace CullFace
-}
+type Vec2 = core.Vec2
+type Vec3 = core.Vec3
+type Quad = core.Quad
+type Bounds = core.Bounds
+type BoundaryRect = core.BoundaryRect
+type Shape = core.Shape
+type CullFace = core.CullFace
 
-type Bounds struct {
-	Min Vec3 `json:"min"`
-	Max Vec3 `json:"max"`
-}
+const (
+	NoCullFace = core.NoCullFace
+	West       = core.West
+	East       = core.East
+	Down       = core.Down
+	Up         = core.Up
+	North      = core.North
+	South      = core.South
+)
 
-type Mesh struct{ Quads []Quad }
+// Mesh owns the scene-output methods; shared model data lives in core.
+type Mesh core.Mesh
 
 // Batch contains flat GPU attributes. UVs are texture-local, top-origin; region
 // gives the atlas rectangle so the display shader can repeat within one sprite.

@@ -2,46 +2,31 @@
 package singleblock
 
 import (
-	"neomega-viewer/blockstate"
-	"neomega-viewer/demo/blockmesh"
+	"fmt"
+
+	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
+	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
 )
 
-type OpenOptions = blockmesh.OpenOptions
-
 type Engine struct {
-	*blockmesh.Resolver
+	*blockmesh.Preset
 	mesher *mesher.Mesher[uint32]
 }
 
-type Renderer = blockstate.Renderer
-
 type Block struct {
-	Binding  blockstate.Binding
-	Renderer Renderer
+	State    ir.IRBlock
+	Renderer blockmesh.Renderer
 	Mesh     geometry.Mesh
 }
 
-type Packet struct {
-	Binding  blockstate.Binding `json:"binding"`
-	Renderer Renderer           `json:"renderer"`
-	Geometry geometry.Buffers   `json:"geometry"`
+func New(resolver *blockmesh.Preset) *Engine {
+	return &Engine{Preset: resolver, mesher: mesher.NewMesher(resolver.Tables)}
 }
 
-func (block *Block) Packet() Packet {
-	return Packet{
-		Binding:  block.Binding,
-		Renderer: block.Renderer,
-		Geometry: block.Mesh.Buffers(),
-	}
-}
-
-func New(resolver *blockmesh.Resolver) *Engine {
-	return &Engine{Resolver: resolver, mesher: mesher.NewMesher(resolver.Tables())}
-}
-
-func Open(options OpenOptions) (*Engine, error) {
+func Open(options blockmesh.OpenOptions) (*Engine, error) {
 	resolver, err := blockmesh.Open(options)
 	if err != nil {
 		return nil, err
@@ -50,18 +35,13 @@ func Open(options OpenOptions) (*Engine, error) {
 }
 
 func (engine *Engine) Build(javaHash uint32) (*Block, error) {
+	state, ok := java.HashToBlock(javaHash)
+	if !ok {
+		return nil, fmt.Errorf("unknown Java block hash %d", javaHash)
+	}
 	mesh, err := engine.mesher.MeshBlock(javaHash)
 	if err != nil {
 		return nil, err
 	}
-	binding, err := engine.Binding(javaHash)
-	if err != nil {
-		return nil, err
-	}
-	profile := engine.Renderer(binding.Java.Name)
-	return &Block{
-		Binding:  binding,
-		Renderer: Renderer{Kind: profile.Kind, Family: profile.Family},
-		Mesh:     mesh,
-	}, nil
+	return &Block{State: state, Renderer: engine.Metadata.Renderers[state.NameWithNameSpace()], Mesh: mesh}, nil
 }

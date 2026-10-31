@@ -5,8 +5,9 @@ package meshing
 import (
 	"math"
 
+	blockgeometry "neomega-blocks/geometry"
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 const Size = 16
@@ -92,11 +93,11 @@ func layerScale(cell Cell, layer int) float64 {
 func unitCube(shape *geometry.Shape) bool {
 	// 六面的矩形并集决定是否满格，镂空和透明材质同样提供缩进依据。
 	for _, covers := range shape.Boundary {
-		remaining := []box{{hi: [2]float64{1, 1}}}
+		remaining := []box{{Max: [2]float64{1, 1}}}
 		for _, cover := range covers {
 			var after []box
 			for _, piece := range remaining {
-				after = append(after, subtract(piece, box{lo: [2]float64(cover.Min), hi: [2]float64(cover.Max)})...)
+				after = append(after, blockgeometry.Subtract(piece, box{Min: [2]float64(cover.Min), Max: [2]float64(cover.Max)})...)
 			}
 			remaining = after
 		}
@@ -141,7 +142,7 @@ func subtractEarlierLayers(source rectangle, layer int, cell Cell) []box {
 			continue
 		}
 		for _, quad := range part.Quads {
-			if !fullyOpaque(quad.Surface) {
+			if !material.FullyOpaque(quad.Surface) {
 				continue
 			}
 			cover, ok := inspect(quad)
@@ -150,7 +151,7 @@ func subtractEarlierLayers(source rectangle, layer int, cell Cell) []box {
 			}
 			var after []box
 			for _, piece := range remaining {
-				after = append(after, subtract(piece, cover.box)...)
+				after = append(after, blockgeometry.Subtract(piece, cover.box)...)
 			}
 			remaining = after
 			if len(remaining) == 0 {
@@ -170,7 +171,7 @@ func subtractNeighbor(remaining []box, candidate geometry.Quad, group uint32, ne
 			}
 			var after []box
 			for _, piece := range remaining {
-				after = append(after, subtract(piece, box{lo: [2]float64(cover.Min), hi: [2]float64(cover.Max)})...)
+				after = append(after, blockgeometry.Subtract(piece, box{Min: [2]float64(cover.Min), Max: [2]float64(cover.Max)})...)
 			}
 			remaining = after
 			if len(remaining) == 0 {
@@ -197,47 +198,8 @@ var sideNames = [6]string{"west", "east", "down", "up", "north", "south"}
 
 func cellIndex(p [3]int) int { return (p[0] << 8) | (p[2] << 4) | p[1] }
 
-// OpaqueBoundary reports whether actual opaque rectangles cover the entire
-// requested local unit face. It can establish a solid attachment face without
-// assuming the rest of the model is a full cube. Unknown side names are false.
-func OpaqueBoundary(mesh geometry.Mesh, side string) bool {
-	sideIndex := -1
-	for i, name := range sideNames {
-		if name == side {
-			sideIndex = i
-			break
-		}
-	}
-	if sideIndex < 0 {
-		return false
-	}
-	remaining := []box{{hi: [2]float64{1, 1}}}
-	for _, quad := range mesh.Quads {
-		if !fullyOpaque(quad.Surface) {
-			continue
-		}
-		r, ok := inspect(quad)
-		if !ok || boundary(r) != sideIndex {
-			continue
-		}
-		var after []box
-		for _, piece := range remaining {
-			after = append(after, subtract(piece, r.box)...)
-		}
-		remaining = after
-		if len(remaining) == 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func fullyOpaque(surface material.Surface) bool {
-	return surface.Mode == material.Opaque && float64(surface.Opacity) >= 1-epsilon
-}
-
 func occludes(cover, candidate geometry.Quad, coverGroup, candidateGroup uint32) bool {
-	if fullyOpaque(cover.Surface) {
+	if material.FullyOpaque(cover.Surface) {
 		return true
 	}
 	// A transparent medium may remove its own internal interfaces, but never
@@ -246,32 +208,6 @@ func occludes(cover, candidate geometry.Quad, coverGroup, candidateGroup uint32)
 		candidateGroup != 0 && candidateGroup == coverGroup
 }
 
-// A small tolerance accepts floating-point noise from right-angle rotations.
-// Coordinates are never rounded onto a voxel/subvoxel lattice.
-const epsilon = 1e-9
+const epsilon = blockgeometry.Epsilon
 
-func close(a, b float64) bool { return math.Abs(a-b) <= epsilon }
-
-type box struct{ lo, hi [2]float64 }
-
-// subtract produces disjoint rectangles covering exactly source minus cover.
-func subtract(source, cover box) []box {
-	lo := [2]float64{max(source.lo[0], cover.lo[0]), max(source.lo[1], cover.lo[1])}
-	hi := [2]float64{min(source.hi[0], cover.hi[0]), min(source.hi[1], cover.hi[1])}
-	if hi[0]-lo[0] <= epsilon || hi[1]-lo[1] <= epsilon {
-		return []box{source}
-	}
-	pieces := []box{
-		{source.lo, [2]float64{lo[0], source.hi[1]}},
-		{[2]float64{hi[0], source.lo[1]}, source.hi},
-		{[2]float64{lo[0], source.lo[1]}, [2]float64{hi[0], lo[1]}},
-		{[2]float64{lo[0], hi[1]}, [2]float64{hi[0], source.hi[1]}},
-	}
-	result := make([]box, 0, 4)
-	for _, piece := range pieces {
-		if piece.hi[0]-piece.lo[0] > epsilon && piece.hi[1]-piece.lo[1] > epsilon {
-			result = append(result, piece)
-		}
-	}
-	return result
-}
+func close(a, b float64) bool { return blockgeometry.Close(a, b) }

@@ -3,6 +3,7 @@ package mesher
 import (
 	"fmt"
 
+	blockgeometry "neomega-blocks/geometry"
 	"neomega-viewer/mesher/geometry"
 	"neomega-viewer/mesher/meshing"
 )
@@ -52,7 +53,7 @@ type localGeometry struct {
 	fullHeight *geometry.Shape
 }
 
-func queryGeometry[B BlockID](tables *Tables[B], id B, layer int) ([]localGeometry, error) {
+func queryGeometry[B blockgeometry.BlockID](tables *blockgeometry.Tables[B], id B, layer int) ([]localGeometry, error) {
 	ids, err := tables.ModelIDs(id)
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func queryGeometry[B BlockID](tables *Tables[B], id B, layer int) ([]localGeomet
 	return parts, nil
 }
 
-func prepareNeighborhood[B BlockID](layerBlocks [][]B, tables *Tables[B]) (*meshing.Cells, error) {
+func prepareNeighborhood[B blockgeometry.BlockID](layerBlocks [][]B, tables *blockgeometry.Tables[B]) (*meshing.Cells, error) {
 	// 先取得原始几何，再读邻居，避免遍历顺序影响流体选择。
 	var locals [meshing.Size * meshing.Size * meshing.Size][]localGeometry
 	for layer, blocks := range layerBlocks {

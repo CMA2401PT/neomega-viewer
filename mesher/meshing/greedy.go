@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
+	"neomega-blocks/geometry/material"
 	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/material"
 )
 
 type groupKey struct {
@@ -99,7 +99,7 @@ func greedy(bounds []box) []box {
 	var coordinates [2][]float64
 	for _, bounds := range bounds {
 		for axis := range coordinates {
-			coordinates[axis] = append(coordinates[axis], bounds.lo[axis], bounds.hi[axis])
+			coordinates[axis] = append(coordinates[axis], bounds.Min[axis], bounds.Max[axis])
 		}
 	}
 	for axis, values := range coordinates {
@@ -120,8 +120,8 @@ func greedy(bounds []box) []box {
 		})
 	}
 	for _, bounds := range bounds {
-		x0, x1 := coordinateIndex(0, bounds.lo[0]), coordinateIndex(0, bounds.hi[0])
-		y0, y1 := coordinateIndex(1, bounds.lo[1]), coordinateIndex(1, bounds.hi[1])
+		x0, x1 := coordinateIndex(0, bounds.Min[0]), coordinateIndex(0, bounds.Max[0])
+		y0, y1 := coordinateIndex(1, bounds.Min[1]), coordinateIndex(1, bounds.Max[1])
 		for y := y0; y < y1; y++ {
 			for x := x0; x < x1; x++ {
 				counts[y*width+x]++
@@ -156,8 +156,8 @@ func greedy(bounds []box) []box {
 					}
 				}
 				result = append(result, box{
-					lo: [2]float64{coordinates[0][x], coordinates[1][y]},
-					hi: [2]float64{coordinates[0][x1], coordinates[1][y1]},
+					Min: [2]float64{coordinates[0][x], coordinates[1][y]},
+					Max: [2]float64{coordinates[0][x1], coordinates[1][y1]},
 				})
 			}
 		}

@@ -25,7 +25,7 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 ## 1. 映射丢信息
 
 这一类可以整批扫出来：把每个 Java 状态做一遍 Java→NEMC→Java 往返，回来和原状态不一致的，就是转换丢了信息。
-往返工具在 `neomega-blocks/presets/block-converts/scripts/java-roundtrip`，结果在它的 `REPORT.md`。往返只能
+往返工具在 `neomega-blocks/third_party/gen_resource/java-roundtrip`，结果在它的 `tmp/REPORT.md`。往返只能
 告诉我们丢了什么，至于能不能补回来，要逐项判断，判断结果就是下面的 1a / 1b。
 
 ### 1a. 能从本表达空间补回来（fixer 负责）
@@ -54,7 +54,7 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 - [x] **花盆里的植物**：把 block entity 的 `PlantBlock` 转成 Java 植物名，再生成存在于 Java 属性表中的 `potted_` 方块。
 - [x] **含水**：第二方块层是 `water` 或 `flowing_water` 时，输出 Java 状态附带 `waterlogged="true"`。
 - **门、栅栏门、活板门的 `powered`**：表示是否被红石供能，要做红石信号传播才知道，邻居几何给不了。按
-  `neomega-blocks/presets/block-converts/scripts/java-roundtrip` 的 `go run .` 生成的 `REPORT.md` 逐方块表，
+  `neomega-blocks/third_party/gen_resource/java-roundtrip` 的 `go run .` 生成的 `tmp/REPORT.md` 逐方块表，
   门为 21 种 / 672 个状态，栅栏门为 12 种 / 192 个状态，活板门为 21 种 / 336 个状态，合计 54 种 / 1200 个状态。
   统计输入是该工具枚举的 Java 状态全集。这个属性不影响外观，渲染上可以接受丢失。
 
