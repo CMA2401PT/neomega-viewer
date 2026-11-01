@@ -32,7 +32,7 @@ func run() error {
 	dimension := flag.String("dimension", "", "relative dimension directory; default detects overworld")
 	position := flag.String("position", "", "initial camera position: x,y,z")
 	listen := flag.String("listen", "127.0.0.1:2412", "HTTP listen address")
-	workers := flag.Int("workers", 2, "mesh workers (1..8)")
+	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
 	flag.Parse()
 	if *workers < 1 || *workers > 8 {
 		return fmt.Errorf("-workers must be 1..8")

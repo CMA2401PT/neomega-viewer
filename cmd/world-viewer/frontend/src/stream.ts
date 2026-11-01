@@ -52,40 +52,46 @@ export interface StreamStats {
   bytes: number;
   error: string;
 }
-interface Job {
+interface Job<Payload, Decoded> {
   keys: SectionKey[];
   controller: AbortController;
+  state:
+    | { kind: "fetching" }
+    | { kind: "ready"; payload: Payload }
+    | { kind: "processing"; data: Decoded; remaining: SectionKey[] };
 }
-type Load<T> = (keys: SectionKey[], signal: AbortSignal) => Promise<T[]>;
+interface StreamOptions<T, Payload, Decoded> {
+  load(keys: SectionKey[], signal: AbortSignal): Promise<Payload>;
+  decode(payload: Payload): Decoded;
+  prepare(key: SectionKey, data: Decoded): T;
+  attach(key: SectionKey, value: T): void;
+  changed(stats: StreamStats): void;
+  concurrency?: number;
+}
 
-/** Keep overlapping sections alive. Batch consecutive missing sections from one
- * column into one request; a partially relevant job is allowed to finish. */
-export class ChunkStream<T extends Resident> {
+/** Network slots end when response bytes arrive. Main-thread work is drained by
+ * processFrame, with at most two columns per network slot resident in the entire
+ * pipeline. This bounds prefetch without limiting resident world geometry. */
+export class ChunkStream<T extends Resident, Payload, Decoded> {
   readonly loaded = new Map<string, T>();
   private desired = new Map<string, SectionKey>();
   private rank = new Map<string, number>();
-  private pending = new Map<string, Job>();
-  private jobs = new Set<Job>();
+  private pending = new Map<string, Job<Payload, Decoded>>();
+  private jobs = new Set<Job<Payload, Decoded>>();
+  private ready = new Set<Job<Payload, Decoded>>();
+  private active?: Job<Payload, Decoded>;
+  private fetching = 0;
   private skipped = new Set<string>();
   private bytes = 0;
   private signature = "";
   private stopped = false;
   private error = "";
-  private readonly load: Load<T>;
-  private readonly attach: (key: SectionKey, value: T) => void;
-  private readonly changed: (stats: StreamStats) => void;
+  private readonly options: StreamOptions<T, Payload, Decoded>;
   private readonly concurrency: number;
 
-  constructor(
-    load: Load<T>,
-    attach: (key: SectionKey, value: T) => void,
-    changed: (stats: StreamStats) => void,
-    concurrency = 2,
-  ) {
-    this.load = load;
-    this.attach = attach;
-    this.changed = changed;
-    this.concurrency = concurrency;
+  constructor(options: StreamOptions<T, Payload, Decoded>) {
+    this.options = options;
+    this.concurrency = options.concurrency ?? 4;
   }
 
   update(x: number, z: number, y: number, radius: number): void {
@@ -100,10 +106,71 @@ export class ChunkStream<T extends Resident> {
     for (const [id, value] of this.loaded)
       if (!this.desired.has(id)) this.remove(id, value);
     for (const job of this.jobs) {
-      if (job.keys.every((key) => !this.desired.has(keyID(key))))
+      if (job.keys.every((key) => !this.desired.has(keyID(key)))) {
         job.controller.abort();
+        // Fetching jobs keep their slot until the abort settles. Queued bytes
+        // and decoded data can be dropped immediately, without making meshes.
+        if (job.state.kind !== "fetching") this.finish(job);
+      } else if (job.state.kind === "processing") {
+        job.state.remaining = this.prioritize(job.state.remaining);
+      }
     }
     this.pump();
+    this.publish();
+  }
+
+  /** One decode or section preparation is indivisible. Stop before starting the
+   * next operation once the frame budget has been used. Attach each section as
+   * soon as it is ready, so large responses do not delay their nearest geometry. */
+  processFrame(budgetMS = 4): void {
+    if (this.stopped || (!this.active && !this.ready.size)) return;
+    const deadline = performance.now() + budgetMS;
+    do {
+      const job = this.active ?? this.nearestReady();
+      if (!job) break;
+      this.active = job;
+      try {
+        if (job.state.kind === "ready") {
+          const data = this.options.decode(job.state.payload);
+          job.state = { kind: "processing", data, remaining: this.prioritize(job.keys) };
+          this.ready.delete(job);
+        } else if (job.state.kind === "processing") {
+          const key = job.state.remaining.shift();
+          if (key) {
+            const value = this.options.prepare(key, job.state.data);
+            this.loaded.set(keyID(key), value);
+            this.bytes += value.bytes;
+            this.options.attach(key, value);
+          }
+        }
+        if (job.state.kind === "processing" && !job.state.remaining.length) this.finish(job);
+      } catch (error: unknown) {
+        this.fail(job, error);
+        this.finish(job);
+      }
+    } while (performance.now() < deadline);
+    this.pump();
+    this.publish();
+  }
+
+  private prioritize(keys: SectionKey[]): SectionKey[] {
+    return keys.filter((key) => this.desired.has(keyID(key)))
+      .sort((a, b) => this.rank.get(keyID(a))! - this.rank.get(keyID(b))!);
+  }
+
+  private nearestReady(): Job<Payload, Decoded> | undefined {
+    let nearest: Job<Payload, Decoded> | undefined;
+    let best = Infinity;
+    for (const job of this.ready) {
+      for (const key of job.keys) {
+        const rank = this.rank.get(keyID(key)) ?? Infinity;
+        if (rank < best) {
+          nearest = job;
+          best = rank;
+        }
+      }
+    }
+    return nearest;
   }
 
   private remove(id: string, value: T): void {
@@ -113,12 +180,8 @@ export class ChunkStream<T extends Resident> {
   }
   private available(key: SectionKey): boolean {
     const id = keyID(key);
-    return (
-      this.desired.has(id) &&
-      !this.loaded.has(id) &&
-      !this.pending.has(id) &&
-      !this.skipped.has(id)
-    );
+    return this.desired.has(id) && !this.loaded.has(id)
+      && !this.pending.has(id) && !this.skipped.has(id);
   }
   private batch(key: SectionKey): SectionKey[] {
     const keys = [key];
@@ -134,55 +197,56 @@ export class ChunkStream<T extends Resident> {
     }
     return keys;
   }
-  private accept(key: SectionKey, value: T, job: Job): void {
-    const id = keyID(key);
-    if (
-      this.stopped ||
-      job.controller.signal.aborted ||
-      !this.desired.has(id)
-    ) {
-      value.dispose();
-      return;
-    }
-    this.loaded.set(id, value);
-    this.bytes += value.bytes;
-    this.attach(key, value);
+
+  private finish(job: Job<Payload, Decoded>): void {
+    for (const key of job.keys) this.pending.delete(keyID(key));
+    this.jobs.delete(job);
+    this.ready.delete(job);
+    if (this.active === job) this.active = undefined;
   }
+
+  private fail(job: Job<Payload, Decoded>, error: unknown): void {
+    if (job.controller.signal.aborted || this.stopped) return;
+    for (const key of job.keys) this.skipped.add(keyID(key));
+    this.error = error instanceof Error ? error.message : String(error);
+  }
+
   private pump(): void {
     if (this.stopped) return;
     for (const key of this.desired.values()) {
-      if (this.jobs.size >= this.concurrency) break;
+      if (this.fetching >= this.concurrency || this.jobs.size >= this.concurrency * 2) break;
       if (!this.available(key)) continue;
-      const job: Job = {
+      const job: Job<Payload, Decoded> = {
         keys: this.batch(key),
         controller: new AbortController(),
+        state: { kind: "fetching" },
       };
       this.jobs.add(job);
+      this.fetching++;
       for (const key of job.keys) this.pending.set(keyID(key), job);
-      void this.load(job.keys, job.controller.signal)
-        .then((values) => {
-          // Install the nearest sections first even though the response is height ordered.
-          const entries = job.keys.map((key, i) => ({ key, value: values[i] }));
-          entries.sort(
-            (a, b) =>
-              (this.rank.get(keyID(a.key)) ?? Infinity) -
-              (this.rank.get(keyID(b.key)) ?? Infinity),
-          );
-          for (const { key, value } of entries) this.accept(key, value, job);
+      void this.options.load(job.keys, job.controller.signal)
+        .then((payload) => {
+          if (this.stopped || job.controller.signal.aborted) {
+            this.finish(job);
+            return;
+          }
+          job.state = { kind: "ready", payload };
+          this.ready.add(job);
         })
         .catch((error: unknown) => {
-          if (!job.controller.signal.aborted && !this.stopped) {
-            for (const key of job.keys) this.skipped.add(keyID(key));
-            this.error = error instanceof Error ? error.message : String(error);
-          }
+          this.fail(job, error);
+          this.finish(job);
         })
         .finally(() => {
-          for (const key of job.keys) this.pending.delete(keyID(key));
-          this.jobs.delete(job);
+          this.fetching--;
           this.pump();
+          if (!this.stopped) this.publish();
         });
     }
-    this.changed({
+  }
+
+  private publish(): void {
+    this.options.changed({
       loaded: this.loaded.size,
       wanted: this.desired.size,
       pending: this.jobs.size,
@@ -190,9 +254,14 @@ export class ChunkStream<T extends Resident> {
       error: this.error,
     });
   }
+
   dispose(): void {
     this.stopped = true;
     for (const job of this.jobs) job.controller.abort();
+    this.jobs.clear();
+    this.ready.clear();
+    this.pending.clear();
+    this.active = undefined;
     for (const [id, value] of this.loaded) this.remove(id, value);
   }
 }

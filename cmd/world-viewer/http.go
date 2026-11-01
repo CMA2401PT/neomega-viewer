@@ -22,7 +22,7 @@ type ServerOptions struct {
 func Handler(options ServerOptions) http.Handler {
 	workers := options.Workers
 	if workers <= 0 {
-		workers = 2
+		workers = 4
 	}
 	slots := make(chan struct{}, workers)
 	queue := make(chan struct{}, workers+8)

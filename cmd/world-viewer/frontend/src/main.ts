@@ -70,7 +70,8 @@ const forward = new THREE.Vector3(),
 const pressed = new Set<string>();
 let atlas: THREE.Texture | undefined, book: THREE.Texture | undefined;
 let effects: EffectRegistry = new Map();
-let stream: ChunkStream<WorldSection> | undefined;
+type ColumnSection = ReturnType<typeof decodeColumn>["sections"][number];
+let stream: ChunkStream<WorldSection, ArrayBuffer, Map<number, ColumnSection>> | undefined;
 let loaded = false,
   dragging = false,
   disposed = false;
@@ -98,12 +99,11 @@ function updateStatus(stats?: StreamStats): void {
   );
   status.textContent = `${stats.loaded} / ${stats.wanted} 子区块${stats.pending ? " · 载入中" : ""}${unknown ? ` · ${unknown} 个方块缺少模型（紫色）` : ""}`;
 }
-async function loadSections(
+async function fetchColumn(
   keys: SectionKey[],
   signal: AbortSignal,
   revision: number,
-  world: WorldScene,
-): Promise<WorldSection[]> {
+): Promise<ArrayBuffer> {
   const first = keys[0],
     last = keys[keys.length - 1];
   const query = new URLSearchParams({
@@ -123,30 +123,9 @@ async function loadSections(
     );
   const buffer = await response.arrayBuffer();
   signal.throwIfAborted();
-  const data = decodeColumn(buffer);
-  diagnostics.add(data.issues);
-  const sections = new Map(
-    data.sections.map((section) => [section.y, section]),
-  );
-  const result: WorldSection[] = [];
-  try {
-    for (const key of keys) {
-      signal.throwIfAborted();
-      const section = sections.get(key.y);
-      const value = world.prepare(key, section?.frame, section?.unknown ?? 0);
-      result.push(value);
-      if (section) {
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
-      }
-    }
-    return result;
-  } catch (error) {
-    result.forEach((section) => section.dispose());
-    throw error;
-  }
+  return buffer;
 }
+
 function clampPosition(): void {
   camera.position.x = THREE.MathUtils.clamp(
     camera.position.x,
@@ -342,6 +321,7 @@ function animate(now: number): void {
     camera.position.y = THREE.MathUtils.clamp(camera.position.y, -2048, 2047);
     refresh();
   }
+  stream?.processFrame();
   worldScene?.update(camera, now / 1000);
   if (worldScene) worldScene.render(renderer, camera);
   else renderer.render(scene, camera);
@@ -406,11 +386,20 @@ async function showWorld(info: WorldInfo): Promise<void> {
   draw.setWireframe(wireframe.checked);
   draw.setOcclusion(occlusion.checked);
   worldScene = draw;
-  stream = new ChunkStream(
-    (keys, signal) => loadSections(keys, signal, info.revision, draw),
-    (_key, section) => draw.add(section),
-    updateStatus,
-  );
+  stream = new ChunkStream({
+    load: (keys, signal) => fetchColumn(keys, signal, info.revision),
+    decode: (buffer: ArrayBuffer) => {
+      const data = decodeColumn(buffer);
+      diagnostics.add(data.issues);
+      return new Map(data.sections.map((section) => [section.y, section]));
+    },
+    prepare: (key, sections) => {
+      const section = sections.get(key.y);
+      return draw.prepare(key, section?.frame, section?.unknown ?? 0);
+    },
+    attach: (_key, section) => draw.add(section),
+    changed: updateStatus,
+  });
   refresh();
 }
 createWorldPicker(
