@@ -1,11 +1,14 @@
 import * as THREE from "three";
-import { loadAtlas } from "../../../../web/render/index.ts";
-import type { EffectRegistry } from "../../../../web/render/index.ts";
-import { createEffectRegistry } from "../../../../web/render/effects/index.ts";
+import {
+  loadAtlas,
+  createEffectRegistry,
+  SectionScene,
+  type EffectRegistry,
+  type SectionObject,
+} from "@neomega/viewer/render";
 import { ChunkStream, type SectionKey, type StreamStats } from "./stream.ts";
 import { decodeColumn } from "./packet.ts";
 import { createWorldPicker, type WorldInfo } from "./picker.ts";
-import { WorldScene, type WorldSection } from "./world-scene.ts";
 import { FrameRate, geometryMemoryBytes } from "./metrics.ts";
 import { createDiagnostics } from "./diagnostics.ts";
 import "./style.css";
@@ -57,7 +60,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xd9dee3);
 // Section placement is fixed. Update it on attachment, and animated frames explicitly.
 scene.matrixWorldAutoUpdate = false;
-let worldScene: WorldScene | undefined;
+let worldScene: SectionScene | undefined;
 const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 180);
 camera.position.set(0, 80, 0);
 const rotation = new THREE.Euler(-0.35, 0, 0, "YXZ");
@@ -71,7 +74,14 @@ const pressed = new Set<string>();
 let atlas: THREE.Texture | undefined, book: THREE.Texture | undefined;
 let effects: EffectRegistry = new Map();
 type ColumnSection = ReturnType<typeof decodeColumn>["sections"][number];
-let stream: ChunkStream<WorldSection, ArrayBuffer, Map<number, ColumnSection>> | undefined;
+// 加载统计属于列协议；共享场景只持有绘制资源。
+interface LoadedSection {
+  section: SectionObject;
+  unknown: number;
+  bytes: number;
+  dispose(): void;
+}
+let stream: ChunkStream<LoadedSection, ArrayBuffer, Map<number, ColumnSection>> | undefined;
 let loaded = false,
   dragging = false,
   disposed = false;
@@ -382,7 +392,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
   });
   await textures;
   if (disposed || epoch !== worldEpoch) return;
-  const draw = new WorldScene(scene, atlas!, effects, renderer);
+  const draw = new SectionScene(scene, atlas!, effects, renderer);
   draw.setWireframe(wireframe.checked);
   draw.setOcclusion(occlusion.checked);
   worldScene = draw;
@@ -395,9 +405,15 @@ async function showWorld(info: WorldInfo): Promise<void> {
     },
     prepare: (key, sections) => {
       const section = sections.get(key.y);
-      return draw.prepare(key, section?.frame, section?.unknown ?? 0);
+      const object = draw.prepare(key, section?.frame);
+      return {
+        section: object,
+        unknown: section?.unknown ?? 0,
+        bytes: object.bytes,
+        dispose: () => object.dispose(),
+      };
     },
-    attach: (_key, section) => draw.add(section),
+    attach: (_key, value) => draw.add(value.section),
     changed: updateStatus,
   });
   refresh();

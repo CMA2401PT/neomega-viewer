@@ -34,7 +34,7 @@
 
 - 它是一个 compound（按键组织的 NBT 复合结构），键为 `back`、`left`、`right`、`front`，每个值是一个物品，处理器取物品的 `id`。
 - `id` 为 `minecraft:<名字>_pottery_sherd` 时，这一面贴 `entity/decorated_pot/<名字>_pottery_pattern`。
-- 其他情况贴素面 `entity/decorated_pot/decorated_pot_side`，包括 `minecraft:brick`、缺少某个键、整个 `sherds` 缺失，以及 SNBT 无法解析。
+- 其他情况贴素面 `entity/decorated_pot/decorated_pot_side`，包括 `minecraft:brick`、缺少某个键、整个 `sherds` 缺失，以及实体 NBT 缺失。
 
 `item` 是陶罐里装的物品，`keepPacked` 和 `components` 是通用的 block entity 字段，都和外观无关。
 

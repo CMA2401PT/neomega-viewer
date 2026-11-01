@@ -17,6 +17,7 @@ import (
 	"neomega-blocks/ir"
 	preset "neomega-blocks/presets/java/v1/geometry"
 	packfs "neomega-packfs"
+	"neomega-viewer/dispatcher"
 	"neomega-viewer/merger"
 )
 
@@ -164,8 +165,12 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	section := engine.prepare(&java.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("example:unknown []"))})
-	if section.empty || section.unknown != 4096 || section.layers[0][0] != engine.missing {
+	result, err := engine.pipeline.Build(
+		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("example:unknown []"))},
+		dispatcher.Neighbours{},
+		dispatcher.Options{},
+	)
+	if err != nil || len(result.Diagnostics) != 4096 || len(result.Frame.Mesh.Quads) == 0 {
 		t.Fatal("unknown blocks disappeared")
 	}
 }

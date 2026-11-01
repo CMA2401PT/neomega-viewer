@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -13,7 +14,11 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	preset "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer/blockactor"
+	"neomega-viewer/dispatcher"
+	"neomega-viewer/effector"
 	"neomega-viewer/merger"
+	"neomega-viewer/mesher/geometry"
 )
 
 func TestColumnMissingModelDiagnostics(t *testing.T) {
@@ -28,11 +33,18 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	// Unknown states remain diagnostic; modern and legacy grass are renderable.
 	// Air intentionally has no geometry and must not be reported as missing.
 	missing := ir.IRBlock("example:missing []")
-	legacy := engine.prepare(&java.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:grass []"))})
-	modern := engine.prepare(&java.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:short_grass []"))})
-	air := engine.prepare(&java.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:air []"))})
-	if legacy.unknown != 0 || legacy.empty || modern.unknown != 0 || modern.empty || len(air.issues) != 0 || !air.empty {
-		t.Fatal("valid short grass or intentionally invisible air reported as missing")
+	for _, state := range []ir.IRBlock{"minecraft:grass []", "minecraft:short_grass []", "minecraft:air []"} {
+		result, err := engine.pipeline.Build(
+			dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(state)},
+			dispatcher.Neighbours{},
+			dispatcher.Options{},
+		)
+		if err != nil || len(result.Diagnostics) != 0 {
+			t.Fatalf("valid state %s reported as missing: %v, %v", state, result, err)
+		}
+		if (len(result.Frame.Mesh.Quads) == 0) != (state == "minecraft:air []") {
+			t.Fatal("valid short grass or intentionally invisible air changed")
+		}
 	}
 	root := t.TempDir()
 	world, err := java.OpenDirectory(root, java.Options{})
@@ -98,10 +110,57 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if !reflect.DeepEqual(issues, want) {
 		t.Fatalf("diagnostics: %+v, want %+v", issues, want)
 	}
+	// 同一状态可以同时缺模型和构建 actor 失败，响应中要分别保留两种原因。
+	stone, err := resources.Tables.ModelIDs(ir.IRBlock("minecraft:stone []").Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+	failingEngine := &Engine{pipeline: dispatcher.NewPipeline(
+		resources.Tables,
+		effector.New(nil),
+		blockactor.New(failedDiagnosticActor{}),
+		&resources.Tables.Shapes[stone[0]],
+	)}
+	packet, err = failingEngine.BuildColumn(
+		context.Background(),
+		source,
+		chunkKey{X: -2, Z: 14, MinY: -1, MaxY: 0},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosticSize := int(binary.LittleEndian.Uint32(packet[16:]))
+	if err = json.Unmarshal(packet[len(packet)-diagnosticSize:], &issues); err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 2 || issues[0].Reason != "actor_error" || issues[1].Reason != "missing_model" {
+		t.Fatalf("different reasons swallowed each other: %+v", issues)
+	}
+	for _, issue := range issues {
+		if issue.Blockstate != string(missing) || issue.Position != want[0].Position {
+			t.Fatal(issue)
+		}
+	}
 	// Splitting a waterlogged state must not strip properties from its report.
 	original := ir.IRBlock(`example:missing ["waterlogged"="true"]`)
-	prepared := engine.prepare(&java.Section{Y: -1, Blocks: layer_storage.MakePaletteStorage(original)})
-	if len(prepared.issues) != 1 || prepared.issues[0].Blockstate != string(original) {
-		t.Fatal("source blockstate lost")
+	result, err := engine.pipeline.Build(
+		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(original)},
+		dispatcher.Neighbours{},
+		dispatcher.Options{},
+	)
+	if err != nil || len(result.Diagnostics) != 4096 {
+		t.Fatalf("missing cells: %v, %v", result, err)
 	}
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.State != original {
+			t.Fatal("source blockstate lost")
+		}
+	}
+}
+
+type failedDiagnosticActor struct{}
+
+func (failedDiagnosticActor) BlockNames() []string { return []string{"example:missing"} }
+func (failedDiagnosticActor) Build(input blockactor.Input) (geometry.Mesh, error) {
+	return geometry.Mesh{}, errors.New("actor appearance unavailable")
 }

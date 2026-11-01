@@ -3,7 +3,7 @@ import { surfaceStateKey } from "./materials.ts";
 import type { Batch } from "./types.ts";
 
 /** Atlas regions can vary within a draw; blending and other shader settings cannot. */
-export function opaqueBatchGroups(batches: Batch[]): Batch[][] {
+export function opaqueBatchGroups(batches: readonly Batch[]): Batch[][] {
   const groups = new Map<string, Batch[]>();
   const result: Batch[][] = [];
   for (const batch of batches) {

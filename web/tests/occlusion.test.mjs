@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { OcclusionQueries, fullyInside } from "../src/occlusion.ts";
+import { OcclusionQueries, fullyInside } from "../render/occlusion.ts";
 
 function setup() {
   const queries = [], deleted = [];

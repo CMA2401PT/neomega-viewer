@@ -6,7 +6,7 @@ import (
 	"neomega-converter/bedrock"
 )
 
-func buildSpecialNEMC() *Subchunk {
+func buildSpecialNEMC() (*Subchunk, error) {
 	// 直接保留 Bedrock 的两层与 NBT，让转换器读取源数据中的颜色、植物和水。
 	air := ir.IRBlock("minecraft:air []").Tidy()
 	layers := [][]ir.IRBlock{make([]ir.IRBlock, 4096), make([]ir.IRBlock, 4096)}
@@ -75,5 +75,9 @@ func buildSpecialNEMC() *Subchunk {
 	blocks, javaNBT := bedrock.Convert(layers, entities)
 	layer := layer_storage.MakePaletteStorage(air.Hash())
 	layer.CopyFrom(&layer_storage.Plain[uint32]{DefaultValue: air.Hash(), Data: blocks})
-	return &Subchunk{Blocks: layer, NBT: javaNBT}
+	decoded, err := decodeSceneNBT(javaNBT)
+	if err != nil {
+		return nil, err
+	}
+	return &Subchunk{Blocks: layer, NBT: decoded}, nil
 }

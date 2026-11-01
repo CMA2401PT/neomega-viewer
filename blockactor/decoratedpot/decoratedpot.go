@@ -13,16 +13,12 @@ import (
 	"neomega-viewer/splitlayer"
 )
 
-type SurfaceLookup func(texture string) (material.Surface, error)
-
-// 贴图名带 minecraft: 命名空间，查询结果包含配套图集区域和材质属性。
-
 type Handler struct {
 	models   *mesher.Mesher[uint32]
-	surfaces SurfaceLookup
+	surfaces blockactor.SurfaceLookup
 }
 
-func New(tables *blockgeometry.Tables[uint32], surfaces SurfaceLookup) *Handler {
+func New(tables *blockgeometry.Tables[uint32], surfaces blockactor.SurfaceLookup) *Handler {
 	return &Handler{models: mesher.NewMesher(tables), surfaces: surfaces}
 }
 
@@ -30,14 +26,12 @@ func (h *Handler) BlockNames() []string {
 	return []string{"minecraft:decorated_pot"}
 }
 
-func decorations(snbt string) [4]string {
+func decorations(root nbt.Compound) [4]string {
 	// 目标版本把 sherds 存成按面命名的 compound；1.20 起的早期存档是四项列表，一并接受，格式见 NBT.md。
-	var root map[string]any
 	var items [4]string
-	if err := nbt.DecodeFromSNBT(snbt, &root, nbt.OptDecodeFromSNBT{}); err != nil {
-		return items
-	}
 	switch sherds := root["sherds"].(type) {
+	case []string:
+		copy(items[:], sherds)
 	case []any:
 		for i := range min(len(sherds), len(items)) {
 			items[i], _ = sherds[i].(string)
@@ -65,7 +59,7 @@ func (h *Handler) Build(input blockactor.Input) (geometry.Mesh, error) {
 	if err != nil {
 		return geometry.Mesh{}, err
 	}
-	items := decorations(input.SNBT)
+	items := decorations(input.NBT)
 	var surfaces [4]material.Surface
 	for i, item := range items {
 		surfaces[i], err = h.surfaces(texture(item))

@@ -1,11 +1,10 @@
 import * as THREE from "three";
-import { createMeshObject, type MeshObject, type MeshOptions } from "./mesh.ts";
-import type { EffectObject, EffectRegistry } from "./effects/index.ts";
+import { createBatchObject, type MeshOptions } from "./mesh.ts";
+import { createEffectsObject, type EffectRegistry } from "./effects/index.ts";
+import type { RenderObject } from "./object.ts";
 import type { FrameData } from "./types.ts";
 
-export interface FrameObject extends MeshObject {
-  bounds: THREE.Box3;
-}
+export type FrameObject = RenderObject;
 
 /** 三段作为同一场景中的普通对象，共享深度缓冲和透明排序。 */
 export function createFrameObject(
@@ -24,30 +23,25 @@ export function createFrameObject(
           new THREE.Vector3(...mesh.bounds.max),
         ));
       }
-      return createMeshObject(mesh, atlas, options);
+      return createBatchObject(mesh.batches, atlas, options);
     },
   );
-  const effects: EffectObject[] = [];
-  for (const message of data.effects) {
-    const factory = registry.get(message.effect);
-    if (!factory) continue;
-    const effect = factory(message);
-    effects.push(effect);
-    bounds.union(effect.bounds);
-  }
-  for (const draw of [...meshes, ...effects]) object.add(draw.object);
+  const effects = createEffectsObject(data.effects, registry);
+  bounds.union(effects.bounds);
+  for (const mesh of meshes) object.add(mesh.object);
+  for (const effect of [...effects.object.children]) object.add(effect);
   if (bounds.isEmpty()) bounds.set(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
   return {
     object,
     bounds,
-    animated: effects.length > 0 || meshes.some((mesh) => mesh.animated),
+    animated: effects.animated || meshes.some((mesh) => mesh.animated),
     updateTime(seconds: number) {
       meshes.forEach((mesh) => mesh.updateTime(seconds));
-      effects.forEach((effect) => effect.update(seconds));
+      effects.updateTime(seconds);
     },
     dispose() {
       meshes.forEach((mesh) => mesh.dispose());
-      effects.forEach((effect) => effect.dispose());
+      effects.dispose();
     },
   };
 }

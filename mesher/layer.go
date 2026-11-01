@@ -10,6 +10,8 @@ import (
 
 type Options struct {
 	Meshing meshing.Options
+	// 缺失 ID 可直接引用调用方的形状，避免向共享表注册临时 ID。
+	MissingShape *blockgeometry.Shape
 }
 
 type Stats struct {
@@ -20,9 +22,16 @@ type Stats struct {
 	Shapes int `json:"shapes"`
 }
 
+type MissingCell struct {
+	// 仅标记中心 section，邻居占位只用于覆盖查询。
+	Pos   [3]uint8
+	Layer int
+}
+
 type Result struct {
-	Mesh  geometry.Mesh
-	Stats Stats
+	Mesh    geometry.Mesh
+	Missing []MissingCell
+	Stats   Stats
 }
 
 func (m *Mesher[B]) MeshSubchunk(blocks []B, options Options) (*Result, error) {
@@ -44,18 +53,26 @@ func (m *Mesher[B]) MeshWithNeighbours(layerBlocks [][]B, neighbours [6][][]B, o
 			return nil, fmt.Errorf("layer %d: subchunk requires %d block IDs, got %d", layer, blockCount, len(blocks))
 		}
 	}
-	boundaries, err := m.boundaries(layerBlocks, neighbours)
+	boundaries, err := m.boundaries(layerBlocks, neighbours, options.MissingShape)
 	if err != nil {
 		return nil, err
 	}
-	cells, err := prepareNeighborhood(layerBlocks, m.tables, boundaries)
+	cells, missing, err := prepareNeighborhood(layerBlocks, m.tables, boundaries, options.MissingShape)
 	if err != nil {
 		return nil, err
 	}
 	options.Meshing.Neighbours = boundaries
 	mesh, stats := meshing.Build(cells, options.Meshing)
 	visibleBlocks, shapes := countGeometry(cells)
-	return &Result{Mesh: mesh, Stats: Stats{Stats: stats, Blocks: visibleBlocks, Shapes: shapes}}, nil
+	return &Result{
+		Mesh:    mesh,
+		Missing: missing,
+		Stats: Stats{
+			Stats:  stats,
+			Blocks: visibleBlocks,
+			Shapes: shapes,
+		},
+	}, nil
 }
 
 type localGeometry struct {
@@ -64,38 +81,58 @@ type localGeometry struct {
 	fullHeight *geometry.Shape
 }
 
-func queryGeometry[B blockgeometry.BlockID](tables *blockgeometry.Tables[B], id B, layer int) ([]localGeometry, error) {
-	ids, err := tables.ModelIDs(id)
-	if err != nil {
-		return nil, err
+func queryGeometry[B blockgeometry.BlockID](
+	tables *blockgeometry.Tables[B],
+	id B,
+	layer int,
+	missing *blockgeometry.Shape,
+) ([]localGeometry, bool, error) {
+	// 空模型列表是有意无几何；只有键不存在才使用占位。
+	ids, found := tables.Index[id]
+	if !found {
+		if missing != nil {
+			return []localGeometry{{LayerShape: meshing.LayerShape{Shape: missing, Layer: layer}}}, true, nil
+		}
+		_, err := tables.ModelIDs(id)
+		return nil, true, err
 	}
 	parts := make([]localGeometry, 0, len(ids))
 	for _, id := range ids {
 		shape, err := tables.Shape(id)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		local := localGeometry{LayerShape: meshing.LayerShape{Shape: shape, Layer: layer}}
 		if full, fluid := tables.FullHeight[id]; fluid {
 			local.fullHeight, err = tables.Shape(full)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 		}
 		parts = append(parts, local)
 	}
-	return parts, nil
+	return parts, false, nil
 }
 
-func prepareNeighborhood[B blockgeometry.BlockID](layerBlocks [][]B, tables *blockgeometry.Tables[B], boundaries *meshing.Boundaries) (*meshing.Cells, error) {
+func prepareNeighborhood[B blockgeometry.BlockID](
+	layerBlocks [][]B,
+	tables *blockgeometry.Tables[B],
+	boundaries *meshing.Boundaries,
+	missingShape *blockgeometry.Shape,
+) (*meshing.Cells, []MissingCell, error) {
 	// 先取得原始几何，再读邻居，避免遍历顺序影响流体选择。
 	var locals [meshing.Size * meshing.Size * meshing.Size][]localGeometry
+	var missing []MissingCell
 	for layer, blocks := range layerBlocks {
 		for i, id := range blocks {
-			parts, err := queryGeometry(tables, id, layer)
+			parts, absent, err := queryGeometry(tables, id, layer, missingShape)
 			if err != nil {
 				p := position(i)
-				return nil, fmt.Errorf("layer %d, cell (%d,%d,%d), ID %d: %w", layer, p.X, p.Y, p.Z, id, err)
+				return nil, nil, fmt.Errorf("layer %d, cell (%d,%d,%d), ID %d: %w", layer, p.X, p.Y, p.Z, id, err)
+			}
+			if absent {
+				p := position(i)
+				missing = append(missing, MissingCell{Pos: [3]uint8{p.X, p.Y, p.Z}, Layer: layer})
 			}
 			locals[i] = append(locals[i], parts...)
 		}
@@ -125,7 +162,7 @@ func prepareNeighborhood[B blockgeometry.BlockID](layerBlocks [][]B, tables *blo
 			cells[i] = append(cells[i], part)
 		}
 	}
-	return cells, nil
+	return cells, missing, nil
 }
 
 func countGeometry(cells *meshing.Cells) (int, int) {
@@ -152,7 +189,11 @@ func position(index int) blockPosition {
 	return blockPosition{X: uint8(index >> 8), Y: uint8(index & 15), Z: uint8((index >> 4) & 15)}
 }
 
-func (m *Mesher[B]) boundaries(center [][]B, neighbours [6][][]B) (*meshing.Boundaries, error) {
+func (m *Mesher[B]) boundaries(
+	center [][]B,
+	neighbours [6][][]B,
+	missing *blockgeometry.Shape,
+) (*meshing.Boundaries, error) {
 	result := &meshing.Boundaries{}
 	for side, layers := range neighbours {
 		for layer, values := range layers {
@@ -172,7 +213,7 @@ func (m *Mesher[B]) boundaries(center [][]B, neighbours [6][][]B) (*meshing.Boun
 						p = [3]int{a, b, edge}
 					}
 					index := p[0]<<8 | p[2]<<4 | p[1]
-					parts, err := queryGeometry(m.tables, values[index], layer)
+					parts, _, err := queryGeometry(m.tables, values[index], layer, missing)
 					if err != nil {
 						return nil, err
 					}
@@ -188,7 +229,7 @@ func (m *Mesher[B]) boundaries(center [][]B, neighbours [6][][]B) (*meshing.Boun
 						}
 						if part.fullHeight != nil {
 							for aboveLayer, aboveValues := range aboveLayers {
-								above, err := queryGeometry(m.tables, aboveValues[aboveIndex], aboveLayer)
+								above, _, err := queryGeometry(m.tables, aboveValues[aboveIndex], aboveLayer, missing)
 								if err != nil {
 									return nil, err
 								}

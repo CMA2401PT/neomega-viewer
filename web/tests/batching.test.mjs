@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Texture } from "three";
-import { decodeFrame } from "../../../web/render/binary.ts";
-import { createMeshObject } from "../../../web/render/mesh.ts";
-import { opaqueBatchGroups } from "../../../web/render/batching.ts";
+import { decodeFrame } from "../render/binary.ts";
+import { createMeshObject } from "../render/mesh.ts";
+import { opaqueBatchGroups } from "../render/batching.ts";
 
 // Compare the actual indexed vertex stream, including per-face texture selection.
 function vertices(object) {

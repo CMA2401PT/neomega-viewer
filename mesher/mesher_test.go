@@ -211,3 +211,43 @@ func TestFluidBottomAtSectionBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestMissingShapeUsesUnregisteredReference(t *testing.T) {
+	resources, err := preset.Open(preset.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := resources.Tables.ModelIDs(ir.IRBlock("minecraft:stone []").Hash())
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := resources.Tables.Shapes[ids[0]]
+	tables := &blockgeometry.Tables[uint32]{Index: map[uint32][]blockgeometry.ModelID{0: {}}}
+	m := NewMesher(tables)
+	center := make([]uint32, 4096)
+	center[3<<8|5<<4|4] = 7
+	neighbour := make([]uint32, 4096)
+	neighbour[15<<8] = 8
+	options := Options{MissingShape: &missing}
+	result, err := m.MeshWithNeighbours([][]uint32{center, center}, [6][][]uint32{{neighbour}}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []MissingCell{
+		{Pos: [3]uint8{3, 4, 5}, Layer: 0},
+		{Pos: [3]uint8{3, 4, 5}, Layer: 1},
+	}
+	if !reflect.DeepEqual(result.Missing, want) || result.Stats.Shapes != 1 || len(tables.Index) != 1 || len(tables.Shapes) != 0 {
+		t.Fatalf("missing=%v stats=%+v table=%+v", result.Missing, result.Stats, tables)
+	}
+	if _, err := m.MeshSubchunk(center, Options{}); err == nil {
+		t.Fatal("missing center ID accepted without placeholder")
+	}
+	if _, err := m.MeshWithNeighbours([][]uint32{make([]uint32, 4096)}, [6][][]uint32{{neighbour}}, Options{}); err == nil {
+		t.Fatal("missing neighbour ID accepted without placeholder")
+	}
+	tables.Index[7] = []blockgeometry.ModelID{100}
+	if _, err := m.MeshSubchunk(center, options); err == nil {
+		t.Fatal("placeholder hid an invalid registered model")
+	}
+}

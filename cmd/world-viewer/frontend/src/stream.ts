@@ -1,9 +1,7 @@
+import type { SectionPos } from "@neomega/viewer/render";
+
 /** Resident geometry is identified by world coordinates, never camera settings. */
-export interface SectionKey {
-  x: number;
-  z: number;
-  y: number;
-}
+export type SectionKey = SectionPos;
 export function keyID(key: SectionKey): string {
   return `${key.x},${key.z},${key.y}`;
 }

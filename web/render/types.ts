@@ -1,5 +1,11 @@
 export type Vec3 = [number, number, number];
 export type AlphaMode = "opaque" | "cutout" | "blend";
+/** 子区块以整数坐标定位，场景按每轴 16 个方块放置几何。 */
+export interface SectionPos {
+  x: number;
+  y: number;
+  z: number;
+}
 export interface Surface {
   texture: string;
   region: [number, number, number, number];

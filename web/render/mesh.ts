@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { surfaceMaterial, type SurfaceMaterials } from "./materials.ts";
 import { mergedGeometry, opaqueBatchGroups } from "./batching.ts";
+import type { RenderObject } from "./object.ts";
 import type {
   Batch,
   MeshData,
@@ -65,14 +66,7 @@ function buffers(
   return geometry;
 }
 
-export interface MeshObject {
-  object: THREE.Group;
-  readonly animated: boolean;
-  /** 由宿主在每次绘制前传入时间，单位为秒。 */
-  updateTime(seconds: number): void;
-  /** Dispose this object's buffers/materials. The shared atlas remains owned by the caller. */
-  dispose(): void;
-}
+export type MeshObject = RenderObject;
 
 export interface MeshOptions {
   sortTransparentQuads?: boolean;
@@ -90,15 +84,25 @@ export function createMeshObject(
   atlas: THREE.Texture,
   options: MeshOptions = {},
 ): MeshObject {
+  return createBatchObject(data.batches, atlas, options);
+}
+
+/** 子区块可直接绘制筛选后的批次，边界从实际几何计算。 */
+export function createBatchObject(
+  batches: readonly Batch[],
+  atlas: THREE.Texture,
+  options: MeshOptions = {},
+): RenderObject {
   const object = new THREE.Group();
+  const bounds = new THREE.Box3();
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
   // 所有批次共享时钟，透明面拆分后仍保持同一动画相位。
   const time = options.materials?.time ?? { value: 0 };
-  const animated = data.batches.some((batch) => batch.surface.frames > 1);
+  const animated = batches.some((batch) => batch.surface.frames > 1);
   const groups = options.batchOpaqueSurfaces
-    ? opaqueBatchGroups(data.batches)
-    : data.batches.map((batch) => [batch]);
+    ? opaqueBatchGroups(batches)
+    : batches.map((batch) => [batch]);
   // Once merged attributes replace most source views, copy the remaining views
   // too: a small water batch should not retain the entire original NVFR buffer.
   const copySingleBatches = options.copyBuffers || groups.some((batches) => batches.length > 1);
@@ -127,8 +131,13 @@ export function createMeshObject(
       object.add(new THREE.Mesh(geometry, material));
     }
   }
+  for (const geometry of geometries) {
+    geometry.computeBoundingBox();
+    bounds.union(geometry.boundingBox!);
+  }
   return {
     object,
+    bounds,
     animated,
     updateTime(seconds: number) {
       time.value = seconds;

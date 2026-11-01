@@ -43,7 +43,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 		actors   int
 	}{
 		{name: "empty_byte_list", entities: []byte{}, actors: 2},
-		{name: "invalid_list", entities: []byte{1}, reason: "invalid_block_entities"},
+		{name: "invalid_list", entities: []byte{1}, reason: "invalid_block_entities", actors: 2},
 		{name: "invalid_position", entities: []nbt.Compound{{"id": "minecraft:decorated_pot", "x": "bad"}}, reason: "invalid_block_entity", actors: 2},
 		{name: "invalid_appearance", entities: []nbt.Compound{
 			{"id": "minecraft:decorated_pot", "x": int32(4), "y": int32(65), "z": int32(-14), "sherds": []string{"minecraft:unknown_pottery_sherd"}},
@@ -94,7 +94,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 				t.Fatalf("actors=%d, want %d", len(frame.Actors), tc.actors)
 			}
 			// The failed pot keeps actual static geometry at its position, as well as water.
-			if tc.reason == "actor_error" || tc.reason == "invalid_block_entities" {
+			if tc.reason == "actor_error" {
 				found := false
 				for _, q := range frame.Mesh.Quads {
 					if q.Positions[0][0] >= 4 && q.Positions[0][0] <= 5 && q.Surface.Texture != "minecraft:block/water_still" && q.Surface.Texture != "minecraft:block/water_flow" {

@@ -2,56 +2,32 @@ package httpapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 
 	"celler/layer_storage"
 	blockgeometry "neomega-blocks/geometry"
 	jmodel "neomega-blocks/geometry/java_block_model"
-	"neomega-blocks/geometry/material"
 	"neomega-converter/fixer"
-	"neomega-viewer/blockactor"
-	"neomega-viewer/blockactor/decoratedpot"
+	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	"neomega-viewer/dispatcher"
-	"neomega-viewer/effector"
 	"neomega-viewer/merger"
 )
 
 func NewFramePipeline(tables *blockgeometry.Tables[uint32], atlas jmodel.Atlas) *dispatcher.Pipeline {
-	// demo 在此启用具体方块，框架只认识处理器接口；资源加载仍由应用入口负责。
-	surfaces := func(texture string) (material.Surface, error) {
-		entry, found := atlas.Textures[jmodel.ResourceID(texture)]
-		if !found {
-			return material.Surface{}, fmt.Errorf("atlas texture %s missing", texture)
-		}
-		return material.Surface{
-			Texture: texture,
-			Region: [4]float32{
-				float32(entry.U),
-				float32(entry.V),
-				float32(entry.SU),
-				float32(entry.SV),
-			},
-			Mode:      material.Opaque,
-			Opacity:   1,
-			Frames:    entry.Frames,
-			FrameTime: entry.FrameTime,
-		}, nil
-	}
-	return dispatcher.NewPipeline(
-		tables,
-		effector.New(map[string]string{
-			"minecraft:enchanting_table": "enchanting_table_book",
-		}),
-		blockactor.New(decoratedpot.New(tables, surfaces)),
-	)
+	// demo 使用共享的 Java 处理器组合，缺失模型继续由 mesher 返回错误。
+	return dispatcher.NewJavaPipeline(tables, &atlas, nil)
 }
 
 func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fixer.Fixer) {
-	send := func(w http.ResponseWriter, r *http.Request, blocks *layer_storage.Palette[uint32], nbt map[[3]uint8]string) {
+	send := func(
+		w http.ResponseWriter,
+		r *http.Request,
+		blocks *layer_storage.Palette[uint32],
+		entities map[[3]uint8]nbt.Compound,
+	) {
 		options, err := sectionOptions(r)
 		if err != nil {
 			writeError(w, 400, err)
@@ -64,7 +40,16 @@ func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fi
 			// 修复属于转换一侧：演示把 NEMC 往返得到的状态先修成完整 Java 状态，再交给渲染。
 			data = stateFixer.Fix(data, fixer.Neighbours{})
 		}
-		result, err := pipeline.Build(data, nbt, dispatcher.Options{Mesh: options})
+		states, err := dispatcher.BlocksFromHashes(data)
+		if err != nil {
+			writeError(w, 422, err)
+			return
+		}
+		result, err := pipeline.Build(
+			dispatcher.Section{Blocks: states, Entities: entities},
+			dispatcher.Neighbours{},
+			dispatcher.Options{Mesh: options},
+		)
 		if err != nil {
 			writeError(w, 422, err)
 			return

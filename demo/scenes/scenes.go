@@ -9,6 +9,7 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
+	nbt "neomega-nbt/presets/v1"
 )
 
 type Scene struct {
@@ -38,7 +39,7 @@ func List() []Scene { return append([]Scene(nil), scenes...) }
 
 type Subchunk struct {
 	Blocks *layer_storage.Palette[uint32]
-	NBT    map[[3]uint8]string
+	NBT    map[[3]uint8]nbt.Compound
 }
 
 func Build(name string) (*layer_storage.Palette[uint32], error) {
@@ -154,7 +155,7 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 		put(9, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="outer_left"]`)
 		put(8, 1, 9, `minecraft:oak_stairs ["facing"="north","half"="bottom","shape"="straight"]`)
 	case "special_nemc":
-		return buildSpecialNEMC(), nil
+		return buildSpecialNEMC()
 	case "solid":
 		stone := blockID("minecraft:stone []")
 		layer.InitWithDefault(stone)
@@ -273,5 +274,22 @@ func BuildWithNBT(name string) (*Subchunk, error) {
 		put(7, 1, 9, `minecraft:red_bed ["part"="foot","facing"="north","occupied"="false"]`)
 		put(7, 1, 8, `minecraft:red_bed ["part"="head","facing"="north","occupied"="false"]`)
 	}
-	return &Subchunk{Blocks: layer, NBT: nbt}, nil
+	entities, err := decodeSceneNBT(nbt)
+	if err != nil {
+		return nil, err
+	}
+	return &Subchunk{Blocks: layer, NBT: entities}, nil
+}
+
+func decodeSceneNBT(texts map[[3]uint8]string) (map[[3]uint8]nbt.Compound, error) {
+	// 场景配方保留易读的 SNBT，进入渲染前只在 demo 一侧解析一次。
+	entities := make(map[[3]uint8]nbt.Compound, len(texts))
+	for pos, text := range texts {
+		var value nbt.Compound
+		if err := nbt.DecodeFromSNBT(text, &value, nbt.OptDecodeFromSNBT{}); err != nil {
+			return nil, err
+		}
+		entities[pos] = value
+	}
+	return entities, nil
 }

@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as THREE from "three";
-import { WorldScene, classifyBox } from "../src/world-scene.ts";
-import { decodeFrame, createEffectRegistry } from "../../../../web/render/index.ts";
+import { SectionScene, classifyBox } from "../render/section-scene.ts";
+import { decodeFrame, createEffectRegistry } from "../render/index.ts";
 
 const atlas = () => new THREE.Texture({ width: 4096, height: 4096 });
 function fixture() {
@@ -25,7 +25,7 @@ function cameraAt(x, y, z, target) {
 
 test("adjacent sections share GPU batches and distant regions share materials", () => {
   const scene = new THREE.Scene(), texture = atlas();
-  const world = new WorldScene(scene, texture, new Map());
+  const world = new SectionScene(scene, texture, new Map());
   const data = fixture();
   const sections = [{ x: -2, y: 0, z: -1 }, { x: -1, y: 0, z: -1 }, { x: 4, y: 0, z: -1 }]
     .map((key) => world.prepare(key, data));
@@ -64,7 +64,7 @@ test("adjacent sections share GPU batches and distant regions share materials", 
 
 test("hierarchical visibility matches direct section bounds at multiple camera angles", () => {
   const scene = new THREE.Scene(), texture = atlas();
-  const world = new WorldScene(scene, texture, new Map());
+  const world = new SectionScene(scene, texture, new Map());
   const sections = [];
   for (const x of [-8, -7, -1, 0, 1, 6, 7, 8]) {
     const section = world.prepare({ x, y: 0, z: -1 }, fixture());
@@ -107,7 +107,7 @@ test("box classification handles inside, outside, intersecting and plane-touchin
 test("book-only sections animate after attachment, leaving and reentering the view", () => {
   const scene = new THREE.Scene(), texture = atlas(), book = new THREE.Texture();
   scene.matrixWorldAutoUpdate = false;
-  const world = new WorldScene(scene, texture, createEffectRegistry(book));
+  const world = new SectionScene(scene, texture, createEffectRegistry(book));
   const empty = { batches: [], quads: 0, bounds: { min: [0, 0, 0], max: [0, 0, 0] } };
   const section = world.prepare({ x: -1, y: 2, z: 0 }, {
     mesh: empty, actors: [], effects: [{ pos: [3, 1, 3], effect: "enchanting_table_book" }],
@@ -138,7 +138,7 @@ test("book-only sections animate after attachment, leaving and reentering the vi
 
 test("regional buffers shrink after unloading and reuse slots without disturbing remaining sections", () => {
   const scene = new THREE.Scene(), texture = atlas();
-  const world = new WorldScene(scene, texture, new Map());
+  const world = new SectionScene(scene, texture, new Map());
   const data = fixture(), sections = [];
   for (let x = 0; x < 4; x++)
     for (let y = 0; y < 4; y++)

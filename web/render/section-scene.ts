@@ -1,13 +1,10 @@
 import * as THREE from "three";
-import {
-  createFrameObject,
-  SurfaceMaterials,
-  type FrameData,
-  type FrameObject,
-  type EffectRegistry,
-} from "../../../../web/render/index.ts";
-import { mergedGeometry, opaqueBatchGroups } from "../../../../web/render/batching.ts";
-import type { SectionKey } from "./stream.ts";
+import { createBatchObject } from "./mesh.ts";
+import { createEffectsObject, type EffectRegistry } from "./effects/index.ts";
+import { SurfaceMaterials } from "./materials.ts";
+import type { FrameData, SectionPos } from "./types.ts";
+import type { RenderObject } from "./object.ts";
+import { mergedGeometry, opaqueBatchGroups } from "./batching.ts";
 import { OcclusionQueries, type OcclusionTarget } from "./occlusion.ts";
 
 // Small spatial batches retain independent section visibility and lifetime.
@@ -20,15 +17,14 @@ interface Draw {
   geometry: THREE.BufferGeometry;
   material: THREE.ShaderMaterial;
 }
-export interface WorldSection {
-  key: SectionKey;
+export interface SectionObject {
+  key: SectionPos;
   bounds: THREE.Box3;
   /** Temporary geometry is released as soon as the section enters a batch. */
   opaque: Draw[];
-  frame?: FrameObject;
+  frame?: RenderObject;
   /** Active geometry estimate; excludes spare capacity in shared batch buffers. */
   bytes: number;
-  unknown: number;
   dispose(): void;
 }
 interface Instance {
@@ -39,7 +35,7 @@ interface Instance {
   indices: number;
 }
 interface Entry {
-  section: WorldSection;
+  section: SectionObject;
   instances: Instance[];
   visible: boolean;
 }
@@ -47,7 +43,7 @@ interface Region {
   id: string;
   group: THREE.Group;
   bounds: THREE.Box3;
-  entries: Map<WorldSection, Entry>;
+  entries: Map<SectionObject, Entry>;
   batches: Map<THREE.ShaderMaterial, RegionBatch>;
   dirtyBounds: boolean;
 }
@@ -141,7 +137,7 @@ class RegionBatch {
 }
 
 /** Owns world materials, regional GPU batches and the two-level visibility index. */
-export class WorldScene {
+export class SectionScene {
   readonly materials: SurfaceMaterials;
   readonly visibility = {
     regionsTested: 0,
@@ -153,7 +149,7 @@ export class WorldScene {
   readonly occlusion?: OcclusionQueries;
   private readonly occlusionTargets: OcclusionTarget[] = [];
   private readonly regions = new Map<string, Region>();
-  private readonly membership = new Map<WorldSection, Region>();
+  private readonly membership = new Map<SectionObject, Region>();
   private readonly frustum = new THREE.Frustum();
   private readonly projectionView = new THREE.Matrix4();
   private readonly scene: THREE.Scene;
@@ -175,13 +171,12 @@ export class WorldScene {
     if (renderer) this.occlusion = new OcclusionQueries(renderer);
   }
 
-  prepare(key: SectionKey, data?: FrameData, unknown = 0): WorldSection {
-    const section: WorldSection = {
+  prepare(key: SectionPos, data?: FrameData): SectionObject {
+    const section: SectionObject = {
       key,
       bounds: new THREE.Box3(),
       opaque: [],
       bytes: 512,
-      unknown,
       dispose: () => {
         this.remove(section);
         for (const draw of section.opaque) draw.geometry.dispose();
@@ -207,19 +202,32 @@ export class WorldScene {
     }
     const transparent = batches.filter((batch) => batch.surface.mode === "blend");
     if (transparent.length || data.effects.length) {
-      section.frame = createFrameObject({
-        mesh: {
-          batches: transparent,
-          quads: transparent.reduce((sum, batch) => sum + batch.indices.length / 6, 0),
-          bounds: { min: section.bounds.min.toArray(), max: section.bounds.max.toArray() },
+      const mesh = createBatchObject(
+        transparent,
+        this.atlas,
+        {
+          sortTransparentQuads: false,
+          materials: this.materials,
+          copyBuffers: true,
         },
-        actors: [],
-        effects: data.effects,
-      }, this.atlas, this.effects, {
-        sortTransparentQuads: false,
-        materials: this.materials,
-        copyBuffers: true,
-      });
+      );
+      const effects = createEffectsObject(data.effects, this.effects);
+      for (const effect of [...effects.object.children]) mesh.object.add(effect);
+      const bounds = mesh.bounds.clone().union(effects.bounds);
+      if (bounds.isEmpty()) bounds.set(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
+      section.frame = {
+        object: mesh.object,
+        bounds,
+        animated: mesh.animated || effects.animated,
+        updateTime(seconds: number) {
+          mesh.updateTime(seconds);
+          effects.updateTime(seconds);
+        },
+        dispose() {
+          mesh.dispose();
+          effects.dispose();
+        },
+      };
       section.bounds.union(section.frame.bounds);
       this.applyWireframe(section.frame.object);
     }
@@ -237,7 +245,7 @@ export class WorldScene {
     return section;
   }
 
-  add(section: WorldSection): void {
+  add(section: SectionObject): void {
     if (section.bounds.isEmpty()) return;
     this.occlusion?.invalidate();
     const { key } = section;
@@ -286,7 +294,7 @@ export class WorldScene {
     this.membership.set(section, region);
   }
 
-  private remove(section: WorldSection): void {
+  private remove(section: SectionObject): void {
     const region = this.membership.get(section);
     if (!region) return;
     this.occlusion?.invalidate();

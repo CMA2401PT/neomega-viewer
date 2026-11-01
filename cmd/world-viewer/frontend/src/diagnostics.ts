@@ -11,7 +11,9 @@ export function createDiagnostics(
     add(issues) {
       const fragment = document.createDocumentFragment();
       for (const issue of issues) {
-        const key = issue.blockstate || `${issue.reason}:${issue.position.join(",")}`;
+        const key = issue.blockstate
+          ? `${issue.blockstate}:${issue.reason}`
+          : `${issue.reason}:${issue.position.join(",")}`;
         if (seen.has(key)) continue;
         seen.add(key);
         const item = document.createElement("li");

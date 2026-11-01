@@ -24,7 +24,7 @@
 
 程序支持 celler 当前的现代 Java section 格式，包括负高度。内嵌几何使用 Java 1.21.4 资源。读取器保留存档原始 blockstate（方块名称及属性），渲染时拆分含水层，再按状态查找几何表。表中包含自动生成的旧状态兼容索引，例如旧 `grass` 共享 `short_grass` 的形状。同一状态采用高版本解释，不依赖存档的 DataVersion，也不保证逐版本还原历史外观。未被表覆盖的状态显示为紫色方块，面板提示数量。陶罐纹样使用存档中的 block entity NBT，附魔台带有书本动画，其他方块使用几何表中的静态外观。
 
-方块实体是用于陶罐纹样等外观的附加数据。空实体 List 不论元素类型都视为没有实体。实体列表格式异常时继续渲染静态方块；单个实体数据或特殊外观生成失败时保留对应的静态模型，并记录诊断。区块 NBT、方块调色板等基础地形数据无法读取时仍返回错误。
+方块实体是用于陶罐纹样等外观的附加数据。空实体 List 不论元素类型都视为没有实体。实体列表格式异常时按没有实体处理，陶罐使用无纹样的默认外观，并保留 `invalid_block_entities` 诊断。单项缺少 Int 坐标或坐标不在该区块时，记录 `invalid_block_entity` 并继续读取其他实体。特殊外观生成失败时保留对应静态本体和水层，并记录 `actor_error`。区块 NBT、方块调色板等基础地形数据无法读取时仍返回错误。
 
 ## 操作与视距
 
@@ -59,9 +59,9 @@
 
 GPU 查询每帧最多发起 8 次，结果异步读取，尚未得到结果的对象正常绘制。需要查询时先绘制不透明表面，再测试包围盒，最后绘制镂空、半透明表面和特效；没有新查询时保持单次绘制。相机位置不变且已加载几何不变时，原地转向沿用已有结果。转向改变像素采样位置，极细缝隙可能出现像素级差异，因此停止转向两帧后清空结果，按当前视角重新验证。相机平移、投影或绘制分辨率变化、网格加入或卸载、切换开关及线框模式时也会清空结果；持续平移期间不发起查询。
 
-遮挡判断由 `frontend/src/occlusion.ts` 管理，使用现有几何和边界，不改变 mesher、传输格式或模型资源。被挡住的网格仍然驻留，加载范围也保持不变，因此它节省的是绘制开销。开阔地形可能没有明显收益。
+共享包的 `SectionScene` 使用仓库根的 `web/render/occlusion.ts` 管理遮挡判断。它使用已加载几何的不透明深度和边界。被挡住的网格仍然驻留，加载范围也保持不变，因此它节省的是绘制开销。开阔地形可能没有明显收益。
 
-每个 section 在共享缓冲中保有独立的几何范围，可以单独隐藏和卸载。缓冲按需增长，大量卸载后会收缩，空分组立即释放。材质在切换或关闭世界时统一释放。这些处理由 `frontend/src/world-scene.ts` 管理，直接使用已有网格，不需要额外的地形或模型资源。
+每个 section 在共享缓冲中保有独立的几何范围，可以单独隐藏和卸载。缓冲按需增长，大量卸载后会收缩，空分组立即释放。材质在切换或关闭世界时统一释放。这些处理由共享包的 `SectionScene` 管理，实现在仓库根的 `web/render/section-scene.ts`。
 
 ## 编译和分发
 
@@ -82,7 +82,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
 
 ## 独立前端与资源更新
 
-`frontend/` 是这个程序自己的前端工程，包含 `package.json`、锁文件、Vite 配置、`index.html`、`src/` 和测试。它直接复用仓库的 `web/render` 绘制核心。前端开发需要 Node.js 24 或以上：
+`frontend/` 负责页面、NVWC 列响应和加载调度。为了复用绘制与 section 场景，它通过 `file:../../../web` 依赖独立包 `@neomega/viewer`，从 `@neomega/viewer/render` 导入绘制接口。Vite 配置使用 `resolve.dedupe: ["three"]` 让应用与共享包使用同一份 Three.js。前端开发需要 Node.js 24 或以上。在 `neomega-viewer` 目录进入前端工程，按锁文件安装依赖并链接共享包：
 
 ```sh
 cd cmd/world-viewer/frontend
@@ -92,7 +92,7 @@ npm run dev
 
 保持 Go 服务运行，打开 <http://127.0.0.1:2415>。开发服务器把 API 和贴图请求代理到 Go 服务。
 
-修改前端后，执行 `npm run build` 更新 `../bundle/web`，再重新编译 Go 程序。网页和应用代码不会放入 `demo/`。内嵌文件由 `embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。
+修改前端后，在 `frontend/` 执行 `npm run build` 更新 `../bundle/web`，再重新编译 Go 程序。内嵌文件由 `embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。
 
 更新整套资源时，先按 [viewer 资源说明](../../README.md#更新配套几何资源) 更新 blocks 的几何表。图集必须来自生成该表时使用的同一套资源。在 `neomega-viewer` 目录执行：
 
@@ -105,20 +105,24 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 
 ## 读取与传输
 
-本目录的 `source.go` 持有原生存档句柄和压缩记录缓存，所有文件访问都由一个 goroutine 负责。`mesh.go` 将原生 IR 状态拆成渲染层，读取相邻区块的覆盖信息并生成几何。`files.go` 提供服务端文件浏览，`worlds.go` 管理存档切换及其缓存生命周期。`http.go` 控制请求并发和响应缓存。几何算法仍由通用 mesher 提供。
+本目录的 `source.go` 持有原生存档句柄和压缩记录缓存，所有文件访问都由一个 goroutine 负责。`mesh.go` 实现 `dispatcher.SectionSource` 适配器，在请求内缓存已解码的区块，并按 section 分组 `Chunk.BlockEntities()` 返回的实体。适配器将完整 Java 状态和格内实体交给共享 Pipeline，由 `BuildSections` 读取六向邻居、复用拆层结果并生成快照。应用将快照编码成 NVWC 响应。`files.go` 提供服务端文件浏览，`worlds.go` 管理存档切换及其缓存生命周期。`http.go` 控制请求并发和响应缓存。几何算法仍由通用 mesher 提供。
 
-压缩区块缓存为 32 MiB，响应缓存为 64 MiB，最多打开 16 个 region。服务默认允许四个列请求并发构建，可通过 `-workers` 调整；每列内部的 section 仍依次构建。并发调度由 HTTP 层负责，mesher 仍接收单个 section 并返回几何。服务按需读取 MCA 记录，启动时不解码整张地图。缓存以打开存档时的内容为准。修改存档后，重新选择同一份存档即可重新读取。
+压缩区块缓存为 32 MiB，响应缓存为 64 MiB，最多打开 16 个 region。服务默认允许四个列请求并发构建，可通过 `-workers` 调整；每列内部的 section 仍依次构建。并发调度由 HTTP 层负责，Pipeline 在一次批量调用内缓存 section 准备结果，mesher 接收单个 section 及邻居的渲染层并返回几何。服务按需读取 MCA 记录，启动时不解码整张地图。缓存以打开存档时的内容为准。修改存档后，重新选择同一份存档即可重新读取。
 
 `GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
 
-区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。方块诊断按原始 blockstate 去重，包含 `position`（世界坐标）、`blockstate` 和 `reason`。原因包括 `missing_model`、`actor_error`、`invalid_block_entities` 和 `invalid_block_entity`，可选 `detail` 保存具体错误。无法定位到方块的记录使用空 `blockstate`，`position` 是区块原点（Y 为 0），按区块和原因去重。无诊断时字节数为零。没有几何的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
+区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。服务端方块诊断按原始 blockstate 与 reason 的组合去重，包含 `position`（世界坐标）、`blockstate` 和 `reason`。原因包括 `missing_model`、`actor_error`、`invalid_block_entities` 和 `invalid_block_entity`，可选 `detail` 保存具体错误。无法定位到方块的记录使用空 `blockstate`，`position` 是区块原点（Y 为 0），按区块和原因去重。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
 
 工作区根目录的验收命令：
 
 ```sh
 ./check.sh neomega-viewer
+npm --prefix neomega-viewer/web ci
+npm --prefix neomega-viewer/web test
+npm --prefix neomega-viewer/web run typecheck
+npm --prefix neomega-viewer/cmd/world-viewer/frontend ci
 npm --prefix neomega-viewer/cmd/world-viewer/frontend test
 npm --prefix neomega-viewer/cmd/world-viewer/frontend run build
 ```
 
-测试覆盖文件浏览、存档切换与缓存隔离、目录与 PackFS 读取、跨 section 剔面、移动与视距变化时保留网格、取消过期请求、完整视距加载、跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和二进制传输。
+测试覆盖文件浏览、存档切换与缓存隔离、目录与 PackFS 读取、跨 section 剔面。前端工程测试移动与视距变化时保留网格、取消过期请求、完整视距加载和列响应解码。共享包测试跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和绘制二进制解码。

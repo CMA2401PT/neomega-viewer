@@ -10,6 +10,7 @@ import (
 	"neomega-blocks/geometry/material"
 	"neomega-blocks/ir"
 	resources "neomega-blocks/presets/java/v1/geometry"
+	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer/blockactor"
 	"neomega-viewer/blockactor/decoratedpot"
 	"neomega-viewer/mesher"
@@ -46,12 +47,12 @@ func TestDecoratedPot(t *testing.T) {
 	} {
 		t.Run(test.facing, func(t *testing.T) {
 			state := ir.IRBlock(`minecraft:decorated_pot ["facing"="` + test.facing + `","cracked"="true"]`).Tidy()
-			input := blockactor.Input{Pos: [3]uint8{4, 3, 7}, State: state, SNBT: listNBT}
+			input := blockactor.Input{Pos: [3]uint8{4, 3, 7}, State: state, NBT: decodedNBT(t, listNBT)}
 			mesh, err := handler.Build(input)
 			if err != nil {
 				t.Fatal(err)
 			}
-			input.SNBT = compoundNBT
+			input.NBT = decodedNBT(t, compoundNBT)
 			compound, err := handler.Build(input)
 			if err != nil || !reflect.DeepEqual(mesh, compound) {
 				t.Fatalf("NBT representations differ: %v", err)
@@ -100,10 +101,16 @@ func TestDecoratedPot(t *testing.T) {
 			}
 		})
 	}
-	for _, snbt := range []string{"", "{}", "{broken", `{sherds:[]}`, `{sherds:["minecraft:brick","","minecraft:brick","minecraft:brick"]}`, `{sherds:{front:{}}}`} {
+	for _, value := range []nbt.Compound{
+		nil,
+		{},
+		{"sherds": []string{}},
+		{"sherds": []string{"minecraft:brick", "", "minecraft:brick", "minecraft:brick"}},
+		decodedNBT(t, `{sherds:{front:{}}}`),
+	} {
 		mesh, err := handler.Build(blockactor.Input{
 			State: ir.IRBlock(`minecraft:decorated_pot ["facing"="north","cracked"="false","waterlogged"="true"]`).Tidy(),
-			SNBT:  snbt,
+			NBT:   value,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -115,7 +122,16 @@ func TestDecoratedPot(t *testing.T) {
 			}
 		}
 		if sides != 4 {
-			t.Fatalf("default sides=%d for %s", sides, snbt)
+			t.Fatalf("default sides=%d for %v", sides, value)
 		}
 	}
+}
+
+func decodedNBT(t *testing.T, text string) nbt.Compound {
+	t.Helper()
+	var value nbt.Compound
+	if err := nbt.DecodeFromSNBT(text, &value, nbt.OptDecodeFromSNBT{}); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

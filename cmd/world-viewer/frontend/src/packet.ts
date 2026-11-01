@@ -1,5 +1,5 @@
-import { decodeFrame } from "../../../../web/render/binary.ts";
-import type { FrameData } from "../../../../web/render/types.ts";
+import { decodeFrame } from "@neomega/viewer/render";
+import type { FrameData } from "@neomega/viewer/render";
 
 export interface RenderIssue {
   position: [number, number, number];

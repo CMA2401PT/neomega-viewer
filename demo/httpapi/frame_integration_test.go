@@ -87,7 +87,15 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		direct, err := pipeline.Build(input, scene.NBT, options)
+		states, err := dispatcher.BlocksFromHashes(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		direct, err := pipeline.Build(
+			dispatcher.Section{Blocks: states, Entities: scene.NBT},
+			dispatcher.Neighbours{},
+			options,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +123,15 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		direct, err := pipeline.Build(input, nil, options)
+		states, err := dispatcher.BlocksFromHashes(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		direct, err := pipeline.Build(
+			dispatcher.Section{Blocks: states, Entities: nil},
+			dispatcher.Neighbours{},
+			options,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
