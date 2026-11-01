@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -28,10 +29,21 @@ import (
 const maxColumnBytes = 24 << 20
 
 type chunkKey struct{ X, Z, MinY, MaxY int32 }
+
+// RenderIssue retains the source blockstate before layer splitting. An empty
+// blockstate identifies a column-level issue; Position is then the column origin.
+type RenderIssue struct {
+	Position   [3]int32 `json:"position"`
+	Blockstate string   `json:"blockstate"`
+	Reason     string   `json:"reason"`
+	Detail     string   `json:"detail,omitempty"`
+}
+
 type prepared struct {
 	layers  [][]uint32
 	blocks  *layer_storage.Palette[ir.IRBlock]
 	unknown int
+	issues  []RenderIssue
 	empty   bool
 }
 
@@ -110,6 +122,7 @@ func (e *Engine) prepare(s *java.Section) *prepared {
 			p.layers[i][j] = e.air
 		}
 	}
+	reported := make([]bool, len(palette))
 	for i := 0; i < 4096; i++ {
 		index := s.Blocks.GetIndex(layer_storage.At(i>>8, i&15, i>>4&15))
 		for layer, id := range parts[index] {
@@ -117,6 +130,14 @@ func (e *Engine) prepare(s *java.Section) *prepared {
 		}
 		if unknown[index] {
 			p.unknown++
+			if !reported[index] {
+				reported[index] = true
+				p.issues = append(p.issues, RenderIssue{
+					Position:   [3]int32{int32(i >> 8), s.Y*16 + int32(i&15), int32(i >> 4 & 15)},
+					Blockstate: string(palette[index]),
+					Reason:     "missing_model",
+				})
+			}
 		}
 		if visible[index] {
 			p.empty = false
@@ -179,11 +200,30 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 		columns[cp] = column
 	}
 	entities := map[int32]map[[3]uint8]string{}
+	var issues []RenderIssue
+	reported := map[string]bool{}
+	report := func(issue RenderIssue) {
+		key := issue.Blockstate
+		if key == "" {
+			key = fmt.Sprintf("%s:%v", issue.Reason, issue.Position)
+		}
+		if !reported[key] {
+			reported[key] = true
+			issues = append(issues, issue)
+		}
+	}
+	invalidEntityList := false
+	invalidEntities := map[[3]int32]bool{}
 	if center != nil {
 		if value, exists := center.NBT.Value["block_entities"]; exists {
 			compounds, ok := nbt.Compounds(value)
 			if !ok {
-				return nil, fmt.Errorf("block_entities is not a compound list")
+				invalidEntityList = true
+				report(RenderIssue{
+					Position: [3]int32{pos.X * 16, 0, pos.Z * 16},
+					Reason:   "invalid_block_entities",
+					Detail:   fmt.Sprintf("block_entities is not a compound list (%T)", value),
+				})
 			}
 			for _, entity := range compounds {
 				// Only the supported actor currently consumes NBT. Keep unrelated entities
@@ -195,6 +235,11 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 				y, yOK := entity["y"].(int32)
 				z, zOK := entity["z"].(int32)
 				if !xOK || !yOK || !zOK || x>>4 != pos.X || z>>4 != pos.Z {
+					report(RenderIssue{
+						Position: [3]int32{pos.X * 16, 0, pos.Z * 16},
+						Reason:   "invalid_block_entity",
+						Detail:   "decorated_pot requires Int x/y/z inside its chunk",
+					})
 					continue
 				}
 				if y>>4 < low || y>>4 > high {
@@ -202,7 +247,13 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 				}
 				text, err := nbt.EncodeToSNBT(entity, nbt.OptEncodeToSNBT{})
 				if err != nil {
-					return nil, err
+					invalidEntities[[3]int32{x, y, z}] = true
+					report(RenderIssue{
+						Position: [3]int32{pos.X * 16, 0, pos.Z * 16},
+						Reason:   "invalid_block_entity",
+						Detail:   fmt.Sprintf("decorated_pot at %d,%d,%d: %v", x, y, z, err),
+					})
+					continue
 				}
 				if entities[y>>4] == nil {
 					entities[y>>4] = map[[3]uint8]string{}
@@ -222,6 +273,11 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 			continue
 		}
 		unknown += uint32(section.unknown)
+		for _, issue := range section.issues {
+			issue.Position[0] += pos.X * 16
+			issue.Position[2] += pos.Z * 16
+			report(issue)
+		}
 		var neighbours [6][][]uint32
 		adjacent := [6]struct {
 			p celler.ChunkPos
@@ -252,9 +308,16 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 			if section.layers[0][i] == e.missing {
 				continue
 			}
+			worldPosition := [3]int32{pos.X*16 + int32(lp.X), y*16 + int32(lp.Y), pos.Z*16 + int32(lp.Z)}
+			// Entity data is optional decoration. Keep the static model if it
+			// cannot be read, or if building the replacement appearance fails.
+			if invalidEntityList || invalidEntities[worldPosition] {
+				continue
+			}
 			built, err := e.actor.Build([]blockactor.Input{{Pos: position, State: block, SNBT: entities[y][position], Waterlogged: len(layers) > 1 && layers[1][i] != e.air}})
 			if err != nil {
-				return nil, err
+				report(RenderIssue{Position: worldPosition, Blockstate: string(block), Reason: "actor_error", Detail: err.Error()})
+				continue
 			}
 			if len(actors) == 0 {
 				layers = append([][]uint32(nil), section.layers...)
@@ -283,14 +346,27 @@ func (e *Engine) BuildColumn(ctx context.Context, source *Source, key chunkKey) 
 		out.Write(frame.Bytes())
 		count++
 	}
+	var diagnostics []byte
+	if len(issues) > 0 {
+		var err error
+		diagnostics, err = json.Marshal(issues)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if out.Len()+len(diagnostics) > maxColumnBytes {
+		return nil, fmt.Errorf("column diagnostics exceed 24 MiB; reduce view distance")
+	}
+	out.Write(diagnostics)
 	data := out.Bytes()
+	binary.LittleEndian.PutUint32(data[16:], uint32(len(diagnostics)))
 	binary.LittleEndian.PutUint32(data[8:], count)
 	binary.LittleEndian.PutUint32(data[12:], unknown)
 	return data, nil
 }
 func emptyPacket() []byte {
-	data := make([]byte, 16)
+	data := make([]byte, 20)
 	copy(data, "NVWC")
-	binary.LittleEndian.PutUint32(data[4:], 2)
+	binary.LittleEndian.PutUint32(data[4:], 3)
 	return data
 }

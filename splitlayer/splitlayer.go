@@ -46,7 +46,7 @@ type Splitter struct {
 var bundledSplits = sync.OnceValues(func() (map[JavaBlockHash][]JavaBlockHashRSL, JavaBlockHashRSL) {
 	// 全集没有 waterlogged，补齐两种取值才能识别调用方保留的含水状态。
 	byHash := map[JavaBlockHash][]JavaBlockHashRSL{}
-	for block := range java.JavaFullStates() {
+	for block := range java.JavaCompatibleStates() {
 		byHash[block.Tidy().Hash()] = SplitBlock(block)
 		for _, value := range []string{"true", "false"} {
 			states := block.States().Set("waterlogged", value)

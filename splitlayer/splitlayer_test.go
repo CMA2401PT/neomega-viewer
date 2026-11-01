@@ -14,6 +14,7 @@ func TestSplitRulesAndHashes(t *testing.T) {
 		input ir.IRBlock
 		want  []ir.IRBlock
 	}{
+		{"legacy wet grass", `minecraft:grass ["waterlogged"="true"]`, []ir.IRBlock{`minecraft:grass []`, `minecraft:water ["level"="0"]`}},
 		{"stone", `minecraft:stone []`, []ir.IRBlock{`minecraft:stone []`}},
 		{"dry slab", `minecraft:oak_slab ["waterlogged"="false","type"="bottom"]`, []ir.IRBlock{`minecraft:oak_slab ["type"="bottom"]`}},
 		{"wet slab", `minecraft:oak_slab ["waterlogged"="true","type"="bottom"]`, []ir.IRBlock{`minecraft:oak_slab ["type"="bottom"]`, `minecraft:water ["level"="0"]`}},

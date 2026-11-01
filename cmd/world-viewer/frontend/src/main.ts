@@ -7,6 +7,7 @@ import { decodeColumn } from "./packet.ts";
 import { createWorldPicker, type WorldInfo } from "./picker.ts";
 import { WorldScene, type WorldSection } from "./world-scene.ts";
 import { FrameRate, geometryMemoryBytes } from "./metrics.ts";
+import { createDiagnostics } from "./diagnostics.ts";
 import "./style.css";
 
 const element = <T extends HTMLElement>(id: string): T =>
@@ -17,6 +18,11 @@ const coordinateDisplay = element<HTMLOutputElement>("coordinates");
 const fpsDisplay = element<HTMLOutputElement>("fps");
 const memoryDisplay = element<HTMLOutputElement>("memory");
 const frameRate = new FrameRate();
+const diagnostics = createDiagnostics(
+  element<HTMLOutputElement>("issue-count"),
+  element<HTMLUListElement>("issue-list"),
+  element<HTMLParagraphElement>("issue-empty"),
+);
 function resetFrameRate(): void {
   frameRate.reset();
   fpsDisplay.value = "FPS —";
@@ -117,6 +123,7 @@ async function loadSections(
   const buffer = await response.arrayBuffer();
   signal.throwIfAborted();
   const data = decodeColumn(buffer);
+  diagnostics.add(data.issues);
   const sections = new Map(
     data.sections.map((section) => [section.y, section]),
   );
@@ -360,6 +367,7 @@ async function loadTextures(): Promise<void> {
 async function showWorld(info: WorldInfo): Promise<void> {
   if (currentWorld && info.revision < currentWorld.revision) return;
   const epoch = ++worldEpoch;
+  diagnostics.clear();
   stream?.dispose();
   stream = undefined;
   worldScene?.dispose();

@@ -81,7 +81,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	old := worlds.view()
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/chunk?world=2&x=0&z=0&minY=4&maxY=4", nil))
-	if response.Code != 200 || response.Body.Len() <= 16 {
+	if response.Code != 200 || response.Body.Len() <= 20 {
 		t.Fatal("first world's mesh missing")
 	}
 	if info := open(air, 200); info.Revision != 3 || info.Path != air {
@@ -102,7 +102,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	}
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/chunk?world=3&x=0&z=0&minY=4&maxY=4", nil))
-	if response.Code != 200 || response.Body.Len() != 16 {
+	if response.Code != 200 || response.Body.Len() != 20 {
 		t.Fatal("old mesh leaked into new world")
 	}
 	open(filepath.Join(air, "missing"), 400)

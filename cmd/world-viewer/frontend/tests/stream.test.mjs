@@ -128,22 +128,27 @@ test("world packet preserves section ownership and negative Y", () => {
   const frame = readFileSync(
     new URL("./fixtures/block_entities.nvframe", import.meta.url),
   );
-  const packet = new ArrayBuffer(28 + frame.length);
+  const issues = [{ position: [-16, -64, 32], blockstate: "minecraft:grass []", reason: "missing_model" }];
+  const diagnostics = new TextEncoder().encode(JSON.stringify(issues));
+  const packet = new ArrayBuffer(32 + frame.length + diagnostics.length);
   const view = new DataView(packet);
   new Uint8Array(packet).set(new TextEncoder().encode("NVWC"));
-  view.setUint32(4, 2, true);
+  view.setUint32(4, 3, true);
   view.setUint32(8, 1, true);
   view.setUint32(12, 7, true);
-  view.setInt32(16, -4, true);
-  view.setUint32(20, frame.length, true);
-  view.setUint32(24, 7, true);
-  new Uint8Array(packet, 28).set(frame);
+  view.setUint32(16, diagnostics.length, true);
+  view.setInt32(20, -4, true);
+  view.setUint32(24, frame.length, true);
+  view.setUint32(28, 7, true);
+  new Uint8Array(packet, 32).set(frame);
+  new Uint8Array(packet, 32 + frame.length).set(diagnostics);
   const result = decodeColumn(packet);
+  assert.deepEqual(result.issues, issues);
   assert.equal(result.sections[0].unknown, 7);
   assert.equal(result.sections[0].y, -4);
   assert.equal(result.sections[0].bytes, frame.length);
   assert.equal(result.sections[0].frame.actors.length, 6);
   assert.throws(() => decodeColumn(packet.slice(0, -1)));
-  view.setUint32(20, 0xffffffff, true);
+  view.setUint32(24, 0xffffffff, true);
   assert.throws(() => decodeColumn(packet));
 });

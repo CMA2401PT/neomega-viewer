@@ -93,7 +93,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 			if string(packet[:4]) != "NVWC" || binary.LittleEndian.Uint32(packet[8:]) != 2 {
 				t.Fatalf("packet header %x", packet[:16])
 			}
-			offset, quads := 16, 0
+			offset, quads := 20, 0
 			frames := map[int32][]byte{}
 			for range 2 {
 				size := int(binary.LittleEndian.Uint32(packet[offset+4:]))
@@ -114,7 +114,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if binary.LittleEndian.Uint32(single[8:]) != 1 || !bytes.Equal(single[28:], frame) {
+				if binary.LittleEndian.Uint32(single[8:]) != 1 || !bytes.Equal(single[32:], frame) {
 					t.Fatal("section geometry depends on request window")
 				}
 			}

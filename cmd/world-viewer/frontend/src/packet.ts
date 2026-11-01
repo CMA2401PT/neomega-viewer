@@ -1,19 +1,28 @@
 import { decodeFrame } from "../../../../web/render/binary.ts";
 import type { FrameData } from "../../../../web/render/types.ts";
 
+export interface RenderIssue {
+  position: [number, number, number];
+  blockstate: string;
+  reason: "missing_model" | "invalid_block_entities" | "invalid_block_entity" | "actor_error";
+  detail?: string;
+}
+
 export function decodeColumn(buffer: ArrayBuffer): {
   sections: { y: number; bytes: number; unknown: number; frame: FrameData }[];
   unknown: number;
+  issues: RenderIssue[];
 } {
-  if (buffer.byteLength < 16 || buffer.byteLength > 24 * 1024 * 1024)
+  if (buffer.byteLength < 20 || buffer.byteLength > 24 * 1024 * 1024)
     throw new Error("区块响应长度无效");
   const view = new DataView(buffer);
-  if (view.getUint32(0, false) !== 0x4e565743 || view.getUint32(4, true) !== 2)
+  if (view.getUint32(0, false) !== 0x4e565743 || view.getUint32(4, true) !== 3)
     throw new Error("区块响应格式无效");
   const count = view.getUint32(8, true),
     unknown = view.getUint32(12, true);
   if (count > 256) throw new Error("区块高度数量无效");
-  let offset = 16;
+  const diagnosticsLength = view.getUint32(16, true);
+  let offset = 20;
   const sections: {
     y: number;
     bytes: number;
@@ -36,6 +45,9 @@ export function decodeColumn(buffer: ArrayBuffer): {
     });
     offset += length;
   }
-  if (offset !== buffer.byteLength) throw new Error("区块响应包含多余数据");
-  return { sections, unknown };
+  if (offset + diagnosticsLength !== buffer.byteLength) throw new Error("区块响应包含多余数据");
+  const issues: RenderIssue[] = diagnosticsLength
+    ? JSON.parse(new TextDecoder().decode(buffer.slice(offset)))
+    : [];
+  return { sections, unknown, issues };
 }

@@ -150,7 +150,7 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 `neomega-viewer/splitlayer` 负责把完整状态拆成若干 RSL，下标即层号。规则只看状态：有 `waterlogged` 就去掉它放进第 0 层，值为 `true` 时第 1 层放一格 `minecraft:water ["level"="0"]`；seagrass、tall_seagrass、kelp、kelp_plant 总在水里，同样补一层水；其余方块原样放第 0 层。
 
 - `splitlayer.SplitBlock(block ir.IRBlock)` 直接按规则拆一个状态，适合手里是 blockstate 的调用方。
-- `splitlayer.New()` 把规则对 `presets/java/v1` 的状态全集展开成 hash 表，多个实例共享。`SplitHash(hash)` 拆一个 hash；`SplitSubchunk(blocks)` 拆 4096 格，返回 `[][]uint32`，层数取各格最大值，空位填空气。表里没有的 hash 原样当作 RSL。
+- `splitlayer.New()` 把规则对 `presets/java/v1.JavaCompatibleStates()` 的目标及兼容状态展开成 hash 表，多个实例共享。`SplitHash(hash)` 拆一个 hash；`SplitSubchunk(blocks)` 拆 4096 格，返回 `[][]uint32`，层数取各格最大值，空位填空气。表里没有的 hash 原样当作 RSL。
 
 拆层只能做一次：kelp 的 RSL 再拆一次会多出一层水。输入若已丢了 `waterlogged`，拆层也无从得知它原本含水。
 
@@ -220,6 +220,8 @@ go generate ./presets/java/v1/geometry
 浏览器需要几何表与生成它时使用的图集。`neomega-blocks` 提供 Java 状态全集，`neomega-assets` 提供对应版本的模型与图集。
 
 默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器返回 tidy IR 方块，目录按名称分组，身份反查直接使用 `HashToBlock`。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。属性按字典序排列，才能让同一状态的不同书写顺序得到相同的 hash。规范化由调用者安排，便于复用已规范化的状态，避免每次哈希重复排序。
+
+存档中的旧状态另由 blocks 的 Java 兼容映射覆盖。生成器按源版本从高到低取同一状态的首次解释，让旧状态 hash 共享 1.21.4 目标状态的几何；例如旧 `grass` 使用 `short_grass` 的模型。运行时不需要源版本，原始 blockstate 保留用于拆层与诊断。映射、兼容状态枚举及重建命令见 [blocks 生成说明](../neomega-blocks/third_party/gen_resource/README.md#java-存档的兼容状态)。
 
 需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
 
@@ -403,7 +405,7 @@ viewport.setFrame(decodeFrame(await response.arrayBuffer()));
 
 ## 接口与扩展位置
 
-仓库分发的 Java 几何表使用 `presets/java/v1.JavaFullStates()` 枚举的状态集，其状态不带 `waterlogged`。单方块身份查询与几何接口接受该状态集中的 hash。子区块入口接受完整 Java hash，包括含水变体，经拆层得到 RSL 后查询几何表。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在 blocks 生成侧通过 `tablegen.OpenOptions.Policy` 提供 `java_block_model.Policy`，并重新生成表。blocks 的 preset 加载器通过 `OpenOptions.TablesPath` 选择外部资源。
+仓库分发的 Java 几何表覆盖 `presets/java/v1.JavaCompatibleStates()` 枚举的目标及兼容状态，其状态不带 `waterlogged`。单方块身份查询与几何接口接受该状态集中的 hash。子区块入口接受完整 Java hash，包括含水变体，经拆层得到 RSL 后查询几何表。mesher 本身可以使用调用者提供的其他数值 ID 与表。需要改变固定颜色和材质语义时，在 blocks 生成侧通过 `tablegen.OpenOptions.Policy` 提供 `java_block_model.Policy`，并重新生成表。blocks 的 preset 加载器通过 `OpenOptions.TablesPath` 选择外部资源。
 
 其他变化可以按职责定位：
 
