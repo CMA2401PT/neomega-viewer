@@ -8,6 +8,7 @@ import {
 } from "../../../../web/render/index.ts";
 import { mergedGeometry, opaqueBatchGroups } from "../../../../web/render/batching.ts";
 import type { SectionKey } from "./stream.ts";
+import { OcclusionQueries, type OcclusionTarget } from "./occlusion.ts";
 
 // Small spatial batches retain independent section visibility and lifetime.
 export const REGION_SECTIONS = 4;
@@ -87,6 +88,8 @@ class RegionBatch {
       this.indexCapacity,
       draw.material,
     );
+    // Only fully opaque static surfaces may provide persistent occlusion depth.
+    this.mesh.layers.set(draw.material.uniforms.cutoff.value === 0 ? 0 : 1);
     // WorldScene handles the region and section hierarchy once for every material.
     this.mesh.frustumCulled = false;
     this.mesh.perObjectFrustumCulled = false;
@@ -140,7 +143,15 @@ class RegionBatch {
 /** Owns world materials, regional GPU batches and the two-level visibility index. */
 export class WorldScene {
   readonly materials: SurfaceMaterials;
-  readonly visibility = { regionsTested: 0, sectionsTested: 0, visibleSections: 0 };
+  readonly visibility = {
+    regionsTested: 0,
+    sectionsTested: 0,
+    visibleSections: 0,
+    occludedRegions: 0,
+    occludedSections: 0,
+  };
+  readonly occlusion?: OcclusionQueries;
+  private readonly occlusionTargets: OcclusionTarget[] = [];
   private readonly regions = new Map<string, Region>();
   private readonly membership = new Map<WorldSection, Region>();
   private readonly frustum = new THREE.Frustum();
@@ -149,12 +160,19 @@ export class WorldScene {
   private readonly atlas: THREE.Texture;
   private readonly effects: EffectRegistry;
   private wireframe = false;
+  private occlusionEnabled = true;
 
-  constructor(scene: THREE.Scene, atlas: THREE.Texture, effects: EffectRegistry) {
+  constructor(
+    scene: THREE.Scene,
+    atlas: THREE.Texture,
+    effects: EffectRegistry,
+    renderer?: THREE.WebGLRenderer,
+  ) {
     this.scene = scene;
     this.atlas = atlas;
     this.effects = effects;
     this.materials = new SurfaceMaterials(atlas);
+    if (renderer) this.occlusion = new OcclusionQueries(renderer);
   }
 
   prepare(key: SectionKey, data?: FrameData, unknown = 0): WorldSection {
@@ -221,6 +239,7 @@ export class WorldScene {
 
   add(section: WorldSection): void {
     if (section.bounds.isEmpty()) return;
+    this.occlusion?.invalidate();
     const { key } = section;
     const origin = new THREE.Vector3(
       Math.floor(key.x / REGION_SECTIONS) * REGION_SIZE,
@@ -255,6 +274,7 @@ export class WorldScene {
     }
     section.opaque.length = 0;
     if (section.frame) {
+      section.frame.object.traverse((object) => object.layers.set(1));
       // The control can change while a prepared section is awaiting attachment.
       this.applyWireframe(section.frame.object);
       section.frame.object.position.copy(offset);
@@ -269,6 +289,7 @@ export class WorldScene {
   private remove(section: WorldSection): void {
     const region = this.membership.get(section);
     if (!region) return;
+    this.occlusion?.invalidate();
     const entry = region.entries.get(section)!;
     for (const instance of entry.instances) {
       const batch = instance.batch;
@@ -293,9 +314,12 @@ export class WorldScene {
   update(camera: THREE.PerspectiveCamera, seconds: number): void {
     this.materials.time.value = seconds;
     camera.updateMatrixWorld();
+    if (this.useOcclusion) this.occlusion!.begin(camera);
     this.projectionView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projectionView);
     this.visibility.regionsTested = this.visibility.sectionsTested = this.visibility.visibleSections = 0;
+    this.visibility.occludedRegions = this.visibility.occludedSections = 0;
+    this.occlusionTargets.length = 0;
     for (const region of this.regions.values()) {
       if (region.dirtyBounds) {
         region.bounds.makeEmpty();
@@ -307,10 +331,24 @@ export class WorldScene {
       const classification = classifyBox(this.frustum, region.bounds);
       region.group.visible = classification !== 0;
       if (!classification) continue;
+      if (this.useOcclusion && this.occlusion!.hidden(region)) {
+        region.group.visible = false;
+        this.visibility.occludedRegions++;
+        continue;
+      }
+      if (this.useOcclusion) this.occlusionTargets.push(region);
       for (const entry of region.entries.values()) {
         const { section } = entry;
         if (classification !== 2) this.visibility.sectionsTested++;
-        const visible = classification === 2 || this.frustum.intersectsBox(section.bounds);
+        let visible = classification === 2 || this.frustum.intersectsBox(section.bounds);
+        if (visible && this.useOcclusion) {
+          if (this.occlusion!.hidden(section)) {
+            visible = false;
+            this.visibility.occludedSections++;
+          } else {
+            this.occlusionTargets.push(section);
+          }
+        }
         if (visible !== entry.visible) {
           for (const { batch, instanceID } of entry.instances) batch.mesh.setVisibleAt(instanceID, visible);
           entry.visible = visible;
@@ -323,6 +361,48 @@ export class WorldScene {
           section.frame.object.updateMatrixWorld();
         }
       }
+    }
+  }
+
+  private get useOcclusion(): boolean {
+    return this.occlusionEnabled && !this.wireframe && this.occlusion !== undefined;
+  }
+
+  setOcclusion(enabled: boolean): void {
+    this.occlusionEnabled = enabled;
+    this.occlusion?.invalidate();
+  }
+
+  /** Reuse the normal opaque color pass as the depth source: no depth prepass.
+   * Cutout, blended surfaces and moving effects are drawn only after queries. */
+  render(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera): void {
+    const mask = camera.layers.mask;
+    const autoClear = renderer.autoClear;
+    const autoReset = renderer.info.autoReset;
+    const background = this.scene.background;
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    try {
+      // Most frames need no queries and keep the original single render pass.
+      const query = this.useOcclusion && this.occlusion!.prepare(this.occlusionTargets, this.frustum);
+      if (!query) {
+        camera.layers.enable(0);
+        camera.layers.enable(1);
+        renderer.render(this.scene, camera);
+        return;
+      }
+      camera.layers.set(0);
+      renderer.render(this.scene, camera);
+      renderer.autoClear = false;
+      this.occlusion!.issue(camera);
+      this.scene.background = null;
+      camera.layers.set(1);
+      renderer.render(this.scene, camera);
+    } finally {
+      camera.layers.mask = mask;
+      renderer.autoClear = autoClear;
+      renderer.info.autoReset = autoReset;
+      this.scene.background = background;
     }
   }
 
@@ -339,6 +419,7 @@ export class WorldScene {
 
   setWireframe(value: boolean): void {
     this.wireframe = value;
+    this.occlusion?.invalidate();
     this.materials.setWireframe(value);
     for (const region of this.regions.values()) {
       for (const entry of region.entries.values()) {
@@ -354,6 +435,7 @@ export class WorldScene {
 
   dispose(): void {
     for (const section of this.membership.keys()) section.dispose();
+    this.occlusion?.dispose();
     this.materials.dispose();
   }
 }

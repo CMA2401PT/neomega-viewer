@@ -31,6 +31,7 @@ document.addEventListener("visibilitychange", resetFrameRate);
 const fields = ["x", "y", "z"].map((id) => element<HTMLInputElement>(id));
 const radiusInput = element<HTMLInputElement>("radius");
 const wireframe = element<HTMLInputElement>("wireframe");
+const occlusion = element<HTMLInputElement>("occlusion");
 const resolution = element<HTMLSelectElement>("resolution");
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
@@ -207,6 +208,7 @@ element<HTMLFormElement>("teleport").addEventListener("submit", (event) => {
 wireframe.addEventListener("change", () => {
   worldScene?.setWireframe(wireframe.checked);
 });
+occlusion.addEventListener("change", () => worldScene?.setOcclusion(occlusion.checked));
 radiusInput.addEventListener("input", () => {
   element<HTMLOutputElement>("radius-label").value = radiusInput.value;
   refresh();
@@ -341,7 +343,8 @@ function animate(now: number): void {
     refresh();
   }
   worldScene?.update(camera, now / 1000);
-  renderer.render(scene, camera);
+  if (worldScene) worldScene.render(renderer, camera);
+  else renderer.render(scene, camera);
   const fps = frameRate.sample(now);
   if (fps !== undefined) {
     fpsDisplay.value = `FPS ${fps.toFixed(0)}`;
@@ -399,8 +402,9 @@ async function showWorld(info: WorldInfo): Promise<void> {
   });
   await textures;
   if (disposed || epoch !== worldEpoch) return;
-  const draw = new WorldScene(scene, atlas!, effects);
+  const draw = new WorldScene(scene, atlas!, effects, renderer);
   draw.setWireframe(wireframe.checked);
+  draw.setOcclusion(occlusion.checked);
   worldScene = draw;
   stream = new ChunkStream(
     (keys, signal) => loadSections(keys, signal, info.revision, draw),
