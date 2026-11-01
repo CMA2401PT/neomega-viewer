@@ -8,9 +8,12 @@ import (
 
 	"celler/layer_storage"
 
+	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
 	"neomega-converter/fixer"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/dispatcher"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
 	"neomega-viewer/splitlayer"
@@ -53,7 +56,15 @@ func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], stateFixer 
 		layers := layerSplitter.SplitSubchunk(plain.Data)
 		if r.URL.Query().Get("fix") == "1" {
 			// 独立预览没有相邻子区块，只修复当前层内的连接。
-			layers[0] = stateFixer.Fix(layers[0], fixer.Neighbours{})
+			states, err := dispatcher.BlocksFromHashes(layers[0])
+			if err != nil {
+				writeError(w, 422, err)
+				return
+			}
+			fixed := stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+			var repaired layer_storage.Plain[uint32]
+			repaired.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
+			layers[0] = repaired.Data
 		}
 		result, err := engine.MeshMultiLayerSubchunks(layers, options)
 		if err != nil {

@@ -8,6 +8,7 @@ import (
 	java "neomega-blocks/presets/java/v1"
 	"neomega-converter/fixer"
 	"neomega-viewer/demo/scenes"
+	"neomega-viewer/dispatcher"
 )
 
 func TestSpecialNEMCSourceData(t *testing.T) {
@@ -56,12 +57,19 @@ func TestSpecialNEMCMatchesJavaAfterFix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	states, err := dispatcher.BlocksFromHashes(source.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+	var repaired layer_storage.Plain[uint32]
+	repaired.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
 	for _, stage := range []struct {
 		name   string
 		blocks []uint32
 	}{
 		{"before fix", source.Data},
-		{"after fix", stateFixer.Fix(source.Data, fixer.Neighbours{})},
+		{"after fix", repaired.Data},
 	} {
 		differences := 0
 		for index, got := range stage.blocks {

@@ -1,9 +1,13 @@
 package demo
 
 import (
+	"celler"
+	cellerbedrock "celler/bedrock"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
 	"neomega-converter/bedrock"
+	nbt "neomega-nbt/presets/v1"
 )
 
 func buildSpecialNEMC() (*Subchunk, error) {
@@ -72,12 +76,42 @@ func buildSpecialNEMC() (*Subchunk, error) {
 		{8, 1, 13}:  `{id:"Bed",color:5b}`,
 		{11, 1, 11}: `{id:"FlowerPot",PlantBlock:{name:"minecraft:cactus",states:{age:0},version:18168865}}`,
 	}
-	blocks, javaNBT := bedrock.Convert(layers, entities)
-	layer := layer_storage.MakePaletteStorage(air.Hash())
-	layer.CopyFrom(&layer_storage.Plain[uint32]{DefaultValue: air.Hash(), Data: blocks})
-	decoded, err := decodeSceneNBT(javaNBT)
+	source := cellerbedrock.NewChunk(celler.ChunkPos{}, 0)
+	section := &cellerbedrock.Section{Y: 0, Version: 9}
+	for _, states := range layers {
+		layer := cellerbedrock.NewLayer(cellerbedrock.Block{State: air, Version: 18168865})
+		for index, state := range states {
+			layer.Blocks.Set(
+				layer_storage.At(index>>8, index&15, index>>4&15),
+				cellerbedrock.Block{State: state, Version: 18168865},
+			)
+		}
+		section.Layers = append(section.Layers, layer)
+	}
+	if err := source.SetSection(section); err != nil {
+		return nil, err
+	}
+	var documents []nbt.Document
+	for pos, text := range entities {
+		var value nbt.Compound
+		if err := nbt.DecodeFromSNBT(text, &value, nbt.OptDecodeFromSNBT{}); err != nil {
+			return nil, err
+		}
+		value["x"], value["y"], value["z"] = int32(pos[0]), int32(pos[1]), int32(pos[2])
+		documents = append(documents, nbt.Document{Value: value})
+	}
+	if err := source.SetBlockEntities(documents); err != nil {
+		return nil, err
+	}
+	converted, err := bedrock.ConvertChunk(source)
 	if err != nil {
 		return nil, err
+	}
+	layer := layer_storage.ConvertPalette(converted.Sections[0].Blocks, java.BlockToHash)
+	decoded := make(map[[3]uint8]nbt.Compound, len(converted.BlockEntities))
+	for _, entity := range converted.BlockEntities {
+		pos := layer_storage.At(entity.Pos.X, entity.Pos.Y, entity.Pos.Z)
+		decoded[[3]uint8{pos.X, pos.Y, pos.Z}] = entity.NBT
 	}
 	return &Subchunk{Blocks: layer, NBT: decoded}, nil
 }

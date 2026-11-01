@@ -11,12 +11,14 @@ import (
 
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	java "neomega-blocks/presets/java/v1"
 	blockmesh "neomega-blocks/presets/java/v1/geometry"
 	"neomega-converter/fixer"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
+	"neomega-viewer/dispatcher"
 	"neomega-viewer/mesher"
 	"neomega-viewer/mesher/geometry"
 	"neomega-viewer/splitlayer"
@@ -200,7 +202,7 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 	for _, fix := range []string{"0", "1"} {
 		layers := splitlayer.New().SplitSubchunk(plain.Data)
 		if fix == "1" {
-			layers[0] = stateFixer.Fix(layers[0], fixer.Neighbours{})
+			layers[0] = fixedHashes(t, stateFixer, layers[0])
 		}
 		want, err := engine.MeshMultiLayerSubchunks(layers, mesher.Options{})
 		if err != nil {
@@ -232,4 +234,17 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 			}
 		}
 	}
+}
+
+func fixedHashes(t *testing.T, f *fixer.Fixer, hashes []uint32) []uint32 {
+	// HTTP 的 hash 层在 viewer 侧还原为 Java 状态，再交给 section 修复入口。
+	t.Helper()
+	states, err := dispatcher.BlocksFromHashes(hashes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := f.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+	var result layer_storage.Plain[uint32]
+	result.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
+	return result.Data
 }

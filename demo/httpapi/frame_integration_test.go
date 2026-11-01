@@ -82,7 +82,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		}
 		options, input := dispatcher.Options{}, plain.Data
 		if strings.Contains(query, "fix=1") {
-			input = stateFixer.Fix(input, fixer.Neighbours{})
+			input = fixedHashes(t, stateFixer, input)
 		}
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
@@ -118,7 +118,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		}
 		options, input := dispatcher.Options{}, plain.Data
 		if strings.Contains(query, "fix=1") {
-			input = stateFixer.Fix(input, fixer.Neighbours{})
+			input = fixedHashes(t, stateFixer, input)
 		}
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}

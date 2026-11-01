@@ -8,6 +8,7 @@ import (
 	"celler/layer_storage"
 	blockgeometry "neomega-blocks/geometry"
 	jmodel "neomega-blocks/geometry/java_block_model"
+	"neomega-blocks/ir"
 	"neomega-converter/fixer"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer/demo/scenes"
@@ -35,15 +36,14 @@ func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fi
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(blocks)
-		data := plain.Data
-		if r.URL.Query().Get("fix") == "1" {
-			// 修复属于转换一侧：演示把 NEMC 往返得到的状态先修成完整 Java 状态，再交给渲染。
-			data = stateFixer.Fix(data, fixer.Neighbours{})
-		}
-		states, err := dispatcher.BlocksFromHashes(data)
+		states, err := dispatcher.BlocksFromHashes(plain.Data)
 		if err != nil {
 			writeError(w, 422, err)
 			return
+		}
+		if r.URL.Query().Get("fix") == "1" {
+			// 独立预览使用六面 section 入口，缺失邻居由规则按空气或缺数据处理。
+			states = stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
 		}
 		result, err := pipeline.Build(
 			dispatcher.Section{Blocks: states, Entities: entities},
