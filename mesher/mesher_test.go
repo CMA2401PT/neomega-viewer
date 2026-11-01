@@ -8,6 +8,8 @@ import (
 
 	blockgeometry "neomega-blocks/geometry"
 	"neomega-blocks/geometry/material"
+	"neomega-blocks/ir"
+	preset "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/mesher/geometry"
 	"neomega-viewer/mesher/meshing"
 )
@@ -122,6 +124,90 @@ func TestSubchunkInputLength(t *testing.T) {
 			}
 		} else if err == nil || result != nil {
 			t.Fatalf("length %d: result=%+v, error=%v", count, result, err)
+		}
+	}
+}
+
+func TestAdjacentSectionCoverageAndFluidHeight(t *testing.T) {
+	resources, err := preset.Open(preset.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer := NewMesher(resources.Tables)
+	solid := make([]uint32, 4096)
+	for i := range solid {
+		solid[i] = ir.IRBlock("minecraft:stone []").Hash()
+	}
+	var neighbours [6][][]uint32
+	for side := range neighbours {
+		neighbours[side] = [][]uint32{solid}
+	}
+	result, err := renderer.MeshWithNeighbours([][]uint32{solid}, neighbours, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Mesh.Quads) != 0 {
+		t.Fatal("enclosed section has visible faces")
+	}
+	for side := range neighbours {
+		exposed := neighbours
+		exposed[side] = nil
+		result, err = renderer.MeshWithNeighbours([][]uint32{solid}, exposed, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Mesh.Quads) != 1 {
+			t.Fatalf("side %d: got %d quads", side, len(result.Mesh.Quads))
+		}
+	}
+	lower, upper := make([]uint32, 4096), make([]uint32, 4096)
+	for i := range lower {
+		lower[i] = ir.IRBlock("minecraft:air []").Hash()
+		upper[i] = lower[i]
+	}
+	water := ir.IRBlock(`minecraft:water ["level"="0"]`).Hash()
+	lower[2<<8|3<<4|15] = water
+	upper[2<<8|3<<4] = water
+	neighbours = [6][][]uint32{}
+	neighbours[3] = [][]uint32{upper}
+	result, err = renderer.MeshWithNeighbours([][]uint32{lower}, neighbours, Options{Meshing: meshing.Options{DisableCulling: true, DisableGreedy: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	top := 0.0
+	for _, quad := range result.Mesh.Quads {
+		for _, v := range quad.Positions {
+			top = max(top, v[1])
+		}
+	}
+	if top != 16 {
+		t.Fatalf("water across section boundary has height %f", top)
+	}
+}
+
+func TestFluidBottomAtSectionBoundary(t *testing.T) {
+	resources, err := preset.Open(preset.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer := NewMesher(resources.Tables)
+	lower, upper := make([]uint32, 4096), make([]uint32, 4096)
+	for i := range lower {
+		lower[i] = ir.IRBlock("minecraft:air []").Hash()
+		upper[i] = lower[i]
+	}
+	water := ir.IRBlock(`minecraft:water ["level"="0"]`).Hash()
+	lower[2<<8|3<<4|15] = water
+	upper[2<<8|3<<4] = water
+	var neighbours [6][][]uint32
+	neighbours[2] = [][]uint32{lower}
+	result, err := renderer.MeshWithNeighbours([][]uint32{upper}, neighbours, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, quad := range result.Mesh.Quads {
+		if quad.Normal[1] == -1 {
+			t.Fatal("internal fluid bottom remains visible")
 		}
 	}
 }

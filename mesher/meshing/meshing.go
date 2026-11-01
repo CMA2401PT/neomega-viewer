@@ -1,5 +1,5 @@
 // Package meshing removes covered boundary faces and joins compatible rectangles
-// in an isolated section of already baked, cell-local geometry.
+// in a section of already baked, cell-local geometry.
 package meshing
 
 import (
@@ -23,7 +23,23 @@ type Cell []LayerShape
 // Cells uses (x<<8)|(z<<4)|y indexing. Mesh coordinates remain local to a cell.
 type Cells [Size * Size * Size]Cell
 
+// Boundaries holds the touching face of each adjacent section, ordered west,
+// east, down, up, north, south. Each face uses BoundaryIndex for its 256 cells.
+type Boundaries [6][Size * Size]Cell
+
+func BoundaryIndex(side int, p [3]int) int {
+	switch side / 2 {
+	case 0:
+		return p[2]*Size + p[1]
+	case 1:
+		return p[0]*Size + p[2]
+	default:
+		return p[0]*Size + p[1]
+	}
+}
+
 type Options struct {
+	Neighbours     *Boundaries
 	DisableCulling bool
 	DisableGreedy  bool
 }
@@ -40,7 +56,7 @@ type Stats struct {
 // fully hidden source quads; ClippedQuads counts partially hidden source quads.
 // VisibleQuads counts the remaining pieces before optional greedy merging.
 func Build(cells *Cells, options Options) (geometry.Mesh, Stats) {
-	quads, stats := cullAndPlace(cells, options.DisableCulling)
+	quads, stats := cullAndPlace(cells, options.DisableCulling, options.Neighbours)
 	stats.VisibleQuads = len(quads)
 	if !options.DisableGreedy {
 		quads = merge(quads)
@@ -49,7 +65,7 @@ func Build(cells *Cells, options Options) (geometry.Mesh, Stats) {
 	return geometry.Mesh{Quads: quads}, stats
 }
 
-func cullAndPlace(cells *Cells, disableCulling bool) ([]geometry.Quad, Stats) {
+func cullAndPlace(cells *Cells, disableCulling bool, neighbours *Boundaries) ([]geometry.Quad, Stats) {
 	quads := []geometry.Quad{}
 	stats := Stats{}
 	for index, cell := range cells {
@@ -61,7 +77,7 @@ func cullAndPlace(cells *Cells, disableCulling bool) ([]geometry.Quad, Stats) {
 				pieces := []geometry.Quad{quad}
 				// 前景镂空使共面无法裁切时，用微小缩进避开深度冲突，缩进层的边界交给前景。
 				if !disableCulling && scale == 1 {
-					pieces = cullQuad(quad, part, position, cells)
+					pieces = cullQuad(quad, part, position, cells, neighbours)
 					if len(pieces) == 0 {
 						stats.RemovedQuads++
 					} else if len(pieces) != 1 || pieces[0] != quad {
@@ -108,7 +124,7 @@ func unitCube(shape *geometry.Shape) bool {
 	return true
 }
 
-func cullQuad(quad geometry.Quad, part LayerShape, position [3]int, cells *Cells) []geometry.Quad {
+func cullQuad(quad geometry.Quad, part LayerShape, position [3]int, cells *Cells, neighbours *Boundaries) []geometry.Quad {
 	unchanged := []geometry.Quad{quad}
 	rect, ok := inspect(quad)
 	if !ok || !rect.affine {
@@ -122,6 +138,8 @@ func cullQuad(quad geometry.Quad, part LayerShape, position [3]int, cells *Cells
 		neighbor[side/2] += 2*(side%2) - 1
 		if neighbor[side/2] >= 0 && neighbor[side/2] < Size {
 			remaining = subtractNeighbor(remaining, quad, part.CullGroup, cells[cellIndex(neighbor)], side^1)
+		} else if neighbours != nil {
+			remaining = subtractNeighbor(remaining, quad, part.CullGroup, neighbours[side][BoundaryIndex(side, position)], side^1)
 		}
 	}
 	if len(remaining) == 1 && remaining[0] == rect.box {

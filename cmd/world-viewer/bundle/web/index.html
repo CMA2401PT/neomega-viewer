@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Java 存档</title>
+    <script type="module" crossorigin src="/assets/index-DlaiS--p.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BEy28S1F.css">
+  </head>
+  <body>
+    <main id="scene" aria-label="Java 存档三维场景"></main>
+    <div id="hud" aria-hidden="true">
+      <canvas id="axes" width="80" height="80"></canvas
+      ><output id="coordinates">X 0.0　Y 80.0　Z 0.0</output>
+      <div id="performance">
+        <output id="fps" title="最近约一秒的平均帧率">FPS —</output>
+        <output id="memory" title="已加载网格的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制预留空间。不含纹理、浏览器自身和加载中的临时数据。">网格内存 ≈ 0.0 MiB</output>
+      </div>
+    </div>
+    <details id="panel" open>
+      <summary>控制</summary>
+      <output id="world-name">未打开存档</output>
+      <button id="open-world" type="button">打开存档…</button>
+      <form id="teleport">
+        <div class="coordinates">
+          <label
+            >X<input id="x" type="number" step="any" value="0" required
+          /></label>
+          <label
+            >Y<input id="y" type="number" step="any" value="80" required
+          /></label>
+          <label
+            >Z<input id="z" type="number" step="any" value="0" required
+          /></label>
+        </div>
+        <button type="submit">移动到坐标</button>
+      </form>
+      <label class="row"
+        ><span>线框</span><input id="wireframe" type="checkbox"
+      /></label>
+      <label class="row"
+        ><span>视距 <output id="radius-label">8</output></span
+        ><input
+          id="radius"
+          type="range"
+          min="1"
+          max="30"
+          value="8"
+          aria-label="视距，单位区块"
+      /></label>
+      <label class="row" for="resolution">
+        <span>渲染分辨率</span>
+        <select id="resolution" aria-describedby="resolution-help">
+          <option value="auto">自动（最高 1.5×）</option>
+          <option value="native">屏幕原生</option>
+          <option value="1">标准（1×）</option>
+          <option value="0.75">流畅（0.75×）</option>
+          <option value="0.5">低分辨率（0.5×）</option>
+        </select>
+      </label>
+      <p id="resolution-help">降低分辨率可提升流畅度，不改变视距。</p>
+      <p>拖动转向 · WASD 水平移动<br />Shift 下降 · 空格上升 · 滚轮前后</p>
+      <output id="status" role="status" aria-live="polite">未打开存档</output>
+    </details>
+    <dialog id="world-picker" aria-labelledby="picker-title">
+      <h2 id="picker-title">打开存档</h2>
+      <p>浏览 Go 服务所在电脑，选择世界目录、level.dat 或 PackFS 文件。</p>
+      <fieldset id="picker-controls">
+        <form id="browse-path" class="path-row">
+          <select id="picker-roots" aria-label="位置"></select>
+          <button id="picker-up" type="button" aria-label="上一级">
+            上一级
+          </button>
+          <input
+            id="picker-path"
+            type="text"
+            aria-label="路径"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="submit">转到</button>
+        </form>
+        <div id="picker-files" role="group" aria-label="目录内容"></div>
+        <output id="picker-selection"></output>
+        <div class="dialog-actions">
+          <button id="picker-cancel" type="button">取消</button>
+          <button id="picker-open" type="button">打开</button>
+        </div>
+      </fieldset>
+      <output id="picker-error" role="status"></output>
+    </dialog>
+  </body>
+</html>

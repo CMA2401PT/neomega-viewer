@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createMeshObject, type MeshObject } from "./mesh.ts";
+import { createMeshObject, type MeshObject, type MeshOptions } from "./mesh.ts";
 import type { EffectObject, EffectRegistry } from "./effects/index.ts";
 import type { FrameData } from "./types.ts";
 
@@ -12,6 +12,7 @@ export function createFrameObject(
   data: FrameData,
   atlas: THREE.Texture,
   registry: EffectRegistry = new Map(),
+  options: MeshOptions = {},
 ): FrameObject {
   const object = new THREE.Group();
   const bounds = new THREE.Box3();
@@ -23,7 +24,7 @@ export function createFrameObject(
           new THREE.Vector3(...mesh.bounds.max),
         ));
       }
-      return createMeshObject(mesh, atlas);
+      return createMeshObject(mesh, atlas, options);
     },
   );
   const effects: EffectObject[] = [];

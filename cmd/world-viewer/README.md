@@ -1,0 +1,111 @@
+# Java 存档浏览器
+
+`world-viewer` 是一个可以单独分发的 Java 存档浏览程序。Go 服务通过 `celler/java` 只读访问相机附近的区块，再用 viewer 生成网格。浏览器在全屏 Three.js 场景中显示它们，移动时只补入新进入范围的 section。section 是区块中一个 16×16×16 的方块区域。
+
+程序内嵌网页、Three.js、图集、附魔书贴图和几何表。运行时只需要一个与目标操作系统及处理器匹配的可执行文件、一份存档和支持 WebGL 2 的浏览器。没有指定存档时，页面仍是同一个空场景。
+
+## 运行
+
+将编译好的程序复制到目标电脑，在终端启动：
+
+```sh
+./world-viewer
+```
+
+打开 <http://127.0.0.1:2412>，点击右下角“打开存档…”。对话框列出 Go 服务所在电脑上的目录和文件。双击文件夹进入，使用“上一级”返回；选中世界目录、`level.dat` 或 PackFS 文件后点击“打开”。当前目录本身也可以直接打开。存档数据由 Go 按路径读取，浏览器不上传整个文件。
+
+路径框可以直接输入或粘贴路径。“转到”用于浏览该位置，“打开”用于载入输入的存档。Windows 版支持盘符选择、`D:\Minecraft\我的世界` 这类路径，以及 `\\server\share\世界` 这样的 UNC 路径。路径属于运行 Go 程序的电脑，Windows 使用 `world-viewer.exe`。
+
+载入后，同一个按钮变为“切换存档…”。新存档成功打开后，旧请求会取消，旧网格和缓存会释放；打开失败则保留原存档。也可以从命令行预选：`-world /path/to/java-world` 或 `-pack /path/to/world.pack`。PackFS 容器以 Java 世界目录为根。
+
+默认加载主世界，优先识别根目录 `region`，其次识别 `dimensions/minecraft/overworld/region`。其他维度通过 `-dimension` 指定相对于存档根目录的目录，例如 `DIM-1` 或 `dimensions/minecraft/the_nether`。
+
+初始位置取 `level.dat` 中的出生点，并向上偏移 12 格。出生点没有区块时，定位到第一个已存区块的最高非空气 section 上方。也可以用 `-position '128,100,-256'` 指定初始坐标。`-listen` 调整监听地址，默认只监听本机。
+
+程序支持 celler 当前的现代 Java section 格式，包括负高度。内嵌几何使用 Java 1.21.4 资源；未被表覆盖的状态显示为紫色方块，面板提示数量。陶罐纹样使用存档中的 block entity NBT，附魔台带有书本动画，其他方块使用几何表中的静态外观。
+
+## 操作与视距
+
+左上角透明区域显示方向轴和当前坐标，坐标下显示帧率与网格内存估算。右下角面板可以收起，提供打开/切换存档、坐标跳转、线框、视距和渲染分辨率设置。
+
+- 拖动鼠标转向；`W/A/S/D` 按相机朝向在水平面前后和左右移动，抬头或低头不改变移动高度。
+- `Shift` 沿 Y 轴下降，空格沿 Y 轴上升；滚轮沿视线移动，按住 `Shift` 滚动时加大步长。
+- 输入 X/Y/Z 后按回车或点击“移动到坐标”。
+- “线框”同时作用于当前和新载入的网格。
+- “渲染分辨率”即时调整画布的绘制像素数，保持界面大小、视距和几何细节不变。默认“自动”跟随屏幕像素密度，最高 1.5 倍。“标准”使用 1 倍，“流畅”使用 0.75 倍，“低分辨率”使用 0.5 倍；“屏幕原生”完整使用屏幕像素密度。
+
+帧率显示最近约一秒的平均值，从后台切回页面后重新采样。网格内存按已加载几何的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制缓冲的预留空间，共享缓冲只计一次。数值每秒更新，便于观察视距变化和网格卸载；它不包含纹理、浏览器自身与加载中的临时数据，不代表浏览器进程总内存。悬停在数值上可以查看统计范围。
+
+水平视距默认 8 个区块，最多 30 个区块，即半径 480 格。加载范围是圆形，优先请求最近的区块。垂直方向取相机所在 section 上下各 `min(视距 + 1, 12)` 个 section。
+
+网格按固定的 `(区块 X, section Y, 区块 Z)` 管理。横向移动、上下移动或调大视距都保留重叠部分的原有网格，只读取新增部分。离开范围的网格会释放。同一列连续缺失的 section 合成一次请求，每批最多 15 个，同时最多两次请求。仍有部分内容需要的在途请求会继续完成。
+
+浏览器按设定视距持续加载完整范围，不设置固定的网格内存预算。内存占用随视距和场景复杂度增长；缩小视距、移动离开原区域或切换存档时，会释放不再需要的网格。
+
+为减少每帧的绘制提交，相邻的 4×4×4 个 section 组成一个空间分组。不透明和镂空几何在组内按兼容的绘制状态批绘制，并在整个世界内共享材质和纹理动画时钟。不同贴图的位置从已有材质数据生成顶点属性，原有面片、颜色、UV 和动画参数保持不变。水和玻璃保留 section 内的材质批次，透明排序仍以这些批次为单位。复杂透明交叠可能出现顺序差异。光照与颜色使用 viewer 的材质规则。
+
+浏览器支持 `WEBGL_multi_draw` 时，同一批中的可见几何范围一次提交；不支持时使用 Three.js 的逐范围绘制回退，画面保持一致，但提交次数较多。
+
+可见性检查先判断整个空间分组：完全在视野外就跳过，完全在视野内就接受；只有与视野边界相交的分组才逐个检查 section。判断使用网格与特效的实际边界，因此能包含越过 section 边缘的形状和附魔书动画。静态几何的位置在挂载时换算到分组坐标，动画单独更新。空 section 只保留加载记录，不加入渲染场景。
+
+每个 section 在共享缓冲中保有独立的几何范围，可以单独隐藏和卸载。缓冲按需增长，大量卸载后会收缩，空分组立即释放。材质在切换或关闭世界时统一释放。这些处理由 `frontend/src/world-scene.ts` 管理，直接使用已有网格，不需要额外的地形或模型资源。
+
+## 编译和分发
+
+源码构建需要 Go 1.25.5 或以上。`bundle/` 中保存了可直接嵌入的网页和资源，因此普通 Go 构建不需要 Node.js 或旁边的 assets 目录。在 `neomega-viewer` 目录执行：
+
+```sh
+go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
+```
+
+只分发生成的 `world-viewer` 文件即可。目标电脑需要另外提供要浏览的存档。为其他平台构建时指定 Go 的目标平台，例如：
+
+```sh
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+  -o cmd/world-viewer/world-viewer.exe ./cmd/world-viewer
+```
+
+资源和源码许可声明同样包含在程序中，可通过 `/resources/THIRD_PARTY_NOTICES.txt`、`/LICENSE.txt` 和 `/THREE-LICENSE.txt` 读取。
+
+## 独立前端与资源更新
+
+`frontend/` 是这个程序自己的前端工程，包含 `package.json`、锁文件、Vite 配置、`index.html`、`src/` 和测试。它直接复用仓库的 `web/render` 绘制核心。前端开发需要 Node.js 24 或以上：
+
+```sh
+cd cmd/world-viewer/frontend
+npm ci
+npm run dev
+```
+
+保持 Go 服务运行，打开 <http://127.0.0.1:2415>。开发服务器把 API 和贴图请求代理到 Go 服务。
+
+修改前端后，执行 `npm run build` 更新 `../bundle/web`，再重新编译 Go 程序。网页和应用代码不会放入 `demo/`。内嵌文件由 `embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。
+
+更新整套资源时，先按 [viewer 资源说明](../../README.md#更新配套几何资源) 更新 blocks 的几何表。图集必须来自生成该表时使用的同一套资源。在 `neomega-viewer` 目录执行：
+
+```sh
+go generate ./cmd/world-viewer
+go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
+```
+
+`go generate` 调用本目录的 `bundle.mjs`。它从 `neomega-assets/dist` 复制 `final/blocksAtlasLatest.png`、`final/blocksAtlases.json`、资源声明，以及 `works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`，再安装前端依赖并构建网页。使用其他资源目录时运行 `node cmd/world-viewer/bundle.mjs /path/to/assets/dist`。生成的 `bundle/` 应随源码提交，使普通 Go 构建可以独立进行。
+
+## 读取与传输
+
+本目录的 `source.go` 持有原生存档句柄和压缩记录缓存，所有文件访问都由一个 goroutine 负责。`mesh.go` 将原生 IR 状态拆成渲染层，读取相邻区块的覆盖信息并生成几何。`files.go` 提供服务端文件浏览，`worlds.go` 管理存档切换及其缓存生命周期。`http.go` 控制请求并发和响应缓存。几何算法仍由通用 mesher 提供。
+
+压缩区块缓存为 32 MiB，响应缓存为 64 MiB，最多打开 16 个 region。网格计算默认使用两个 worker，可通过 `-workers` 调整。服务按需读取 MCA 记录，启动时不解码整张地图。缓存以打开存档时的内容为准。修改存档后，重新选择同一份存档即可重新读取。
+
+`GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
+
+区块响应为固定小端的 NVWC v2。16 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量和 uint32 缺失模型总数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。没有几何的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
+
+工作区根目录的验收命令：
+
+```sh
+./check.sh neomega-viewer
+npm --prefix neomega-viewer/cmd/world-viewer/frontend test
+npm --prefix neomega-viewer/cmd/world-viewer/frontend run build
+```
+
+测试覆盖文件浏览、存档切换与缓存隔离、目录与 PackFS 读取、跨 section 剔面、移动与视距变化时保留网格、取消过期请求、完整视距加载、跨 section 批绘制、共享材质生命周期、分层可见性、缓冲收缩、特效动画和二进制传输。

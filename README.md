@@ -12,7 +12,7 @@ viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等�
 
 陶罐、旗帜这类方块的外观取决于 block entity NBT，附魔台上的书是动态效果，静态几何画不出来。`dispatcher` 把一个子区块按方块类型分到 mesher、effector、block actor 三条路，`merger` 再把三份结果打包成一个 NVFR 快照。设计见 [渲染分发方案.md](渲染分发方案.md)。
 
-浏览器和 HTTP 服务不是库的一部分，是演示它怎么用的示例。
+可复用绘制核心之外，仓库提供两个应用入口：`demo/` 用于检查方块和子区块；`cmd/world-viewer` 直接浏览 Java 存档，读取层使用 `celler/java`，页面按视点加载附近网格。
 
 ## 目录职责
 
@@ -28,6 +28,7 @@ neomega-viewer/
 ├─ effector/           # 输出「某格放某特效」的消息
 ├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包
 ├─ merger/             # NVFR 快照容器的编解码
+├─ cmd/world-viewer/   # 独立存档浏览程序、frontend 前端与内嵌资源
 ├─ web/render/         # 前端 NVMS/NVFR 解码、材质、视口和特效
 └─ demo/
    ├─ singleblock/     # 调用 mesher 并补 Java 响应元数据
@@ -42,6 +43,19 @@ neomega-viewer/
 ```
 
 依赖方向为 viewer 使用 blocks 的共享几何和 preset。`mesher/geometry.Mesh` 保留场景输出的 `Buffers`、`Marshal` 方法；四边形与形状定义复用 blocks。边界矩形识别和覆盖相减也复用 blocks，UV 相容性、邻居裁切与贪婪合并由 viewer 处理。
+
+## 浏览 Java 存档
+
+在本模块目录构建程序，再指定存档目录启动。网页、贴图和几何表均已内嵌：
+
+```sh
+go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
+./cmd/world-viewer/world-viewer -world /path/to/java-world
+```
+
+打开 <http://127.0.0.1:2412>。页面是全屏 Three.js 场景，左上角显示坐标轴、坐标、帧率和网格内存估算，右下角的可收起面板提供可视化打开/切换存档、坐标跳转、线框、视距和渲染分辨率。省略存档参数时显示空场景。读取 PackFS 存档时改用 `-pack /path/to/world.pack`。
+
+程序只读访问相机附近的区块，重叠 section 保持原网格。视距默认 8、最多 30 个区块。前端源码独立放在 `cmd/world-viewer/frontend`，构建后的程序可以单文件分发。资源准备、维度选择、键鼠操作与内存统计见 [存档浏览说明](cmd/world-viewer/README.md)。
 
 ## 直接使用 Go 库
 
@@ -111,7 +125,7 @@ if err := result.Mesh.Marshal(writer); err != nil {
 
 NVMS 保存 float32 绘制数据，按材质分批后的顺序恢复四边形。它不保留 CullFace，也不保留“零 ShadeNormal 表示使用 Normal”的原始标记；需要保留烘焙精度和剔面信息时，用 NVGT 保存 Tables。
 
-构建期间调用者应保持输入切片和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。两个 Mesh 方法只返回几何和统计，Java 状态由调用者从 `neomega-blocks/presets/java/v1.HashToBlock` 查询。
+构建期间调用者应保持输入切片和 Tables 不变。同一个 Mesher 可以并发处理不同输入，输出网格的修改不会改变共享表。Mesh 方法只返回几何和统计，Java 状态由调用者从 `neomega-blocks/presets/java/v1.HashToBlock` 查询。
 
 演示程序用 `neomega-blocks/presets/java/v1/geometry.Open` 加载内嵌表，或通过 `OpenOptions{TablesPath: "/path/to/geometry.nvtables"}` 加载文件及配套的 `.java.json` 旁文件。`demo/singleblock` 返回 IR 方块、渲染类别和网格；`demo/httpapi` 在发送响应时将 IR 展开为网页使用的名称和属性对象。服务和层示例直接调用 mesher。
 
@@ -216,6 +230,7 @@ new-world/
 ├─ neomega-celler/
 ├─ neomega-converter/
 ├─ neomega-nbt/
+├─ neomega-packfs/
 └─ neomega-viewer/
 ```
 
@@ -274,7 +289,7 @@ go run ./demo/cmd/neomega-viewer \
 |---|---|---|
 | 不透明 `opaque` | 石头、半砖、栅栏 | 写入深度，同材质面合批 |
 | 镂空 `cutout` | 树叶、草 | 丢弃透明像素，其余像素写入深度 |
-| 半透明 `blend` | 玻璃、水 | 混合颜色，不写入深度，逐面参与远近排序 |
+| 半透明 `blend` | 玻璃、水 | 混合颜色，不写入深度；默认逐面排序，地图模式按材质批次排序 |
 
 `neomega-blocks/geometry/java_block_model.MaterialLibrary` 根据图集像素分类。blocks 生成目录中的 `internal/resources.PreviewPolicy` 补充玻璃等语义规则，以及草木、水和红石颜色。红石颜色在建表时按 `power` 烘入 `Quad.Color`。形状去重比较完整四边形，包括颜色。有厚度的镂空元素使用正面绘制，避免多画盒体的背面。独立薄片可以双面显示；草已有明确前后面时，分别绘制对应一侧，避免重复绘制。前端在每张纹理自己的图集区域内采样；即使一个面合并到跨越多个方块，也会重复纹理。
 
@@ -298,16 +313,16 @@ go run ./demo/cmd/neomega-viewer \
 
 多层输入时，各层的几何按位置并进同一格，再一起剔面与合并，所以含水台阶的水和旁边的普通水之间照常剔掉内面。同一格内，前层的不透明面会裁掉后层与它共面的部分；前层是树叶这类满格镂空方块时，后层改为缩进到 0.99 倍并跳过剔面，避免共面闪烁。上方格任意一层有同类流体，本格流体就切换成满高度。
 
-`prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。剔面和合并放在同一个渲染入口内，因为剔面需要直接访问邻居几何，并可能留下半个面这样的局部片段。这样可以直接把剩余面片交给合并步骤，省去另行传递一份裁剪结果。确定形状后，`meshing` 分两步减少面：
+`prepareNeighborhood` 准备各格的共享几何引用，并根据上方邻居切换流体高度。独立子区块的外部按空覆盖处理。组装地图时，`MeshWithNeighbours(layers, neighbours, options)` 接收西、东、下、上、北、南六个邻居的完整多层数组，每层同样为 4096 格；缺失邻居传 nil。入口只提取接触面的覆盖，也用上方邻居决定顶层流体是否满高。剔面和合并放在同一个渲染入口内，因为剔面需要直接访问邻居几何，并可能留下半个面这样的局部片段。这样可以直接把剩余面片交给合并步骤，省去另行传递一份裁剪结果。确定形状后，`meshing` 分两步减少面：
 
 1. **剔除实际被盖住的部分。** 模型声明可剔除、且位于格子边界的轴对齐矩形，才会检查邻居。邻居覆盖直接来自 Shape.Boundary，无须逐格重扫几何。完整不透明面可以遮挡；多个部件的矩形并集也可以形成覆盖。石头紧贴底半砖时，只裁掉下半部分，并为保留部分重新插值 UV。斜面和非矩形保守保留。
 2. **合并相邻矩形。** 在同一平面上按实际矩形边界建立二维网格，贪婪地扩展连续区域。只有材质、颜色、法线、光照方向、UV 变化率和重复相位兼容时才合并。合并后的 UV 延伸到多个纹理周期，保持每个方块原有的纹理尺寸。
 
-透明面有额外规则。建表时将玻璃名称和流体家族转成 Shape 的数值消面组，避免渲染时解析名称。模型的 CullFace 也在烘焙时转为数值方向。相同玻璃、同类流体可以移除实际重叠的内面；不同玻璃保留界面。玻璃和树叶不会作为不透明遮挡物盖掉后面的石头。半透明面不参与大矩形合并，前端仍可按四边形排序。逐面排序不保证任意相交半透明表面的严格顺序。
+透明面有额外规则。建表时将玻璃名称和流体家族转成 Shape 的数值消面组，避免渲染时解析名称。模型的 CullFace 也在烘焙时转为数值方向。相同玻璃、同类流体可以移除实际重叠的内面；不同玻璃保留界面。玻璃和树叶不会作为不透明遮挡物盖掉后面的石头。半透明面不参与大矩形合并，前端默认按四边形排序；地图页面传入 `sortTransparentQuads: false`，按材质合批绘制以限制调用数量。逐面排序不保证任意相交半透明表面的严格顺序。
 
 所有格子复用建表时固定的模型候选。即使名称相同，UV 不兼容的面也不会强行合并。剔面与摆放由 `cullAndPlace` 处理，合并由 `merge` 处理，得到 `geometry.Mesh`。传输时调用 `Mesh.Marshal()`；需要扁平属性或 JSON 时调用 `Mesh.Buffers()`。
 
-独立贪婪矩形可能形成 T 形接缝，即较短边接在另一条长边的中间；算法不额外缝合这些边。外边界按暴露面处理；组装地图时还需要提供相邻子区块的边界信息。子区块解析不创建地图或 worker，地图加载与卸载属于另一个入口的调度职责。
+独立贪婪矩形可能形成 T 形接缝，即较短边接在另一条长边的中间；算法不额外缝合这些边。未提供邻居时外边界按暴露面处理；存档浏览入口通过 `MeshWithNeighbours` 提供相邻子区块。子区块解析不创建地图或 worker，地图加载与卸载属于另一个入口的调度职责。
 
 ## 几何怎样传给绘制端
 
