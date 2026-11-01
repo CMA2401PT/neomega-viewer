@@ -324,6 +324,8 @@ go run ./demo/cmd/neomega-viewer \
 
 所有格子复用建表时固定的模型候选。即使名称相同，UV 不兼容的面也不会强行合并。剔面与摆放由 `cullAndPlace` 处理，合并由 `merge` 处理，得到 `geometry.Mesh`。传输时调用 `Mesh.Marshal()`；需要扁平属性或 JSON 时调用 `Mesh.Buffers()`。
 
+为避免重复分析同一个形状，剔面过程在一次构建内复用矩形、UV 变化率和满格覆盖的分析结果。裁切时复用临时缓冲，保留的面直接写入输出。分析缓存和临时缓冲都由当前调用独占，因此并发构建不会互相改写，后一次调用也不会沿用旧输入的分析结果。局部裁切仍使用 blocks 的共享矩形相减规则。
+
 独立贪婪矩形可能形成 T 形接缝，即较短边接在另一条长边的中间；算法不额外缝合这些边。未提供邻居时外边界按暴露面处理；存档浏览入口通过 `MeshWithNeighbours` 提供相邻子区块。子区块解析不创建地图或 worker，地图加载与卸载属于另一个入口的调度职责。
 
 ## 几何怎样传给绘制端
@@ -472,6 +474,12 @@ npm --prefix demo/web run build
 依赖命令只列出非标准库包，可以看到 viewer 的 mesher 使用 blocks 的共享几何与材质。NVMS 测试使用固定样本逐字节比较输出，并检查 io 错误传播。样本保留旧编码器的几何字节，材质 JSON 包含动画帧信息。
 
 默认测试使用 blocks 的内嵌表，覆盖完整状态集、演示场景、红石颜色和流体高度。HTTP 测试检查图集、单方块响应、子区块上传和二进制输出。模型解析、烘焙和真实资源建表的验证在 blocks 中进行，见[几何生成说明](../neomega-blocks/third_party/gen_resource/geometry/solid_block_table/README.md)。
+
+需要比较共享形状的剔面耗时和分配量时，可运行满方块及半砖混合场景的基准：
+
+```sh
+go test ./mesher/meshing -run '^$' -bench '^BenchmarkSharedShapeCulling$' -benchmem
+```
 
 在工作区根目录可以统一检查：
 
