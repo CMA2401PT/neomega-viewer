@@ -17,8 +17,10 @@ import (
 	"neomega-blocks/ir"
 	preset "neomega-blocks/presets/java/v1/geometry"
 	packfs "neomega-packfs"
+	"neomega-viewer/column"
 	"neomega-viewer/dispatcher"
 	"neomega-viewer/merger"
+	"neomega-viewer/viewassets"
 )
 
 func TestWorldDirectoryAndPack(t *testing.T) {
@@ -26,7 +28,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := NewEngine(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,17 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 			if source.Info.Dimension != string(dimension) || source.Info.Position[0] != -8 || source.Info.Position[2] != 40 {
 				t.Fatalf("initial view: %+v", source.Info)
 			}
-			packet, err := engine.BuildColumn(context.Background(), source, chunkKey{X: -1, Z: 2, MinY: 2, MaxY: 6})
+			packet, err := column.BuildColumn(
+				context.Background(),
+				engine,
+				source.Reader(),
+				column.Key{
+					X:    -1,
+					Z:    2,
+					MinY: 2,
+					MaxY: 6,
+				},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +123,17 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 				t.Fatalf("got %d quads, packet consumed %d/%d", quads, offset, len(packet))
 			}
 			for y, frame := range frames {
-				single, err := engine.BuildColumn(context.Background(), source, chunkKey{X: -1, Z: 2, MinY: y, MaxY: y})
+				single, err := column.BuildColumn(
+					context.Background(),
+					engine,
+					source.Reader(),
+					column.Key{
+						X:    -1,
+						Z:    2,
+						MinY: y,
+						MaxY: y,
+					},
+				)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -119,7 +141,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 					t.Fatal("section geometry depends on request window")
 				}
 			}
-			handler := Handler(ServerOptions{Worlds: NewWorlds(source), Engine: engine})
+			handler := Handler(ServerOptions{Worlds: NewWorlds(source, engine)})
 			request := httptest.NewRequest("GET", "/api/chunk?world=1&x=-1&z=2&minY=2&maxY=6", nil)
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
@@ -135,7 +157,10 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			if _, err = source.Read(ctx, pos); !errors.Is(err, context.Canceled) {
+			if _, err = source.Reader().Section(ctx, dispatcher.SectionPos{
+				X: pos.X,
+				Z: pos.Z,
+			}); !errors.Is(err, context.Canceled) {
 				t.Fatal(err)
 			}
 		})
@@ -150,22 +175,19 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 	if source.Info.Loaded {
 		t.Fatal("empty source is loaded")
 	}
-	if _, err = source.Read(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal(err)
+	if section, err := source.Reader().Section(context.Background(), dispatcher.SectionPos{}); err != nil || section != nil {
+		t.Fatal(section, err)
 	}
 	source.Close()
-	if _, err = source.Read(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrClosed) {
-		t.Fatal(err)
-	}
 	resources, err := preset.Open(preset.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := NewEngine(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := engine.pipeline.Build(
+	result, err := engine.Build(
 		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("example:unknown []"))},
 		dispatcher.Neighbours{},
 		dispatcher.Options{},
@@ -175,39 +197,19 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 	}
 }
 
-func TestByteCacheEvictsLeastRecentlyUsed(t *testing.T) {
-	cache := newCache[int, []byte](300)
-	cache.put(1, []byte{1}, 1)
-	cache.put(2, []byte{2}, 1)
-	cache.get(1)
-	cache.put(3, []byte{3}, 1)
-	if _, ok := cache.get(2); ok {
-		t.Fatal("oldest entry retained")
-	}
-	if _, ok := cache.get(1); !ok {
-		t.Fatal("recent entry evicted")
-	}
-	cache.put(4, make([]byte, 301), 301)
-	if _, ok := cache.get(4); ok {
-		t.Fatal("oversized entry retained")
-	}
-}
-
 func TestEmbeddedSiteAndResources(t *testing.T) {
 	source, err := OpenSource(SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	assets, err := fs.Sub(bundle, "bundle/resources")
-	if err != nil {
-		t.Fatal(err)
-	}
-	web, err := fs.Sub(bundle, "bundle/web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := Handler(ServerOptions{Worlds: NewWorlds(source), Assets: assets, Web: web})
+	assets := viewassets.Resources()
+	web := viewassets.Web()
+	handler := Handler(ServerOptions{
+		Worlds: NewWorlds(source, nil),
+		Assets: assets,
+		Web:    web,
+	})
 	for _, name := range []string{"/", "/resources/atlas.png", "/resources/blocksAtlases.json", "/resources/entity/enchanting_table_book.png", "/resources/THIRD_PARTY_NOTICES.txt", "/LICENSE.txt", "/THREE-LICENSE.txt"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", name, nil))

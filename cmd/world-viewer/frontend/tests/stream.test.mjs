@@ -263,7 +263,7 @@ test("world packet preserves section ownership and negative Y", () => {
   const frame = readFileSync(
     new URL("../../../../web/tests/fixtures/block_entities.nvframe", import.meta.url),
   );
-  const issues = [{ position: [-16, -64, 32], blockstate: "minecraft:grass []", reason: "missing_model" }];
+  const issues = [{ scope: "block", origin: "render", count: 1, position: [-16, -64, 32], blockstate: "minecraft:grass []", reason: "missing_model" }];
   const diagnostics = new TextEncoder().encode(JSON.stringify(issues));
   const packet = new ArrayBuffer(32 + frame.length + diagnostics.length);
   const view = new DataView(packet);

@@ -1,5 +1,6 @@
 export interface WorldInfo {
   revision: number;
+  canOpen?: boolean;
   loaded: boolean;
   name: string;
   path: string;

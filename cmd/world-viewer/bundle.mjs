@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const assets = resolve(root, process.argv[2] ?? "../../../neomega-assets/dist");
-const resources = join(root, "bundle/resources");
+const resources = join(root, "../../viewassets/bundle/resources");
 mkdirSync(join(resources, "entity"), { recursive: true });
 for (const [source, destination] of [
   ["final/blocksAtlases.json", "blocksAtlases.json"],

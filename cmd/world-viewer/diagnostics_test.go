@@ -15,6 +15,7 @@ import (
 	"neomega-blocks/ir"
 	preset "neomega-blocks/presets/java/v1/geometry"
 	"neomega-viewer/blockactor"
+	"neomega-viewer/column"
 	"neomega-viewer/dispatcher"
 	"neomega-viewer/effector"
 	"neomega-viewer/merger"
@@ -26,7 +27,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := NewEngine(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	// Air intentionally has no geometry and must not be reported as missing.
 	missing := ir.IRBlock("example:missing []")
 	for _, state := range []ir.IRBlock{"minecraft:grass []", "minecraft:short_grass []", "minecraft:air []"} {
-		result, err := engine.pipeline.Build(
+		result, err := engine.Build(
 			dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(state)},
 			dispatcher.Neighbours{},
 			dispatcher.Options{},
@@ -74,7 +75,17 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	packet, err := engine.BuildColumn(context.Background(), source, chunkKey{X: -2, Z: 14, MinY: -1, MaxY: 0})
+	packet, err := column.BuildColumn(
+		context.Background(),
+		engine,
+		source.Reader(),
+		column.Key{
+			X:    -2,
+			Z:    14,
+			MinY: -1,
+			MaxY: 0,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +113,18 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if offset+int(binary.LittleEndian.Uint32(packet[16:])) != len(packet) {
 		t.Fatal("wrong diagnostics length")
 	}
-	var issues []RenderIssue
+	var issues []column.Issue
 	if err = json.Unmarshal(packet[offset:], &issues); err != nil {
 		t.Fatal(err)
 	}
-	want := []RenderIssue{{Position: [3]int32{-24, -13, 226}, Blockstate: string(missing), Reason: "missing_model"}}
+	want := []column.Issue{{
+		Scope:      "block",
+		Count:      1,
+		Origin:     "render",
+		Position:   [3]int32{-24, -13, 226},
+		Blockstate: string(missing),
+		Reason:     "missing_model",
+	}}
 	if !reflect.DeepEqual(issues, want) {
 		t.Fatalf("diagnostics: %+v, want %+v", issues, want)
 	}
@@ -115,16 +133,22 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failingEngine := &Engine{pipeline: dispatcher.NewPipeline(
+	failingEngine := dispatcher.NewPipeline(
 		resources.Tables,
 		effector.New(nil),
 		blockactor.New(failedDiagnosticActor{}),
 		&resources.Tables.Shapes[stone[0]],
-	)}
-	packet, err = failingEngine.BuildColumn(
+	)
+	packet, err = column.BuildColumn(
 		context.Background(),
-		source,
-		chunkKey{X: -2, Z: 14, MinY: -1, MaxY: 0},
+		failingEngine,
+		source.Reader(),
+		column.Key{
+			X:    -2,
+			Z:    14,
+			MinY: -1,
+			MaxY: 0,
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +167,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	}
 	// Splitting a waterlogged state must not strip properties from its report.
 	original := ir.IRBlock(`example:missing ["waterlogged"="true"]`)
-	result, err := engine.pipeline.Build(
+	result, err := engine.Build(
 		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(original)},
 		dispatcher.Neighbours{},
 		dispatcher.Options{},

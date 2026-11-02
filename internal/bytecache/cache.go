@@ -1,4 +1,4 @@
-package main
+package bytecache
 
 import "container/list"
 
@@ -8,18 +8,21 @@ type cacheItem[K comparable, V any] struct {
 	size  int
 }
 
-// byteCache is owned by its caller. HTTP caches use the server mutex; source
-// caches are accessed exclusively by the file-owner goroutine.
-type byteCache[K comparable, V any] struct {
+type Cache[K comparable, V any] struct {
+	// 缓存由调用方同步，来源 goroutine 和 View 各自管理其生命周期。
 	limit, size int
 	order       *list.List
 	items       map[K]*list.Element
 }
 
-func newCache[K comparable, V any](limit int) *byteCache[K, V] {
-	return &byteCache[K, V]{limit: limit, order: list.New(), items: map[K]*list.Element{}}
+func New[K comparable, V any](limit int) *Cache[K, V] {
+	return &Cache[K, V]{
+		limit: limit,
+		order: list.New(),
+		items: map[K]*list.Element{},
+	}
 }
-func (c *byteCache[K, V]) get(key K) (V, bool) {
+func (c *Cache[K, V]) Get(key K) (V, bool) {
 	if e, ok := c.items[key]; ok {
 		c.order.MoveToFront(e)
 		return e.Value.(cacheItem[K, V]).value, true
@@ -27,7 +30,7 @@ func (c *byteCache[K, V]) get(key K) (V, bool) {
 	var zero V
 	return zero, false
 }
-func (c *byteCache[K, V]) put(key K, value V, size int) {
+func (c *Cache[K, V]) Put(key K, value V, size int) {
 	size += 128
 	if old, ok := c.items[key]; ok {
 		c.size -= old.Value.(cacheItem[K, V]).size
@@ -44,6 +47,10 @@ func (c *byteCache[K, V]) put(key K, value V, size int) {
 		delete(c.items, item.key)
 		c.order.Remove(e)
 	}
-	c.items[key] = c.order.PushFront(cacheItem[K, V]{key: key, value: value, size: size})
+	c.items[key] = c.order.PushFront(cacheItem[K, V]{
+		key:   key,
+		value: value,
+		size:  size,
+	})
 	c.size += size
 }

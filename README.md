@@ -12,7 +12,7 @@ viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等�
 
 陶罐、旗帜这类方块的外观取决于 block entity NBT，附魔台上的书是动态效果，静态几何画不出来。`dispatcher.Pipeline` 接收完整 Java 状态调色板和已解码的 NBT，把一个子区块按方块类型分到 mesher、effector、block actor 三条路。demo 和 world-viewer 共用这个入口，`merger` 将三份结果打包成一个 NVFR 快照。设计见 [渲染分发方案.md](渲染分发方案.md)。
 
-可复用绘制核心之外，仓库提供两个应用入口：`demo/` 用于检查方块和子区块；`cmd/world-viewer` 直接浏览 Java 存档，读取层使用 `celler/java`，页面按视点加载附近网格。
+可复用绘制核心之外，`demo/` 用于检查方块和子区块。需要按视点浏览场景时，来源提供 section，`column` 构建列响应，`viewhttp` 提供浏览服务。`cmd/world-viewer` 用这套组件浏览 Java 存档，`cmd/memory-viewer` 用同一套组件显示代码中创建的方块。
 
 ## 目录职责
 
@@ -28,7 +28,13 @@ neomega-viewer/
 ├─ effector/           # 输出「某格放某特效」的消息
 ├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包
 ├─ merger/             # NVFR 快照容器的编解码
-├─ cmd/world-viewer/   # 独立存档浏览程序、frontend 前端与内嵌资源
+├─ source/             # 内存来源、整列诊断约定与方块实体分组
+│  └─ javaworld/       # Java 原始记录读取与请求内解码
+├─ column/             # section 列构建与 NVWC 响应编码
+├─ viewhttp/           # 固定内容代次、列缓存、HTTP 队列与资源路由
+├─ viewassets/         # 两个浏览程序共用的内嵌网页和贴图
+├─ cmd/world-viewer/   # 存档打开、切换、组装与 frontend 源码
+├─ cmd/memory-viewer/  # 手搓 section 的完整组装示例
 ├─ web/                # 共享前端包 @neomega/viewer
 │  └─ render/          # NVMS/NVFR 解码、材质、视口、特效与 section 场景
 └─ demo/
@@ -57,6 +63,107 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 打开 <http://127.0.0.1:2412>。页面是全屏 Three.js 场景，左上角显示坐标轴、坐标、帧率和网格内存估算，右下角的可收起面板提供可视化打开/切换存档、坐标跳转、线框、视距和渲染分辨率。省略存档参数时显示空场景。读取 PackFS 存档时改用 `-pack /path/to/world.pack`。
 
 程序只读访问相机附近的区块，重叠 section 保持原网格。视距默认 8、最多 30 个区块。前端源码独立放在 `cmd/world-viewer/frontend`，构建后的程序可以单文件分发。资源准备、维度选择、键鼠操作与内存统计见 [存档浏览说明](cmd/world-viewer/README.md)。
+
+## 用 section 来源组装浏览服务
+
+浏览存档、结构文件和内存场景时，变化的是方块从哪里来，渲染和网页加载的过程可以相同。一个 section 是 16×16×16 的方块区域。来源实现 `dispatcher.SectionSource`，按 section 坐标返回完整 Java 状态调色板和格内方块实体；不存在的位置返回 `nil, nil`，表示空气。这样，每种输入格式只需适配来源，浏览服务可以继续使用同一套组件。
+
+从数据到页面分成三步：来源提供 section，`dispatcher.Pipeline.BuildSections` 读取中心与六向邻居并生成快照，`column.BuildColumn` 将一列快照编码为 NVWC 字节。NVWC 是网页加载一段竖直区块列时使用的响应格式。`viewhttp` 调度构建、缓存这些字节并提供 HTTP 路由。它接收一个构建函数，因此来源与 Pipeline 由程序自行组合。
+
+| 组件 | 负责的边界 |
+|---|---|
+| `source.MemorySections` | 用 map 提供只读 section，适合手搓场景或已载入内存的结构 |
+| `source/javaworld.Source` | 独占已打开的 Java 世界，缓存原始记录；每次 `Reader()` 独立解码 |
+| `column.BuildColumn` | 构建请求高度范围，汇合渲染与来源诊断，编码 NVWC |
+| `viewhttp.View` | 一代固定内容的 revision、取消范围、构建闭包和列字节缓存 |
+| `viewhttp.Handler` | 跨代共用的 worker 限额、排队、`/api/chunk`、资源与静态页面 |
+| `viewassets` | 以 `fs.FS` 提供配套网页和贴图，调用方也可以换成自己的文件系统 |
+
+### 两种来源的组装
+
+两种组装都先准备渲染 Pipeline。几何表来自 blocks 的 preset，图集元数据来自与它匹配的资源。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go) 和 [memory-viewer](cmd/memory-viewer/main.go)。
+
+```go
+resources, err := preset.Open(preset.OpenOptions{})
+// 检查 err 后创建 Pipeline。atlas 是已解析的图集；nil 表示不开启陶罐 actor。
+pipeline := dispatcher.NewJavaPipeline(resources.Tables, atlas, nil)
+```
+
+Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `cmd/world-viewer` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
+
+```go
+world, err := java.OpenDirectory(directory, java.Options{
+    ReadOnly:       true,
+    MaxOpenRegions: 16,
+})
+// 检查 err；dim 是明确选择的维度，例如 java.Overworld。
+src := javaworld.New(world, dim)
+view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
+    return column.BuildColumn(ctx, pipeline, src.Reader(), key)
+})
+```
+
+`Reader()` 必须放在构建闭包内部。一个 reader 缓存本次请求解码过的区块及整列诊断，由该请求串行使用。不同 worker 只共享不可变的原始记录字节。`java.World` 的内部 region 缓存会在读取时变化，因此来源用一个 goroutine 串行访问句柄。缓存中的内容以打开时为准；重新读取修改后的存档需要创建新的来源。
+
+内存场景直接填 map，无须构造世界句柄。下面在 section 原点附近放一块石头；map 的键是 section 坐标，`layer_storage.At` 使用 section 内的方块坐标：
+
+```go
+blocks := layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:air []"))
+blocks.Set(layer_storage.At(1, 0, 1), ir.IRBlock("minecraft:stone []"))
+sections := source.MemorySections{
+    dispatcher.SectionPos{}: &dispatcher.Section{Blocks: blocks},
+}
+view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
+    return column.BuildColumn(ctx, pipeline, sections, key)
+})
+```
+
+交给 View 后，map、section、调色板和实体 NBT 都保持只读。修改场景时创建新的数据和 View。Pipeline 接收完整状态，栅栏连接等属性由来源准备；含水拆层由 Pipeline 处理。
+
+### 接上页面与切换内容
+
+有了 View，就可以接入 HTTP。`current` 每次返回当前的非 nil View；固定场景直接返回同一个指针。下面的 `mux` 是应用自己的 `http.ServeMux`：
+
+```go
+mux.Handle("/", viewhttp.Handler(
+    func() *viewhttp.View { return view },
+    viewhttp.Options{
+        Assets:  viewassets.Resources(),
+        Web:     viewassets.Web(),
+        Workers: 4,
+    },
+))
+```
+
+配套页面启动时从 `GET /api/world` 读取 revision、名称和初始视点，因此应用还要注册这个描述接口。`world-viewer` 同时提供打开存档的 POST 和文件浏览接口。固定场景可以返回静态描述并设 `canOpen: false`，页面会隐藏打开按钮；[内存示例](cmd/memory-viewer/main.go) 展示了完整响应。库中的 `viewhttp` 只处理列与资源，不解释这个描述。
+
+在本模块目录运行完整内存示例，即可在 <http://127.0.0.1:2412> 浏览两块石头平台和附魔台：
+
+```sh
+go run ./cmd/memory-viewer
+```
+
+需要切换时，程序把描述、View 和来源关闭函数放在同一个对象里原子替换。revision 是该代内容的编号，每次发布都分配新值。打开失败保留原对象。成功切换的顺序如下，具体实现在 [worlds.go](cmd/world-viewer/worlds.go)：
+
+```go
+current.Store(next)     // next 已经包含描述、新 View 和来源关闭函数。
+previous.View.Retire()  // 拒绝新任务、取消旧任务，并等待在途构建结束。
+previous.close()       // Java 来源先 Close，再关闭 World 和文件容器。
+```
+
+Handler 每个列请求只读取一次 `current()`，避免中心和邻居来自不同内容。过期 revision 或退役期间尚未发送的响应返回 409。队列和 worker 限额属于 Handler，切换 View 不会创建额外 worker。响应开始发送时已释放构建名额，只持有生成的字节，因此慢客户端不会拖住来源关闭。已经开始发送的响应不能改成 409，配套前端切换时会丢弃旧代结果。
+
+`Retire` 等待构建回调结束；Java 的底层 I/O 可能仍在完成，`javaworld.Source.Close()` 会进一步等待文件 goroutine 退出。这个方法归还 World 的访问权，World 和 PackFS 由打开它们的程序关闭。
+
+### 来源诊断与实体适配
+
+来源读取时可能发现无法转换的状态或异常实体。来源可以额外实现 `source.ColumnDiagnostics`，在 section 读取完成后按 `celler.ChunkPos` 返回 `[]source.Issue`。`Position == nil` 表示整根柱子的汇总，非 nil 表示世界方块坐标。`Count` 保存涉及的数量，单项问题填 1；状态、实体 ID 和详情按需要提供。
+
+`column.BuildColumn` 只查询请求柱子的诊断，保留来源返回的每一条。来源诊断覆盖整根柱子，不按请求的高度窗口裁剪，也不混入为剔面读取的邻居诊断。来源应让同一代内容的条目及计数保持一致。网页按柱子坐标和条目内容消除高度窗口之间的重复报告；同一响应中的相同条目仍分别保留。
+
+渲染诊断按完整状态与原因去重。响应中的 `scope` 区分单格与整列，`origin` 区分渲染诊断与来源诊断，以便采用各自的去重规则。NVWC 头里的 `unknown` 只统计缺失模型的方块数量。协议布局和 JSON 示例见[读取与传输](cmd/world-viewer/README.md#读取与传输)。
+
+需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。其他来源只要产出同一种实体值，就能使用这个函数。结构文件适配器可以先将结构放到所需的 section 坐标，再提供 `SectionSource`，或直接填充 `MemorySections`。
 
 ## 直接使用 Go 库
 
@@ -200,7 +307,7 @@ if err := result.Frame.Marshal(writer); err != nil {
 
 需要跨 section 剔面时，`Neighbours` 按西、东、下、上、北、南传入邻居，nil 代表空空间。邻居只提供拆层后的覆盖信息；actor 候选格的本体不参与遮挡，水层仍提供覆盖。这种处理可能保留额外的面，避免用静态本体误遮挡 actor 周围的可见表面。
 
-批量构建使用 `BuildSections(ctx, source, positions, options)`。调用方实现 `SectionSource`，按 section 坐标提供数据。Pipeline 在一次调用内缓存请求位置与六向邻居的读取和拆层结果，按请求顺序返回各位置的快照，不存在的位置返回空快照。world-viewer 的适配器在请求内缓存已解码的 Chunk，并将 `Chunk.BlockEntities()` 的绝对坐标换成格内坐标。
+批量构建使用 `BuildSections(ctx, source, positions, options)`。调用方实现 `SectionSource`，按 section 坐标提供数据。Pipeline 在一次调用内缓存请求位置与六向邻居的读取和拆层结果，按请求顺序返回各位置的快照，不存在的位置返回空快照。`source/javaworld` 的 reader 在请求内缓存已解码的 Chunk，通过 `source.GroupBlockEntities` 将实体的绝对坐标换成格内坐标。
 
 只有 hash 的输入可先用 `BlocksFromHashes` 反查成完整状态调色板；未知 hash 返回错误。demo 的 frame 接口使用这条路径，场景配方中的 SNBT（NBT 的文本表示）在 demo 内解析成 Compound。纯 mesh 接口仍按前文的多层入口构建。
 
@@ -471,6 +578,7 @@ function renderSections(timestamp: number): void {
 | 如何修复转换丢失的连接、拐角与门状态？ | neomega-converter 的 `fixer`；实心表在 `neomega-blocks/presets/java/v1/solidtable` |
 | 含水方块怎样拆成多层？ | `splitlayer` |
 | 带 NBT 的方块、特效怎样分流和打包？ | `dispatcher.Pipeline.Build`；批量 section 用 `BuildSections`，由 `merger` 编码 |
+| 怎样接入另一种场景输入并复用浏览页面？ | 实现 `dispatcher.SectionSource`，用 `column`、`viewhttp` 和 `viewassets` 组装 |
 | 状态命中哪些部件，模型怎样继承？ | `neomega-blocks/geometry/java_block_model` |
 | 一个状态怎样烘焙成局部几何？ | blocks 的几何生成器，以及 `geometry/java_block_model` |
 | 怎样编码与查询共享几何？ | `neomega-blocks/geometry.Tables[B]`；Java 加载入口在 `presets/java/v1/geometry` |

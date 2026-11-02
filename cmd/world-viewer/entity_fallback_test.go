@@ -15,7 +15,9 @@ import (
 	"neomega-blocks/ir"
 	preset "neomega-blocks/presets/java/v1/geometry"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer/column"
 	"neomega-viewer/merger"
+	"neomega-viewer/viewassets"
 )
 
 func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
@@ -23,7 +25,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := fs.ReadFile(bundle, "bundle/resources/blocksAtlases.json")
+	data, err := fs.ReadFile(viewassets.Resources(), "blocksAtlases.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +33,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 	if err = json.Unmarshal(data, &atlas); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := NewEngine(resources.Tables, &atlas)
+	engine, err := newPipeline(resources.Tables, &atlas)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +80,17 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer source.Close()
-			packet, err := engine.BuildColumn(context.Background(), source, chunkKey{X: 0, Z: -1, MinY: 4, MaxY: 4})
+			packet, err := column.BuildColumn(
+				context.Background(),
+				engine,
+				source.Reader(),
+				column.Key{
+					X:    0,
+					Z:    -1,
+					MinY: 4,
+					MaxY: 4,
+				},
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +117,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 					t.Fatal("failed pot lost its static geometry")
 				}
 			}
-			var issues []RenderIssue
+			var issues []column.Issue
 			if binary.LittleEndian.Uint32(packet[16:]) > 0 {
 				if err = json.Unmarshal(packet[32+size:], &issues); err != nil {
 					t.Fatal(err)

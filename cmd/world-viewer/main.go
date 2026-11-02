@@ -19,6 +19,7 @@ import (
 	"celler/java"
 	jmodel "neomega-blocks/geometry/java_block_model"
 	preset "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer/viewassets"
 )
 
 func main() {
@@ -37,7 +38,11 @@ func run() error {
 	if *workers < 1 || *workers > 8 {
 		return fmt.Errorf("-workers must be 1..8")
 	}
-	options := SourceOptions{Directory: *directory, Pack: *pack, Dimension: java.Dimension(*dimension)}
+	options := SourceOptions{
+		Directory: *directory,
+		Pack:      *pack,
+		Dimension: java.Dimension(*dimension),
+	}
 	if *position != "" {
 		parts := strings.Split(*position, ",")
 		if len(parts) != 3 {
@@ -60,14 +65,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	worlds := NewWorlds(source)
-	defer worlds.Close()
+	owned := true
+	defer func() {
+		if owned {
+			source.Close()
+		}
+	}()
 	resources, err := preset.Open(preset.OpenOptions{})
 	if err != nil {
 		return err
 	}
-	assets, _ := fs.Sub(bundle, "bundle/resources")
-	web, _ := fs.Sub(bundle, "bundle/web")
+	assets, web := viewassets.Resources(), viewassets.Web()
 	data, err := fs.ReadFile(assets, "blocksAtlases.json")
 	if err != nil {
 		return err
@@ -76,11 +84,24 @@ func run() error {
 	if err = json.Unmarshal(data, atlas); err != nil {
 		return err
 	}
-	engine, err := NewEngine(resources.Tables, atlas)
+	pipeline, err := newPipeline(resources.Tables, atlas)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: *listen, Handler: Handler(ServerOptions{Worlds: worlds, Engine: engine, Assets: assets, Web: web, ResourceVersion: resources.Metadata.Version, Workers: *workers}), ReadHeaderTimeout: 5 * time.Second}
+	worlds := NewWorlds(source, pipeline)
+	owned = false
+	defer worlds.Close()
+	server := &http.Server{
+		Addr: *listen,
+		Handler: Handler(ServerOptions{
+			Worlds:          worlds,
+			Assets:          assets,
+			Web:             web,
+			ResourceVersion: resources.Metadata.Version,
+			Workers:         *workers,
+		}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	done := make(chan error, 1)

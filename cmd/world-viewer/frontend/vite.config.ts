@@ -4,7 +4,7 @@ export default defineConfig({
   resolve: {
     dedupe: ["three"],
   },
-  build: { outDir: "../bundle/web", emptyOutDir: true },
+  build: { outDir: "../../../viewassets/bundle/web", emptyOutDir: true },
   server: {
     fs: { allow: ["../../.."] },
     proxy: {

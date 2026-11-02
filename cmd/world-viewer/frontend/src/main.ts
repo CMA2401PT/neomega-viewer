@@ -81,7 +81,11 @@ interface LoadedSection {
   bytes: number;
   dispose(): void;
 }
-let stream: ChunkStream<LoadedSection, ArrayBuffer, Map<number, ColumnSection>> | undefined;
+interface ColumnPayload {
+  buffer: ArrayBuffer;
+  column: [number, number];
+}
+let stream: ChunkStream<LoadedSection, ColumnPayload, Map<number, ColumnSection>> | undefined;
 let loaded = false,
   dragging = false,
   disposed = false;
@@ -113,7 +117,7 @@ async function fetchColumn(
   keys: SectionKey[],
   signal: AbortSignal,
   revision: number,
-): Promise<ArrayBuffer> {
+): Promise<ColumnPayload> {
   const first = keys[0],
     last = keys[keys.length - 1];
   const query = new URLSearchParams({
@@ -133,7 +137,7 @@ async function fetchColumn(
     );
   const buffer = await response.arrayBuffer();
   signal.throwIfAborted();
-  return buffer;
+  return { buffer, column: [first.x, first.z] };
 }
 
 function clampPosition(): void {
@@ -378,6 +382,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
   element<HTMLButtonElement>("open-world").textContent = info.loaded
     ? "切换存档…"
     : "打开存档…";
+  element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
   camera.position.set(...info.position);
   syncFields();
   refresh();
@@ -398,9 +403,9 @@ async function showWorld(info: WorldInfo): Promise<void> {
   worldScene = draw;
   stream = new ChunkStream({
     load: (keys, signal) => fetchColumn(keys, signal, info.revision),
-    decode: (buffer: ArrayBuffer) => {
-      const data = decodeColumn(buffer);
-      diagnostics.add(data.issues);
+    decode: (payload: ColumnPayload) => {
+      const data = decodeColumn(payload.buffer);
+      diagnostics.add(data.issues, payload.column);
       return new Map(data.sections.map((section) => [section.y, section]));
     },
     prepare: (key, sections) => {

@@ -37,7 +37,7 @@
 - “遮挡剔除”默认开启，跳过被不透明表面完全挡住的区域。原地转头可以沿用结果，移动后重新判断。线框模式下暂停剔除；关闭开关可以对比同一位置的效果。
 - “渲染分辨率”即时调整画布的绘制像素数，保持界面大小、视距和几何细节不变。默认“自动”跟随屏幕像素密度，最高 1.5 倍。“标准”使用 1 倍，“流畅”使用 0.75 倍，“低分辨率”使用 0.5 倍；“屏幕原生”完整使用屏幕像素密度。
 
-面板中的“渲染异常”可以展开，列出缺失模型或特殊外观生成失败的原始 blockstate、首次发现的世界坐标和原因。无法定位到具体方块的实体数据异常按区块和原因记录。同一完整状态只保留一条，含水等属性仍按存档原样显示。记录来自本次打开存档后实际加载的区域，不代表整张地图的扫描结果；移出视距后保留，重新打开或切换存档时清空。空气等有意没有几何的状态不会被列为异常。
+面板中的“渲染异常”可以展开，列出缺失模型或特殊外观生成失败的原始 blockstate、首次发现的世界坐标和原因。渲染问题按完整状态与原因保留一条，含水等属性仍按存档原样显示。来源中的实体数据异常逐条保留；无法定位到具体方块时显示所属区块。整列来源诊断包含请求高度以外的问题，同一列分多次加载不会重复累计。记录来自当前打开存档后实际加载的区域，不代表整张地图的扫描结果；移出视距后保留，重新打开或切换存档时清空。空气等有意没有几何的状态不会被列为异常。
 
 帧率显示最近约一秒的平均值，从后台切回页面后重新采样。网格内存按已加载几何的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制缓冲的预留空间，共享缓冲只计一次。数值每秒更新，便于观察视距变化和网格卸载；它不包含纹理、浏览器自身与加载中的临时数据，不代表浏览器进程总内存。悬停在数值上可以查看统计范围。
 
@@ -65,7 +65,7 @@ GPU 查询每帧最多发起 8 次，结果异步读取，尚未得到结果的�
 
 ## 编译和分发
 
-源码构建需要 Go 1.25.5 或以上。`bundle/` 中保存了可直接嵌入的网页和资源，因此普通 Go 构建不需要 Node.js 或旁边的 assets 目录。在 `neomega-viewer` 目录执行：
+源码构建需要 Go 1.25.5 或以上。模块根目录的 `viewassets/bundle/` 保存了可直接嵌入的网页和资源，因此普通 Go 构建不需要 Node.js 或旁边的 assets 目录。在 `neomega-viewer` 目录执行：
 
 ```sh
 go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
@@ -92,26 +92,53 @@ npm run dev
 
 保持 Go 服务运行，打开 <http://127.0.0.1:2415>。开发服务器把 API 和贴图请求代理到 Go 服务。
 
-修改前端后，在 `frontend/` 执行 `npm run build` 更新 `../bundle/web`，再重新编译 Go 程序。内嵌文件由 `embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。
+修改前端后，在 `frontend/` 执行 `npm run build` 更新模块根目录的 `viewassets/bundle/web`，再重新编译 Go 程序。内嵌文件由 `viewassets/embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。内存场景示例也使用这套资源。
 
 更新整套资源时，先按 [viewer 资源说明](../../README.md#更新配套几何资源) 更新 blocks 的几何表。图集必须来自生成该表时使用的同一套资源。在 `neomega-viewer` 目录执行：
 
 ```sh
-go generate ./cmd/world-viewer
+go generate ./viewassets
 go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 ```
 
-`go generate` 调用本目录的 `bundle.mjs`。它从 `neomega-assets/dist` 复制 `final/blocksAtlasLatest.png`、`final/blocksAtlases.json`、资源声明，以及 `works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`，再安装前端依赖并构建网页。使用其他资源目录时运行 `node cmd/world-viewer/bundle.mjs /path/to/assets/dist`。生成的 `bundle/` 应随源码提交，使普通 Go 构建可以独立进行。
+`go generate` 调用本目录的 `bundle.mjs`。它从 `neomega-assets/dist` 复制 `final/blocksAtlasLatest.png`、`final/blocksAtlases.json`、资源声明，以及 `works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`，再安装前端依赖并构建网页。使用其他资源目录时运行 `node cmd/world-viewer/bundle.mjs /path/to/assets/dist`。生成的 `viewassets/bundle/` 应随源码提交，使普通 Go 构建可以独立进行。
 
 ## 读取与传输
 
-本目录的 `source.go` 持有原生存档句柄和压缩记录缓存，所有文件访问都由一个 goroutine 负责。`mesh.go` 实现 `dispatcher.SectionSource` 适配器，在请求内缓存已解码的区块，并按 section 分组 `Chunk.BlockEntities()` 返回的实体。适配器将完整 Java 状态和格内实体交给共享 Pipeline，由 `BuildSections` 读取六向邻居、复用拆层结果并生成快照。应用将快照编码成 NVWC 响应。`files.go` 提供服务端文件浏览，`worlds.go` 管理存档切换及其缓存生命周期。`http.go` 控制请求并发和响应缓存。几何算法仍由通用 mesher 提供。
+程序负责打开存档、选择维度、确定初始落点和切换内容。Java 来源通过 `source/javaworld` 串行读取原始记录，各次列请求分别解码。`column` 调用共享 Pipeline 读取六向邻居并构建快照，再编码成 NVWC 响应。`viewhttp` 管理并发、响应缓存和静态资源。各块的边界及内存来源的组装方法见[模块说明](../../README.md#用-section-来源组装浏览服务)。
 
 压缩区块缓存为 32 MiB，响应缓存为 64 MiB，最多打开 16 个 region。服务默认允许四个列请求并发构建，可通过 `-workers` 调整；每列内部的 section 仍依次构建。并发调度由 HTTP 层负责，Pipeline 在一次批量调用内缓存 section 准备结果，mesher 接收单个 section 及邻居的渲染层并返回几何。服务按需读取 MCA 记录，启动时不解码整张地图。缓存以打开存档时的内容为准。修改存档后，重新选择同一份存档即可重新读取。
 
 `GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
 
-区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。服务端方块诊断按原始 blockstate 与 reason 的组合去重，包含 `position`（世界坐标）、`blockstate` 和 `reason`。原因包括 `missing_model`、`actor_error`、`invalid_block_entities` 和 `invalid_block_entity`，可选 `detail` 保存具体错误。无法定位到方块的记录使用空 `blockstate`，`position` 是区块原点（Y 为 0），按区块和原因去重。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
+区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
+
+诊断需要同时表达某一格的渲染失败和整列的来源汇总，因此使用明确的 `scope` 和 `origin`。例如，下面两条分别表示缺失模型的一格，以及整列来源中无法读取的一项实体：
+
+```json
+[
+  {
+    "scope": "block",
+    "origin": "render",
+    "position": [-24, -13, 226],
+    "blockstate": "example:missing []",
+    "reason": "missing_model",
+    "count": 1
+  },
+  {
+    "scope": "column",
+    "origin": "source",
+    "position": [-32, 0, 224],
+    "reason": "invalid_block_entity",
+    "count": 1,
+    "detail": "block_entities[2]: block entity requires Int x/y/z inside its chunk"
+  }
+]
+```
+
+`scope: "block"` 的 position 是世界方块坐标；`scope: "column"` 的 position 是柱子原点，Y 固定为 0。整列诊断也可以带 blockstate，不能用状态是否为空判断定位范围。`count` 保留该条问题涉及的数量，可选的 `blockEntityId` 用于按实体类型汇总的问题，`detail` 保存具体错误。
+
+`origin: "render"` 的诊断包括 `missing_model` 和 `actor_error`，按完整状态与原因去重。其 count 为首次报告的单格数量 1，NVWC 头和 section 头另行统计全部缺失模型格数。`origin: "source"` 的诊断由来源逐条提供，仅属于请求柱子，覆盖整列高度。前端按柱子坐标、条目内容和相同条目的出现次序消除不同高度窗口之间的重复，保留单次响应内的所有来源条目。来源计数不会增加 NVWC 的缺失模型计数。
 
 工作区根目录的验收命令：
 
@@ -125,4 +152,4 @@ npm --prefix neomega-viewer/cmd/world-viewer/frontend test
 npm --prefix neomega-viewer/cmd/world-viewer/frontend run build
 ```
 
-测试覆盖文件浏览、存档切换与缓存隔离、目录与 PackFS 读取、跨 section 剔面。前端工程测试移动与视距变化时保留网格、取消过期请求、完整视距加载和列响应解码。共享包测试跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和绘制二进制解码。
+测试覆盖文件浏览、存档切换与缓存隔离、退役等待在途构建、目录与 PackFS 读取、内存来源出网格、跨 section 剔面和整列诊断归属。前端工程测试移动与视距变化时保留网格、取消过期请求、完整视距加载、列响应解码和跨高度窗口的诊断去重。共享包测试跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和绘制二进制解码。

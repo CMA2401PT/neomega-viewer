@@ -46,17 +46,17 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worlds := NewWorlds(source)
-	defer worlds.Close()
 	resources, err := preset.Open(preset.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := NewEngine(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(ServerOptions{Worlds: worlds, Engine: engine})
+	worlds := NewWorlds(source, engine)
+	defer worlds.Close()
+	handler := Handler(ServerOptions{Worlds: worlds})
 	open := func(path string, code int) Info {
 		t.Helper()
 		body, _ := json.Marshal(map[string]string{"path": path})
@@ -87,13 +87,8 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	if info := open(air, 200); info.Revision != 3 || info.Path != air {
 		t.Fatal(info)
 	}
-	if old.ctx.Err() != context.Canceled {
-		t.Fatal("old jobs not cancelled")
-	}
-	select {
-	case <-old.source.done:
-	default:
-		t.Fatal("old file owner not closed")
+	if old.Info.Revision != 2 || old.Info.Path != stone {
+		t.Fatal("old content mutated")
 	}
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/chunk?world=2&x=0&z=0&minY=4&maxY=4", nil))
@@ -111,7 +106,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	open(broken, 422)
-	if worlds.view().revision != 3 || worlds.view().source.Info.Path != air {
+	if worlds.view().Info.Revision != 3 || worlds.view().Info.Path != air {
 		t.Fatal("failed open replaced active world")
 	}
 	// A rejected candidate cannot change the current world either.
@@ -120,7 +115,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	if _, err := worlds.Open(ctx, SourceOptions{Directory: stone}); err != context.Canceled {
 		t.Fatal(err)
 	}
-	if worlds.view().revision != 3 {
+	if worlds.view().Info.Revision != 3 {
 		t.Fatal("cancelled switch committed")
 	}
 }
@@ -145,7 +140,7 @@ func TestFileBrowserPathsAndPackSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worlds := NewWorlds(source)
+	worlds := NewWorlds(source, nil)
 	defer worlds.Close()
 	handler := Handler(ServerOptions{Worlds: worlds})
 	response := httptest.NewRecorder()
