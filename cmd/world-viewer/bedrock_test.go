@@ -17,12 +17,12 @@ import (
 	"celler"
 	"celler/bedrock"
 	"celler/layer_storage"
-	preset "neomega-blocks/presets/java/v1/geometry"
-	"neomega-converter/adapt"
+	"neomega-converter-core/adapt"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/merger"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/merger"
 	"neomega-viewer/viewhttp"
 )
 

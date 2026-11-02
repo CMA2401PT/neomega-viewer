@@ -2,7 +2,7 @@
 
 下文把一个 16×16×16、每格只存 Java block hash 的方块层叫作**本表达空间**。它表达方块状态，NBT 需要单独传递。
 静态 mesher 接收数值 ID 切片；完整 Java hash 先由 splitlayer 拆成单层状态，再交给它。几何表支持的静态状态可按 hash
-查表渲染，含水方块可叠加水层（见 [多层渲染方案.md](多层渲染方案.md)）。`moving_piston` 缺少决定移动内容的数据，
+查表渲染，含水方块可叠加水层（见 [多层渲染方案.md](../neomega-viewer-core/viewer/多层渲染方案.md)）。`moving_piston` 缺少决定移动内容的数据，
 无法仅凭状态确定静态外形。
 
 带 NBT 的渲染使用 `dispatcher.Pipeline`，输入包含 hash 层与按格子坐标索引的 SNBT。SNBT 是 NBT 的文本表示，
@@ -30,12 +30,12 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 
 ### 1a. 能从本表达空间补回来（fixer 负责）
 
-判据：丢掉的属性完全由当前格周围的方块决定，看邻居就能重算。每项的规则和依据见 `neomega-converter/fixer/FIXER.md`。
+判据：丢掉的属性完全由当前格周围的方块决定，看邻居就能重算。每项的规则和依据见 `neomega-viewer-core/fixer/java-postprocess/FIXER.md`。
 
 - [x] 栅栏、玻璃板、铁栏杆的连接方向：由四周是否有可连接的方块决定。
 - [x] fire 的附着方向：按四周及上方邻居朝向火的那一面是否实心，近似重算。
 - [x] 楼梯拐角 `shape`：由前后两格的楼梯朝向决定。`special_nemc` 开启修复后，L 形台阶的拐角与 `special_java` 一致。
-- [x] 红石线连接：只做了保守版，原因见 `neomega-converter/fixer/FIXER.md`。
+- [x] 红石线连接：只做了保守版，原因见 `neomega-viewer-core/fixer/java-postprocess/FIXER.md`。
 - [x] 门：上下两半各自丢掉一部分属性，正好互补。往返实测：下半格丢 `hinge`，上半格丢 `facing` 和 `open`，两半都丢
   `powered`。所以上半格的 `facing`、`open` 从下半格取，下半格的 `hinge` 从上半格取。`special_nemc` 开启修复后，
   四扇门八格与 `special_java` 一致。
@@ -44,7 +44,7 @@ Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标�
 
 ### 1b. 只能从源数据补回（Bedrock 转换器负责）
 
-判据：周围格子推不出来，信息只在源数据里。`neomega-converter/bedrock` 读取两层 Bedrock 方块状态和 block entity SNBT，
+判据：周围格子推不出来，信息只在源数据里。`neomega-converter-core/bedrock` 读取两层 Bedrock 方块状态和 block entity SNBT，
 输出 Java 方块 hash。返回值中的 `javaNBT` 当前为空映射。读存档时用 `Convert`，已有规范化 Bedrock hash 时用 `ConvertHashes`。
 转换结果先交给 fixer 修复邻接状态，再交给 viewer；含水状态由 splitlayer 拆成方块层和水层。
 `special_nemc` 场景直接构造 Bedrock 方块层、第二层水和 block entity SNBT，经 `bedrock.Convert` 转成 Java。
@@ -104,7 +104,7 @@ NBT 算出几何。每种方块是 `blockactor/` 下的一个子包，新增一�
 
 - `special_java`：每个方块直接用正确的 Java 状态摆放。
 - `special_nemc`：用 Bedrock 方块状态摆放，床颜色和花盆植物写在 block entity SNBT 中，半砖的水放在第二方块层。
-  `neomega-converter/bedrock` 把这些源数据转成 Java 状态。
+  `neomega-converter-core/bedrock` 把这些源数据转成 Java 状态。
 
 床颜色、花盆植物和含水状态用于检查源数据转换。门、楼梯拐角和覆雪草方块用于检查 fixer：在页面上打开修复开关后，
 `special_nemc` 的方块状态与 `special_java` 逐格一致。两份配方分别见 `demo/scenes/special_nemc.go` 和 `demo/scenes/scenes.go`。

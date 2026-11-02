@@ -63,13 +63,13 @@
 
 GPU 查询每帧最多发起 8 次，结果异步读取，尚未得到结果的对象正常绘制。需要查询时先绘制不透明表面，再测试包围盒，最后绘制镂空、半透明表面和特效；没有新查询时保持单次绘制。相机位置不变且已加载几何不变时，原地转向沿用已有结果。转向改变像素采样位置，极细缝隙可能出现像素级差异，因此停止转向两帧后清空结果，按当前视角重新验证。相机平移、投影或绘制分辨率变化、网格加入或卸载、切换开关及线框模式时也会清空结果；持续平移期间不发起查询。
 
-共享包的 `SectionScene` 使用仓库根的 `web/render/occlusion.ts` 管理遮挡判断。它使用已加载几何的不透明深度和边界。被挡住的网格仍然驻留，加载范围也保持不变，因此它节省的是绘制开销。开阔地形可能没有明显收益。
+共享包的 `SectionScene` 使用viewer-core 的 `viewer/web/render/occlusion.ts` 管理遮挡判断。它使用已加载几何的不透明深度和边界。被挡住的网格仍然驻留，加载范围也保持不变，因此它节省的是绘制开销。开阔地形可能没有明显收益。
 
-每个 section 在共享缓冲中保有独立的几何范围，可以单独隐藏和卸载。缓冲按需增长，大量卸载后会收缩，空分组立即释放。材质在切换或关闭世界时统一释放。这些处理由共享包的 `SectionScene` 管理，实现在仓库根的 `web/render/section-scene.ts`。
+每个 section 在共享缓冲中保有独立的几何范围，可以单独隐藏和卸载。缓冲按需增长，大量卸载后会收缩，空分组立即释放。材质在切换或关闭世界时统一释放。这些处理由共享包的 `SectionScene` 管理，实现在viewer-core 的 `viewer/web/render/section-scene.ts`。
 
 ## 编译和分发
 
-源码构建需要 Go 1.25.5 或以上。模块根目录的 `viewassets/bundle/` 保存了可直接嵌入的网页和资源，因此普通 Go 构建不需要 Node.js 或旁边的 assets 目录。在 `neomega-viewer` 目录执行：
+源码构建需要 Go 1.25.5 或以上。本模块的 `viewassets/bundle/web` 保存应用网页，viewer-core 的 `viewer/resources` 保存可直接嵌入的几何与贴图，因此普通 Go 构建不需要 Node.js 或旁边的 assets 目录。在 `neomega-viewer` 目录执行：
 
 ```sh
 go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
@@ -86,7 +86,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
 
 ## 独立前端与资源更新
 
-`frontend/` 负责页面、NVWC 列响应和加载调度。为了复用绘制与 section 场景，它通过 `file:../../../web` 依赖独立包 `@neomega/viewer`，从 `@neomega/viewer/render` 导入绘制接口。Vite 配置使用 `resolve.dedupe: ["three"]` 让应用与共享包使用同一份 Three.js。前端开发需要 Node.js 24 或以上。在 `neomega-viewer` 目录进入前端工程，按锁文件安装依赖并链接共享包：
+`frontend/` 负责页面、NVWC 列响应和加载调度。为了复用绘制与 section 场景，它通过 `file:../../../../neomega-viewer-core/viewer/web` 依赖独立包 `@neomega/viewer`，从 `@neomega/viewer/render` 导入绘制接口。Vite 配置使用 `resolve.dedupe: ["three"]` 让应用与共享包使用同一份 Three.js。前端开发需要 Node.js 24 或以上。在 `neomega-viewer` 目录进入前端工程，按锁文件安装依赖并链接共享包：
 
 ```sh
 cd cmd/world-viewer/frontend
@@ -96,16 +96,18 @@ npm run dev
 
 保持 Go 服务运行，打开 <http://127.0.0.1:2415>。开发服务器把 API 和贴图请求代理到 Go 服务。
 
-修改前端后，在 `frontend/` 执行 `npm run build` 更新模块根目录的 `viewassets/bundle/web`，再重新编译 Go 程序。内嵌文件由 `viewassets/embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。内存场景示例也使用这套资源。
+修改前端后，在 `frontend/` 执行 `npm run build` 更新模块根目录的 `viewassets/bundle/web`，再重新编译 Go 程序。内嵌文件由 `viewassets/embed.go` 的 `go:embed` 收入程序，运行时通过 `fs.FS` 提供。
 
-更新整套资源时，先按 [viewer 资源说明](../../README.md#更新配套几何资源) 更新 blocks 的几何表。图集必须来自生成该表时使用的同一套资源。在 `neomega-viewer` 目录执行：
+更新模型与贴图时，先按 [统一建表说明](../../../neomega-viewer-core/viewer-assets/cmd/build-tables/README.md) 更新 viewer-core 的配套资源。
+页面构建独立于资源生成，在 `neomega-viewer` 模块目录执行：
 
 ```sh
 go generate ./viewassets
 go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 ```
 
-`go generate` 调用本目录的 `bundle.mjs`。它从 `neomega-assets/dist` 复制 `final/blocksAtlasLatest.png`、`final/blocksAtlases.json`、资源声明，以及 `works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`，再安装前端依赖并构建网页。使用其他资源目录时运行 `node cmd/world-viewer/bundle.mjs /path/to/assets/dist`。生成的 `viewassets/bundle/` 应随源码提交，使普通 Go 构建可以独立进行。
+`go generate` 调用本目录的 `bundle.mjs`，安装前端依赖、复制源码许可并构建页面。
+生成的 `viewassets/bundle/web` 随源码提交，使普通 Go 构建不需要前端工具链。
 
 ## 读取与传输
 
@@ -117,7 +119,7 @@ Java 压缩区块缓存为 32 MiB，最多打开 16 个 region。Bedrock 转换�
 
 `GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`kind` 为 `directory`、`pack` 或 `bedrock`，分别表示 Java 目录、Java PackFS 和 Bedrock 目录。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
 
-区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../merger/FORMAT.md)。
+区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../../neomega-viewer-core/viewer/merger/FORMAT.md)。
 
 诊断需要同时表达某一格的渲染失败和整列的来源汇总，因此使用明确的 `scope` 和 `origin`。例如，下面两条分别表示缺失模型的一格，以及整列来源中无法读取的一项实体：
 
@@ -150,9 +152,9 @@ Java 压缩区块缓存为 32 MiB，最多打开 16 个 region。Bedrock 转换�
 
 ```sh
 ./check.sh neomega-viewer
-npm --prefix neomega-viewer/web ci
-npm --prefix neomega-viewer/web test
-npm --prefix neomega-viewer/web run typecheck
+npm --prefix neomega-viewer-core/viewer/web ci
+npm --prefix neomega-viewer-core/viewer/web test
+npm --prefix neomega-viewer-core/viewer/web run typecheck
 npm --prefix neomega-viewer/cmd/world-viewer/frontend ci
 npm --prefix neomega-viewer/cmd/world-viewer/frontend test
 npm --prefix neomega-viewer/cmd/world-viewer/frontend run build

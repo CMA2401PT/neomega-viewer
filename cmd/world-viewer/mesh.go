@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	core "neomega-blocks/geometry"
-	jmodel "neomega-blocks/geometry/java_block_model"
 	"neomega-blocks/ir"
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
+	core "neomega-viewer-core/viewer/geometry"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 )
 
 func newPipeline(tables *core.Tables[uint32], atlas *jmodel.Atlas) (*dispatcher.Pipeline, error) {

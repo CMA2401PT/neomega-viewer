@@ -1,3 +1,4 @@
+// Package viewassets 提供存档浏览应用的已构建页面。
 package viewassets
 
 import (
@@ -5,23 +6,13 @@ import (
 	"io/fs"
 )
 
-// Regenerate the independent frontend and copy the matching texture resources.
 //go:generate node ../cmd/world-viewer/bundle.mjs
 
-// bundle includes the built frontend, atlas metadata, textures and notices.
-// Geometry tables are embedded by neomega-blocks/presets/java/v1/geometry.
-//
-//go:embed bundle
+//go:embed bundle/web
 var bundle embed.FS
 
-func Resources() fs.FS {
-	// 两个应用共享同一套贴图、图集元数据和许可声明。
-	files, _ := fs.Sub(bundle, "bundle/resources")
-	return files
-}
-
+// Web 返回可直接分发的浏览页面，普通 Go 构建无需前端工具链。
 func Web() fs.FS {
-	// 返回已构建的浏览页面，普通 Go 构建无需前端工具链。
 	files, _ := fs.Sub(bundle, "bundle/web")
 	return files
 }

@@ -6,9 +6,9 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
-	"neomega-converter/fixer"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/demo/scenes"
-	"neomega-viewer/dispatcher"
 )
 
 func TestSpecialNEMCSourceData(t *testing.T) {

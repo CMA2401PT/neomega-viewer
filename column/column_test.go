@@ -11,10 +11,10 @@ import (
 	"celler"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/merger"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/merger"
 	"neomega-viewer/source"
 )
 

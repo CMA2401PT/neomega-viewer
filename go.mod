@@ -5,7 +5,6 @@ go 1.25.5
 require (
 	celler v0.0.0
 	neomega-blocks v0.0.0
-	neomega-converter v0.0.0
 )
 
 require (
@@ -20,12 +19,22 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 )
 
-replace neomega-blocks => ../neomega-blocks
-
-replace neomega-nbt => ../neomega-nbt
+require (
+	neomega-converter v0.0.0
+	neomega-converter-core v0.0.0
+	neomega-viewer-core v0.0.0
+)
 
 replace celler => ../neomega-celler
 
+replace neomega-blocks => ../neomega-blocks
+
 replace neomega-converter => ../neomega-converter
 
+replace neomega-converter-core => ../neomega-converter-core
+
+replace neomega-nbt => ../neomega-nbt
+
 replace neomega-packfs => ../neomega-packfs
+
+replace neomega-viewer-core => ../neomega-viewer-core

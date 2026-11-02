@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 2411",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "test": "node --experimental-strip-types --import ../../web/tests/resolve-three.mjs --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --import ../../../neomega-viewer-core/viewer/web/tests/resolve-three.mjs --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",
@@ -16,6 +16,6 @@
     "three": "0.186.1"
   },
   "dependencies": {
-    "@neomega/viewer": "file:../../web"
+    "@neomega/viewer": "file:../../../neomega-viewer-core/viewer/web"
   }
 }

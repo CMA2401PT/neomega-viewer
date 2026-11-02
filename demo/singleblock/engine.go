@@ -6,9 +6,9 @@ import (
 
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/geometry"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	blockmesh "neomega-viewer-core/viewer/resources"
 )
 
 type Engine struct {

@@ -8,9 +8,9 @@ import (
 	"os"
 
 	"neomega-blocks/ir"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	blockmesh "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/singleblock"
-	"neomega-viewer/mesher/geometry"
 )
 
 func main() {

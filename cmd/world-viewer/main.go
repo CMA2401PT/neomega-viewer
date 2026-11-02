@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"math"
+	renderresources "neomega-viewer-core/viewer/resources"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,8 +17,8 @@ import (
 	"syscall"
 	"time"
 
-	jmodel "neomega-blocks/geometry/java_block_model"
-	preset "neomega-blocks/presets/java/v1/geometry"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/viewassets"
 )
 
@@ -76,7 +77,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	assets, web := viewassets.Resources(), viewassets.Web()
+	assets, web := renderresources.Resources(), viewassets.Web()
 	data, err := fs.ReadFile(assets, "blocksAtlases.json")
 	if err != nil {
 		return err

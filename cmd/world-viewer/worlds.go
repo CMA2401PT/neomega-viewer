@@ -5,8 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
 	"neomega-viewer/viewhttp"
 )
 

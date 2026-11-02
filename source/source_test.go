@@ -7,7 +7,7 @@ import (
 	"celler"
 	"celler/java"
 	nbt "neomega-nbt/presets/v1"
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
 )
 
 func TestGroupBlockEntitiesNegativeCoordinates(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/source"
 	"neomega-viewer/viewhttp"
 )

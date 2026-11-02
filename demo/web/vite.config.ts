@@ -7,7 +7,7 @@ export default defineConfig({
     },
   },
   server: {
-    fs: { allow: ["../.."] },
+    fs: { allow: ["../../.."] },
     proxy: {
       "/api": "http://127.0.0.1:2410",
       "/assets/entity": "http://127.0.0.1:2410",

@@ -7,12 +7,12 @@ import (
 
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/meshing"
+	blockmesh "neomega-viewer-core/viewer/resources"
+	"neomega-viewer-core/viewer/splitlayer"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/meshing"
-	"neomega-viewer/splitlayer"
 )
 
 func realEngine(t *testing.T) *mesher.Mesher[uint32] {

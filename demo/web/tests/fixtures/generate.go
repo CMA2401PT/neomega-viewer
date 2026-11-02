@@ -11,16 +11,16 @@ import (
 	"path/filepath"
 
 	"celler/layer_storage"
-	jmodel "neomega-blocks/geometry/java_block_model"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/dispatcher"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	blockmesh "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
-	"neomega-viewer/dispatcher"
 )
 
 func main() {
-	assets := flag.String("assets", "../neomega-assets/dist/final", "matching resource bundle")
-	output := flag.String("out", "demo/web/tests/fixtures/block_entities.nvframe", "frame output")
+	assets := flag.String("assets", "../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
+	output := flag.String("out", "../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", "frame output")
 	flag.Parse()
 	data, err := os.ReadFile(filepath.Join(*assets, "blocksAtlases.json"))
 	if err != nil {

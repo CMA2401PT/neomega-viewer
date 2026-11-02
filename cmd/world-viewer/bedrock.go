@@ -11,8 +11,9 @@ import (
 
 	"celler"
 	"celler/bedrock"
-	"neomega-converter/adapt"
-	"neomega-converter/fixer"
+	"neomega-converter-core/adapt"
+	fixedadapt "neomega-converter/adapt"
+	"neomega-viewer-core/fixer/java-postprocess"
 	"neomega-viewer/source/bedrockworld"
 	"neomega-viewer/viewhttp"
 )
@@ -108,7 +109,7 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		if err != nil {
 			return nil, err
 		}
-		chunks = adapt.NewFixed(converted, f, adapt.Options{})
+		chunks = fixedadapt.NewFixed(converted, f, adapt.Options{})
 	}
 	opened.reader = bedrockworld.New(chunks).Reader
 	return opened, nil

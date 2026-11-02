@@ -7,7 +7,7 @@ import (
 	"celler"
 	"celler/java"
 	"celler/java/region"
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/internal/bytecache"
 )
 

@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	java "neomega-blocks/presets/java/v1"
-	"neomega-converter/fixer"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer/demo/catalog"
 	"neomega-viewer/demo/singleblock"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/mesher"
 )
 
 type Options struct {

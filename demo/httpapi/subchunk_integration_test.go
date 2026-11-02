@@ -12,16 +12,16 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
-	"neomega-converter/fixer"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	blockmesh "neomega-viewer-core/viewer/resources"
+	"neomega-viewer-core/viewer/splitlayer"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/splitlayer"
 )
 
 func TestSubchunkBinaryTransport(t *testing.T) {
@@ -29,7 +29,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR for the binary subchunk transport check")
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../../neomega-blocks/presets/java/v1/geometry/geometry.nvtables"})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../../neomega-viewer-core/viewer/resources/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}

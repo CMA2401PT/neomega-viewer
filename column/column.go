@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"celler"
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/source"
 )
 

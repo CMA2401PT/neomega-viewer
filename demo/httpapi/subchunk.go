@@ -10,13 +10,13 @@ import (
 
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
-	"neomega-converter/fixer"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	"neomega-viewer-core/viewer/splitlayer"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/splitlayer"
 )
 
 func sectionOptions(r *http.Request) (mesher.Options, error) {

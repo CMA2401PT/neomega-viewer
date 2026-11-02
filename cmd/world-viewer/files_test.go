@@ -16,8 +16,8 @@ import (
 	"celler/java"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
 	packfs "neomega-packfs"
+	preset "neomega-viewer-core/viewer/resources"
 )
 
 func writePickerWorld(t *testing.T, directory string, block ir.IRBlock) {

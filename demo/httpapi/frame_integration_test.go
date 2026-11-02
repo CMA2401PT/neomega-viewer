@@ -8,18 +8,18 @@ import (
 	"testing"
 
 	"celler/layer_storage"
-	jmodel "neomega-blocks/geometry/java_block_model"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
-	"neomega-converter/fixer"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	"neomega-viewer-core/viewer/merger"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	"neomega-viewer-core/viewer/mesher/meshing"
+	blockmesh "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/merger"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/geometry"
-	"neomega-viewer/mesher/meshing"
 )
 
 func TestBlockEntitiesFrame(t *testing.T) {

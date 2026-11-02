@@ -15,10 +15,10 @@ import (
 	"celler/java"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/viewer/dispatcher"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
 )
 
 func TestReaderDiagnosticsBelongToRequestedColumn(t *testing.T) {

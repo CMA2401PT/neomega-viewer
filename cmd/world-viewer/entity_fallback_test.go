@@ -6,18 +6,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io/fs"
+	renderresources "neomega-viewer-core/viewer/resources"
 	"testing"
 
 	"celler"
 	"celler/java"
 	"celler/layer_storage"
-	jmodel "neomega-blocks/geometry/java_block_model"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
 	nbt "neomega-nbt/presets/v1"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	"neomega-viewer-core/viewer/merger"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/merger"
-	"neomega-viewer/viewassets"
 )
 
 func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
@@ -25,7 +25,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := fs.ReadFile(viewassets.Resources(), "blocksAtlases.json")
+	data, err := fs.ReadFile(renderresources.Resources(), "blocksAtlases.json")
 	if err != nil {
 		t.Fatal(err)
 	}

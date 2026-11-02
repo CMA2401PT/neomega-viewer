@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io/fs"
+	renderresources "neomega-viewer-core/viewer/resources"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -15,11 +16,11 @@ import (
 	"celler/layer_storage"
 	"celler/storage"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
 	packfs "neomega-packfs"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/merger"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/merger"
 	"neomega-viewer/viewassets"
 )
 
@@ -203,7 +204,7 @@ func TestEmbeddedSiteAndResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer source.Close()
-	assets := viewassets.Resources()
+	assets := renderresources.Resources()
 	web := viewassets.Web()
 	handler := Handler(ServerOptions{
 		Worlds: NewWorlds(source, nil),

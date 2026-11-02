@@ -8,11 +8,11 @@ import (
 	"os"
 
 	"celler/layer_storage"
-	blockmesh "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/mesher"
+	"neomega-viewer-core/viewer/mesher/meshing"
+	blockmesh "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/mesher"
-	"neomega-viewer/mesher/meshing"
 )
 
 func main() {

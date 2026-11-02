@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/singleblock"
-	"neomega-viewer/mesher/geometry"
 )
 
 // StateResponse is the browser's display format. Core code uses IRBlock;

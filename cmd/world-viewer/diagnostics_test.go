@@ -13,13 +13,13 @@ import (
 	"celler/java"
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	preset "neomega-blocks/presets/java/v1/geometry"
-	"neomega-viewer/blockactor"
+	"neomega-viewer-core/viewer/blockactor"
+	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/effector"
+	"neomega-viewer-core/viewer/merger"
+	"neomega-viewer-core/viewer/mesher/geometry"
+	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/effector"
-	"neomega-viewer/merger"
-	"neomega-viewer/mesher/geometry"
 )
 
 func TestColumnMissingModelDiagnostics(t *testing.T) {

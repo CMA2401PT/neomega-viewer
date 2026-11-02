@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"celler"
-	"neomega-converter"
-	"neomega-converter/adapt"
+	"neomega-converter-core"
+	"neomega-converter-core/adapt"
 	nbt "neomega-nbt/presets/v1"
-	"neomega-viewer/dispatcher"
+	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/source"
 )
 

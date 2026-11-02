@@ -6,15 +6,15 @@ import (
 	"net/http"
 
 	"celler/layer_storage"
-	blockgeometry "neomega-blocks/geometry"
-	jmodel "neomega-blocks/geometry/java_block_model"
 	"neomega-blocks/ir"
-	"neomega-converter/fixer"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/dispatcher"
+	blockgeometry "neomega-viewer-core/viewer/geometry"
+	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	"neomega-viewer-core/viewer/merger"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
-	"neomega-viewer/dispatcher"
-	"neomega-viewer/merger"
 )
 
 func NewFramePipeline(tables *blockgeometry.Tables[uint32], atlas jmodel.Atlas) *dispatcher.Pipeline {
