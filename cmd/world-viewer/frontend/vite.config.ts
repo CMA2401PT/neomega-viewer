@@ -6,7 +6,7 @@ export default defineConfig({
   },
   build: { outDir: "../../../viewassets/bundle/web", emptyOutDir: true },
   server: {
-    fs: { allow: ["../../../.."] },
+    fs: { allow: ["../../../../.."] },
     proxy: {
       "/api": "http://127.0.0.1:2412",
       "/resources": "http://127.0.0.1:2412",

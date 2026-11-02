@@ -29,7 +29,7 @@ import (
 func TestBedrockFixtureBuildColumn(t *testing.T) {
 	// LevelDB 只打开临时副本，样例目录始终作为普通文件复制来源。
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, os.DirFS("../../../resource/基岩版")); err != nil {
+	if err := os.CopyFS(dir, os.DirFS("../../../../resource/基岩版")); err != nil {
 		t.Fatal(err)
 	}
 	resources, err := preset.Open(preset.OpenOptions{})

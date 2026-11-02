@@ -19,8 +19,8 @@ import (
 )
 
 func main() {
-	assets := flag.String("assets", "../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
-	output := flag.String("out", "../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", "frame output")
+	assets := flag.String("assets", "../../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
+	output := flag.String("out", "../../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", "frame output")
 	flag.Parse()
 	data, err := os.ReadFile(filepath.Join(*assets, "blocksAtlases.json"))
 	if err != nil {

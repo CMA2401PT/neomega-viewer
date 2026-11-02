@@ -261,7 +261,7 @@ test("radius 30 requests the full circular range", () => {
 
 test("world packet preserves section ownership and negative Y", () => {
   const frame = readFileSync(
-    new URL("../../../../../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", import.meta.url),
+    new URL("../../../../../../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", import.meta.url),
   );
   const issues = [{ scope: "block", origin: "render", count: 1, position: [-16, -64, 32], blockstate: "minecraft:grass []", reason: "missing_model" }];
   const diagnostics = new TextEncoder().encode(JSON.stringify(issues));

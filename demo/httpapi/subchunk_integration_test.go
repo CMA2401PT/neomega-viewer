@@ -29,7 +29,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	if dir == "" {
 		t.Skip("set NEOMEGA_ASSETS_DIR for the binary subchunk transport check")
 	}
-	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../../neomega-viewer-core/viewer/resources/geometry.nvtables"})
+	parser, err := blockmesh.Open(blockmesh.OpenOptions{TablesPath: "../../../../neomega-viewer-core/viewer/resources/geometry.nvtables"})
 	if err != nil {
 		t.Fatal(err)
 	}

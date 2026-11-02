@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	assets := flag.String("assets", "../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
+	assets := flag.String("assets", "../../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
 	tables := flag.String("tables", "", "geometry table file; empty uses bundled tables")
 	web := flag.String("web", "demo/web/dist", "built browser files")
 	listen := flag.String("listen", "127.0.0.1:2410", "HTTP listen address")

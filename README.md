@@ -1,12 +1,14 @@
 # neomega-viewer
 
+本模块位于工作区的 `apps/` 能力组装层，Go 模块名保持为 `neomega-viewer`。
+
 本模块组合存档读写、转换修复和渲染核心，提供 Java／Bedrock 存档浏览器与方块演示应用。
 Go 服务按视点读取与缓存数据，浏览器负责交互、加载和页面展示。
-具体网格生成及 Web 绘制接口来自 [neomega-viewer-core](../neomega-viewer-core/README.md)。
+具体网格生成及 Web 绘制接口来自 [neomega-viewer-core](../../neomega-viewer-core/README.md)。
 
 `cmd/world-viewer` 负责存档打开、切换与前端页面，`source` 适配不同数据来源，`column` 编码区块列，`viewhttp` 管理 HTTP 调度与缓存。
 `demo` 提供方块选择、场景检查和上传预览。
-最简核心示例位于 [viewer-core/viewer/examples](../neomega-viewer-core/viewer/examples)。
+最简核心示例位于 [viewer-core/viewer/examples](../../neomega-viewer-core/viewer/examples)。
 
 ## 浏览 Java 与 Bedrock 存档
 
@@ -163,9 +165,9 @@ Bedrock 来源保留 converter 按状态汇总的 `unknown_block` 和按实体 I
 
 默认状态表由 `blocks.JavaFullStates()` 枚举，目标为 **Java 1.21.4**，共 **18,254** 个状态。该迭代器返回 tidy IR 方块，目录按名称分组，身份反查直接使用 `HashToBlock`。前端从目录取得 ID 并回传。调用者提供的状态也必须先规范化再计算哈希。属性按字典序排列，才能让同一状态的不同书写顺序得到相同的 hash。规范化由调用者安排，便于复用已规范化的状态，避免每次哈希重复排序。
 
-存档中的旧状态另由 blocks 的 Java 兼容映射覆盖。生成器按源版本从高到低取同一状态的首次解释，让旧状态 hash 共享 1.21.4 目标状态的几何；例如旧 `grass` 使用 `short_grass` 的模型。运行时不需要源版本，原始 blockstate 保留用于拆层与诊断。映射、兼容状态枚举及重建命令见 [blocks 生成说明](../neomega-blocks/third_party/gen_resource/README.md#java-存档的兼容状态)。
+存档中的旧状态另由 blocks 的 Java 兼容映射覆盖。生成器按源版本从高到低取同一状态的首次解释，让旧状态 hash 共享 1.21.4 目标状态的几何；例如旧 `grass` 使用 `short_grass` 的模型。运行时不需要源版本，原始 blockstate 保留用于拆层与诊断。映射、兼容状态枚举及重建命令见 [blocks 生成说明](../../neomega-blocks/third_party/gen_resource/README.md#java-存档的兼容状态)。
 
-需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按相邻目录组织：
+需要 Go 1.25.5 或以上、Node.js 22.12 或以上，以及支持 WebGL 2 的浏览器。本地模块按以下目录组织：
 
 ```text
 new-world/
@@ -173,10 +175,11 @@ new-world/
 ├─ neomega-converter-core/
 ├─ neomega-blocks/
 ├─ neomega-celler/
-├─ neomega-converter/
 ├─ neomega-nbt/
 ├─ neomega-packfs/
-└─ neomega-viewer/
+└─ apps/
+   ├─ neomega-converter/
+   └─ neomega-viewer/
 ```
 
 如果还没有资源，在 `neomega-viewer-core/viewer-assets` 中生成一次：
@@ -187,9 +190,9 @@ go run ./cmd/neomega-assets build -version 1.21.4
 
 viewer-core 的建表器直接读取资源生成目录，并检查资源版本与 Java 状态版本是否一致。服务使用 viewer-core 的图集定义，从 `-assets` 指定的目录读取以完整纹理资源 ID 为键的 `blocksAtlases.json`，并提供配套的 `blocksAtlasLatest.png` 和 `THIRD_PARTY_NOTICES.txt`。
 
-子区块页面启动时还会加载附魔书贴图。服务从相对于 `-assets` 的 `../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png` 读取它。使用默认资源目录时，这个文件位于 `neomega-viewer-core/viewer-assets/dist/works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`。部署资源时需要一并保留这条相对路径。资源更新方式见 [viewer-assets README](../neomega-viewer-core/viewer-assets/README.md)。
+子区块页面启动时还会加载附魔书贴图。服务从相对于 `-assets` 的 `../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png` 读取它。使用默认资源目录时，这个文件位于 `neomega-viewer-core/viewer-assets/dist/works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`。部署资源时需要一并保留这条相对路径。资源更新方式见 [viewer-assets README](../../neomega-viewer-core/viewer-assets/README.md)。
 
-演示网页通过 `file:../../../neomega-viewer-core/viewer/web` 依赖仓库内的共享前端包。`npm ci` 按锁文件安装演示页依赖，并链接共享包。在 `neomega-viewer` 中构建网页并启动服务：
+演示网页通过 `file:../../../../neomega-viewer-core/viewer/web` 依赖仓库内的共享前端包。`npm ci` 按锁文件安装演示页依赖，并链接共享包。在 `apps/neomega-viewer` 中构建网页并启动服务：
 
 ```sh
 npm --prefix demo/web ci
@@ -289,19 +292,19 @@ curl -fsS http://127.0.0.1:2410/api/subchunk \
 
 ## 更新与验证
 
-资源由 [viewer-core 的统一生成器](../neomega-viewer-core/viewer-assets/cmd/build-tables/README.md) 生产。
+资源由 [viewer-core 的统一生成器](../../neomega-viewer-core/viewer-assets/cmd/build-tables/README.md) 生产。
 应用页面通过 `go generate ./viewassets` 构建，然后重新编译 world-viewer。
 
 在工作区根目录运行：
 
 ```sh
 ./check.sh
-npm --prefix neomega-viewer/demo/web ci
-npm --prefix neomega-viewer/demo/web test
-npm --prefix neomega-viewer/demo/web run build
-npm --prefix neomega-viewer/cmd/world-viewer/frontend ci
-npm --prefix neomega-viewer/cmd/world-viewer/frontend test
-npm --prefix neomega-viewer/cmd/world-viewer/frontend run build
+npm --prefix apps/neomega-viewer/demo/web ci
+npm --prefix apps/neomega-viewer/demo/web test
+npm --prefix apps/neomega-viewer/demo/web run build
+npm --prefix apps/neomega-viewer/cmd/world-viewer/frontend ci
+npm --prefix apps/neomega-viewer/cmd/world-viewer/frontend test
+npm --prefix apps/neomega-viewer/cmd/world-viewer/frontend run build
 ```
 
 HTTP 测试覆盖资源、上传、存档切换、诊断、缓存和取消；绘制核心的测试在 viewer-core 中运行。

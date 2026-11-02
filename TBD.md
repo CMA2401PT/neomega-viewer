@@ -2,7 +2,7 @@
 
 下文把一个 16×16×16、每格只存 Java block hash 的方块层叫作**本表达空间**。它表达方块状态，NBT 需要单独传递。
 静态 mesher 接收数值 ID 切片；完整 Java hash 先由 splitlayer 拆成单层状态，再交给它。几何表支持的静态状态可按 hash
-查表渲染，含水方块可叠加水层（见 [多层渲染方案.md](../neomega-viewer-core/viewer/多层渲染方案.md)）。`moving_piston` 缺少决定移动内容的数据，
+查表渲染，含水方块可叠加水层（见 [多层渲染方案.md](../../neomega-viewer-core/viewer/多层渲染方案.md)）。`moving_piston` 缺少决定移动内容的数据，
 无法仅凭状态确定静态外形。
 
 带 NBT 的渲染使用 `dispatcher.Pipeline`，输入包含 hash 层与按格子坐标索引的 SNBT。SNBT 是 NBT 的文本表示，
