@@ -15,8 +15,10 @@ func TestSwitchPublishesBeforeWaitingAndClosesAfterBuild(t *testing.T) {
 	var closed atomic.Bool
 	previous := &openedContent{
 		Info: Info{
-			Revision: 1,
-			Name:     "previous",
+			Description: viewhttp.Description{
+				Revision: 1,
+				Name:     "previous",
+			},
 		},
 		View: viewhttp.NewView(1, func(ctx context.Context, key column.Key) ([]byte, error) {
 			close(started)

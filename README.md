@@ -12,7 +12,7 @@ viewer 的输入是完整的 Java 状态，本身不需要修复。从 NEMC 等�
 
 陶罐、旗帜这类方块的外观取决于 block entity NBT，附魔台上的书是动态效果，静态几何画不出来。`dispatcher.Pipeline` 接收完整 Java 状态调色板和已解码的 NBT，把一个子区块按方块类型分到 mesher、effector、block actor 三条路。demo 和 world-viewer 共用这个入口，`merger` 将三份结果打包成一个 NVFR 快照。设计见 [渲染分发方案.md](渲染分发方案.md)。
 
-可复用绘制核心之外，`demo/` 用于检查方块和子区块。需要按视点浏览场景时，来源提供 section，`column` 构建列响应，`viewhttp` 提供浏览服务。`cmd/world-viewer` 用这套组件浏览 Java 存档，`cmd/memory-viewer` 用同一套组件显示代码中创建的方块。
+可复用绘制核心之外，`demo/` 用于检查方块和子区块。需要按视点浏览场景时，来源提供 section，`column` 构建列响应，`viewhttp` 提供浏览服务。`cmd/world-viewer` 用这套组件浏览 Java 和 Bedrock 存档，`cmd/memory-viewer` 用同一套组件显示代码中创建的方块。
 
 ## 目录职责
 
@@ -29,7 +29,8 @@ neomega-viewer/
 ├─ blockactor/         # 按 NBT 生成几何，每种方块一个子包
 ├─ merger/             # NVFR 快照容器的编解码
 ├─ source/             # 内存来源、整列诊断约定与方块实体分组
-│  └─ javaworld/       # Java 原始记录读取与请求内解码
+│  ├─ javaworld/       # Java 原始记录读取与请求内解码
+│  └─ bedrockworld/    # 把转换后的 Bedrock 柱子适配成 section 与诊断
 ├─ column/             # section 列构建与 NVWC 响应编码
 ├─ viewhttp/           # 固定内容代次、列缓存、HTTP 队列与资源路由
 ├─ viewassets/         # 两个浏览程序共用的内嵌网页和贴图
@@ -51,7 +52,7 @@ neomega-viewer/
 
 依赖方向为 viewer 使用 blocks 的共享几何和 preset。`mesher/geometry.Mesh` 保留场景输出的 `Buffers`、`Marshal` 方法；四边形与形状定义复用 blocks。边界矩形识别和覆盖相减也复用 blocks，UV 相容性、邻居裁切与贪婪合并由 viewer 处理。
 
-## 浏览 Java 存档
+## 浏览 Java 与 Bedrock 存档
 
 在本模块目录构建程序，再指定存档目录启动。网页、贴图和几何表均已内嵌：
 
@@ -60,7 +61,9 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 ./cmd/world-viewer/world-viewer -world /path/to/java-world
 ```
 
-打开 <http://127.0.0.1:2412>。页面是全屏 Three.js 场景，左上角显示坐标轴、坐标、帧率和网格内存估算，右下角的可收起面板提供可视化打开/切换存档、坐标跳转、线框、视距和渲染分辨率。省略存档参数时显示空场景。读取 PackFS 存档时改用 `-pack /path/to/world.pack`。
+打开 <http://127.0.0.1:2412>。页面是全屏 Three.js 场景，左上角显示坐标轴、坐标、帧率和网格内存估算，右下角的可收起面板提供可视化打开/切换存档、坐标跳转、线框、视距和渲染分辨率。省略存档参数时显示空场景。`-world` 同样接受包含 `db/` 的 Bedrock 世界目录，`level.dat` 可以缺失。读取 Java PackFS 存档时改用 `-pack /path/to/world.pack`。
+
+Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再进入相同的渲染路径。转换和修复结果不写回存档。`-bedrock-fix=false` 可以只看转换结果；`-dimension` 对 Bedrock 使用编号 0、1、2，默认 0。
 
 程序只读访问相机附近的区块，重叠 section 保持原网格。视距默认 8、最多 30 个区块。前端源码独立放在 `cmd/world-viewer/frontend`，构建后的程序可以单文件分发。资源准备、维度选择、键鼠操作与内存统计见 [存档浏览说明](cmd/world-viewer/README.md)。
 
@@ -74,14 +77,16 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 |---|---|
 | `source.MemorySections` | 用 map 提供只读 section，适合手搓场景或已载入内存的结构 |
 | `source/javaworld.Source` | 独占已打开的 Java 世界，缓存原始记录；每次 `Reader()` 独立解码 |
+| `source/bedrockworld.Source` | 接收 `adapt.ChunkSource`，借用转换柱子的调色板；每次 `Reader()` 保存请求内的柱子引用 |
 | `column.BuildColumn` | 构建请求高度范围，汇合渲染与来源诊断，编码 NVWC |
 | `viewhttp.View` | 一代固定内容的 revision、取消范围、构建闭包和列字节缓存 |
 | `viewhttp.Handler` | 跨代共用的 worker 限额、排队、`/api/chunk`、资源与静态页面 |
+| `viewhttp.Description` | 配套页面的启动描述；固定内容可用 `DescriptionHandler` 返回它 |
 | `viewassets` | 以 `fs.FS` 提供配套网页和贴图，调用方也可以换成自己的文件系统 |
 
-### 两种来源的组装
+### 三种来源的组装
 
-两种组装都先准备渲染 Pipeline。几何表来自 blocks 的 preset，图集元数据来自与它匹配的资源。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go) 和 [memory-viewer](cmd/memory-viewer/main.go)。
+几种来源共用渲染 Pipeline。几何表来自 blocks 的 preset，图集元数据来自与它匹配的资源。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go) 和 [memory-viewer](cmd/memory-viewer/main.go)。
 
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
@@ -104,6 +109,25 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 ```
 
 `Reader()` 必须放在构建闭包内部。一个 reader 缓存本次请求解码过的区块及整列诊断，由该请求串行使用。不同 worker 只共享不可变的原始记录字节。`java.World` 的内部 region 缓存会在读取时变化，因此来源用一个 goroutine 串行访问句柄。缓存中的内容以打开时为准；重新读取修改后的存档需要创建新的来源。
+
+Bedrock 需要先把状态转换为 Java 表达。`neomega-converter/adapt` 的 `Converted` 按坐标读取、转换并缓存柱子，`Fixed` 在它外面叠加可选的邻接修复。两层都实现 `adapt.ChunkSource`，因此 `bedrockworld.Source` 只依赖这个取柱接口。选择转换方式属于组装方，渲染来源只负责借用调色板、分组方块实体和转接诊断。
+
+下面的 `read` 是组装方提供的 `adapt.ReadChunk`，绑定已经只读打开的 `bedrock.World` 和维度编号。它在访问句柄前登记在途读取，并在返回时注销。完整的打开与等待实现见 [bedrock.go](cmd/world-viewer/bedrock.go)。
+
+```go
+converted := adapt.NewConverted(read, adapt.Options{})
+var chunks adapt.ChunkSource = converted // 只转换。
+if repair {
+    // f 由 fixer.New() 创建一次，可以供多个存档的修复层共享。
+    chunks = adapt.NewFixed(converted, f, adapt.Options{})
+}
+src := bedrockworld.New(chunks)
+view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
+    return column.BuildColumn(ctx, pipeline, src.Reader(), key)
+})
+```
+
+每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。展示框等普通实体保存在 `ConvertedChunk.Entities` 中，当前 dispatcher 只接收方块及方块实体，因此这些实体不会显示。
 
 内存场景直接填 map，无须构造世界句柄。下面在 section 原点附近放一块石头；map 的键是 section 坐标，`layer_storage.At` 使用 section 内的方块坐标：
 
@@ -135,7 +159,19 @@ mux.Handle("/", viewhttp.Handler(
 ))
 ```
 
-配套页面启动时从 `GET /api/world` 读取 revision、名称和初始视点，因此应用还要注册这个描述接口。`world-viewer` 同时提供打开存档的 POST 和文件浏览接口。固定场景可以返回静态描述并设 `canOpen: false`，页面会隐藏打开按钮；[内存示例](cmd/memory-viewer/main.go) 展示了完整响应。库中的 `viewhttp` 只处理列与资源，不解释这个描述。
+配套页面启动时需要知道内容编号、名称和初始视点，应用通过 `GET /api/world` 提供这些信息。`viewhttp.Description` 定义这份场景描述，路由由应用注册。固定场景可以直接返回描述，默认的 `canOpen: false` 会隐藏打开按钮：
+
+```go
+mux.Handle("GET /api/world", viewhttp.DescriptionHandler(viewhttp.Description{
+    Revision:        revision,
+    Loaded:          true,
+    Name:            "内存场景",
+    Position:        [3]float64{16, 14, 28},
+    ResourceVersion: resources.Metadata.Version,
+}))
+```
+
+`world-viewer` 的 `Info` 嵌入同一个描述类型，再补充路径、存档格式和维度。它设置 `CanOpen: true`，由程序提供打开存档的 POST 和文件浏览接口。
 
 在本模块目录运行完整内存示例，即可在 <http://127.0.0.1:2412> 浏览两块石头平台和附魔台：
 
@@ -143,17 +179,21 @@ mux.Handle("/", viewhttp.Handler(
 go run ./cmd/memory-viewer
 ```
 
+已有程序占用默认端口时，改用 `go run ./cmd/memory-viewer -listen 127.0.0.1:2413`，并打开对应地址。
+
 需要切换时，程序把描述、View 和来源关闭函数放在同一个对象里原子替换。revision 是该代内容的编号，每次发布都分配新值。打开失败保留原对象。成功切换的顺序如下，具体实现在 [worlds.go](cmd/world-viewer/worlds.go)：
 
 ```go
 current.Store(next)     // next 已经包含描述、新 View 和来源关闭函数。
 previous.View.Retire()  // 拒绝新任务、取消旧任务，并等待在途构建结束。
-previous.close()       // Java 来源先 Close，再关闭 World 和文件容器。
+previous.close()       // 等底层读取结束，再关闭 World 和文件容器。
 ```
 
 Handler 每个列请求只读取一次 `current()`，避免中心和邻居来自不同内容。过期 revision 或退役期间尚未发送的响应返回 409。队列和 worker 限额属于 Handler，切换 View 不会创建额外 worker。响应开始发送时已释放构建名额，只持有生成的字节，因此慢客户端不会拖住来源关闭。已经开始发送的响应不能改成 409，配套前端切换时会丢弃旧代结果。
 
 `Retire` 等待构建回调结束；Java 的底层 I/O 可能仍在完成，`javaworld.Source.Close()` 会进一步等待文件 goroutine 退出。这个方法归还 World 的访问权，World 和 PackFS 由打开它们的程序关闭。
+
+Bedrock 的 adapt 等待者也可能先于底层读取返回取消。组装方关闭来源时，先禁止新的读取回调进入，再等待已登记的读取结束，最后关闭 LevelDB。只等待 `View.Retire()` 不足以归还句柄。转换和修复处理的是已经复制出的记录，原始读取结束后，它们可以独立完成；具体取消约定见 [adapt 说明](../neomega-converter/README.md#adapt按坐标读取与缓存)。
 
 ### 来源诊断与实体适配
 
@@ -162,6 +202,8 @@ Handler 每个列请求只读取一次 `current()`，避免中心和邻居来自
 `column.BuildColumn` 只查询请求柱子的诊断，保留来源返回的每一条。来源诊断覆盖整根柱子，不按请求的高度窗口裁剪，也不混入为剔面读取的邻居诊断。来源应让同一代内容的条目及计数保持一致。网页按柱子坐标和条目内容消除高度窗口之间的重复报告；同一响应中的相同条目仍分别保留。
 
 渲染诊断按完整状态与原因去重。响应中的 `scope` 区分单格与整列，`origin` 区分渲染诊断与来源诊断，以便采用各自的去重规则。NVWC 头里的 `unknown` 只统计缺失模型的方块数量。协议布局和 JSON 示例见[读取与传输](cmd/world-viewer/README.md#读取与传输)。
+
+Bedrock 来源保留 converter 按状态汇总的 `unknown_block` 和按实体 ID 汇总的 `unsupported_block_entity` 计数。单项 NBT 或规则错误按一项报告；有具体坐标时保留坐标。这些来源诊断始终覆盖请求柱子的全部高度，不增加缺失模型数量。
 
 需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。其他来源只要产出同一种实体值，就能使用这个函数。结构文件适配器可以先将结构放到所需的 section 坐标，再提供 `SectionSource`，或直接填充 `MemorySections`。
 

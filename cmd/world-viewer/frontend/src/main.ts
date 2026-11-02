@@ -378,7 +378,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
   element<HTMLOutputElement>("world-name").value = info.loaded
     ? info.name
     : "未打开存档";
-  element<HTMLOutputElement>("world-name").title = info.path;
+  element<HTMLOutputElement>("world-name").title = info.path ?? "";
   element<HTMLButtonElement>("open-world").textContent = info.loaded
     ? "切换存档…"
     : "打开存档…";

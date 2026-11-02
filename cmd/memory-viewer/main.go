@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"flag"
 	"log"
 	"net/http"
 
@@ -18,6 +18,8 @@ import (
 
 func main() {
 	// 内存来源与存档浏览共用列构建和网页，只由程序提供固定的初始视点。
+	listen := flag.String("listen", "127.0.0.1:2412", "HTTP listen address")
+	flag.Parse()
 	resources, err := preset.Open(preset.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
@@ -45,21 +47,13 @@ func main() {
 	})
 	defer view.Retire()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(map[string]any{
-			"revision":        1,
-			"loaded":          true,
-			"name":            "内存 section",
-			"path":            "",
-			"kind":            "memory",
-			"dimension":       "",
-			"position":        [3]float64{16, 14, 28},
-			"resourceVersion": resources.Metadata.Version,
-			"canOpen":         false,
-		})
-	})
+	mux.Handle("GET /api/world", viewhttp.DescriptionHandler(viewhttp.Description{
+		Revision:        1,
+		Loaded:          true,
+		Name:            "内存 section",
+		Position:        [3]float64{16, 14, 28},
+		ResourceVersion: resources.Metadata.Version,
+	}))
 	mux.Handle("/", viewhttp.Handler(
 		func() *viewhttp.View { return view },
 		viewhttp.Options{
@@ -67,6 +61,6 @@ func main() {
 			Web:    viewassets.Web(),
 		},
 	))
-	log.Print("http://127.0.0.1:2412")
-	log.Fatal(http.ListenAndServe("127.0.0.1:2412", mux))
+	log.Printf("http://%s", *listen)
+	log.Fatal(http.ListenAndServe(*listen, mux))
 }

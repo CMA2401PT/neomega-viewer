@@ -101,12 +101,15 @@ func sourceAtPath(name string) (SourceOptions, error) {
 		return SourceOptions{}, err
 	}
 	if stat.IsDir() {
+		if isBedrockDirectory(absolute) {
+			return SourceOptions{Directory: absolute}, nil
+		}
 		for _, child := range []string{"level.dat", "region", "dimensions"} {
 			if _, err := os.Stat(filepath.Join(absolute, child)); err == nil {
 				return SourceOptions{Directory: absolute}, nil
 			}
 		}
-		return SourceOptions{}, fmt.Errorf("此目录不是 Java 存档：请选择包含 level.dat 或 region 的世界目录")
+		return SourceOptions{}, fmt.Errorf("此目录不是存档：请选择包含 level.dat、region 或 db 子目录的世界目录")
 	}
 	// Selecting level.dat is equivalent to selecting its world directory.
 	if strings.EqualFold(filepath.Base(absolute), "level.dat") {

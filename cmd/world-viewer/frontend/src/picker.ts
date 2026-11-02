@@ -3,9 +3,9 @@ export interface WorldInfo {
   canOpen?: boolean;
   loaded: boolean;
   name: string;
-  path: string;
-  kind: string;
-  dimension: string;
+  path?: string;
+  kind?: string;
+  dimension?: string;
   position: [number, number, number];
   resourceVersion: string;
 }

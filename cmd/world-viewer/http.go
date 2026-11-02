@@ -14,6 +14,7 @@ type ServerOptions struct {
 	Assets, Web     fs.FS
 	ResourceVersion string
 	Workers         int
+	SkipBedrockFix  bool
 }
 
 func Handler(options ServerOptions) http.Handler {
@@ -52,6 +53,7 @@ func Handler(options ServerOptions) http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		source.SkipBedrockFix = options.SkipBedrockFix
 		info, err := options.Worlds.Open(r.Context(), source)
 		if err != nil {
 			http.Error(w, err.Error(), 422)
