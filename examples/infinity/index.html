@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>按需生成的无限世界</title>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; outline: none; touch-action: none; }
+      aside { position: fixed; top: 8px; left: 8px; pointer-events: none; font: 13px monospace; }
+      #axes { width: 72px; height: 72px; }
+      output { display: block; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <canvas id="axes" aria-label="随视线旋转的世界坐标轴"></canvas>
+      <div><span style="color:#d7263d">X</span> <span style="color:#a07a00">Y</span> <span style="color:#1246b4">Z</span></div>
+      <output id="position">加载中</output>
+    </aside>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
