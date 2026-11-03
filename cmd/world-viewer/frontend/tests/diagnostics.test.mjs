@@ -45,6 +45,13 @@ test("source diagnostics retain separate entries without multiplying across heig
     diagnostics.add([{ ...render, position: [16, 20, 30] }], [1, 1]);
     diagnostics.add([{ ...render, reason: "actor_error" }], [0, 0]);
     assert.equal(count.value, "8", "render states deduplicate by state and reason");
+    const entity = { scope: "entity", origin: "render", position: [1, -60, 3], entityId: "minecraft:item_frame", reason: "entity_error", count: 1, detail: "missing item" };
+    diagnostics.add([entity, { ...entity, position: [2, -60, 3] }], [0, 0]);
+    diagnostics.add([entity], [0, 0]);
+    assert.equal(count.value, "10", "entity diagnostics retain each position without repeating it");
+    assert.equal(list.children[8].children[0].textContent, "minecraft:item_frame");
+    assert.match(list.children[8].children[1].textContent, /Y -60/);
+    assert.match(list.children[8].children[2].textContent, /实体外观/);
     diagnostics.clear();
     assert.equal(count.value, "0");
     assert.equal(empty.hidden, false);

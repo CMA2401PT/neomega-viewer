@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>方块场景</title>
-    <script type="module" crossorigin src="/assets/index-DUynW78c.js"></script>
+    <script type="module" crossorigin src="/assets/index-BB4RnNoL.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-XuaFaNGH.css">
   </head>
   <body>
@@ -66,7 +66,7 @@
       <output id="status" role="status" aria-live="polite">未打开存档</output>
       <details id="render-issues">
         <summary>渲染异常（<output id="issue-count">0</output> 项）</summary>
-        <p>记录已浏览区域的缺失模型和方块实体异常。同一 blockstate 只保留首次坐标，无法定位到方块的异常按区块记录。切换存档时清空。</p>
+        <p>记录已浏览区域的缺失模型、方块实体和普通实体异常。同一 blockstate 只保留首次坐标，普通实体按坐标记录，无法定位的异常按区块记录。切换存档时清空。</p>
         <p id="issue-empty">尚未发现渲染异常。</p>
         <ul id="issue-list"></ul>
       </details>

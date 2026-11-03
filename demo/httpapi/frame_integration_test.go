@@ -33,7 +33,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, nil)
+	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, parser.Items, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 		direct, err := pipeline.Build(
-			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: scene.NBT},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), BlockEntities: scene.NBT},
 			dispatcher.Neighbours{},
 			options,
 		)
@@ -127,7 +127,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 		direct, err := pipeline.Build(
-			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: nil},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), BlockEntities: nil},
 			dispatcher.Neighbours{},
 			options,
 		)

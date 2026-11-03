@@ -75,7 +75,7 @@ func run() error {
 		return err
 	}
 	assets, web := renderresources.Resources(), viewassets.Web()
-	pipeline, err := newPipeline(resources.Tables)
+	pipeline, err := newPipeline(resources)
 	if err != nil {
 		return err
 	}

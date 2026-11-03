@@ -8,6 +8,7 @@ import (
 	"neomega-converter-core/adapt"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/entity_render"
 	"neomega-viewer/source"
 )
 
@@ -31,9 +32,10 @@ func (s *Source) Reader() dispatcher.SectionSource {
 }
 
 type column struct {
-	chunk    *converter.ConvertedChunk
-	entities map[int32]map[dispatcher.CellPos]nbt.Compound
-	issues   []source.Issue
+	chunk         *converter.ConvertedChunk
+	blockEntities map[int32]map[dispatcher.CellPos]nbt.Compound
+	entities      map[dispatcher.SectionPos]*entity_render.Input
+	issues        []source.Issue
 }
 
 type reader struct {
@@ -42,7 +44,7 @@ type reader struct {
 }
 
 func (r *reader) Section(ctx context.Context, pos dispatcher.SectionPos) (*dispatcher.Section, error) {
-	// 调色板展开为渲染输入，实体 NBT 保持只读借用；普通实体没有对应的 dispatcher 输入。
+	// 调色板展开为渲染输入，两类实体 NBT 都保持只读借用。
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -58,20 +60,27 @@ func (r *reader) Section(ctx context.Context, pos dispatcher.SectionPos) (*dispa
 		}
 		if chunk != nil {
 			c = &column{
-				chunk:    chunk,
-				entities: source.GroupBlockEntities(chunk.BlockEntities),
-				issues:   issuesFrom(chunk.Diagnostics),
+				chunk:         chunk,
+				blockEntities: source.GroupBlockEntities(chunk.BlockEntities),
+				issues:        issuesFrom(chunk.Diagnostics),
 			}
+			var entityIssues []source.Issue
+			c.entities, entityIssues = source.GroupEntities(chunk.Entities)
+			c.issues = append(c.issues, entityIssues...)
 		}
 		r.columns[cp] = c
 	}
-	if c == nil || c.chunk.Sections[pos.Y] == nil {
+	if c == nil {
 		return nil, nil
 	}
-	return &dispatcher.Section{
-		Blocks:   source.BlocksFromPalette(c.chunk.Sections[pos.Y].Blocks),
-		Entities: c.entities[pos.Y],
-	}, nil
+	result := &dispatcher.Section{BlockEntities: c.blockEntities[pos.Y], Entities: c.entities[pos]}
+	if section := c.chunk.Sections[pos.Y]; section != nil {
+		result.Blocks = source.BlocksFromPalette(section.Blocks)
+	}
+	if result.Blocks == nil && result.Entities == nil {
+		return nil, nil
+	}
+	return result, nil
 }
 
 func (r *reader) ColumnDiagnostics(pos celler.ChunkPos) []source.Issue {

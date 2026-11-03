@@ -65,7 +65,7 @@ func TestReaderDiagnosticsBelongToRequestedColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil)
+	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil, nil)
 	for _, y := range []int32{0, 4} {
 		reader := s.Reader()
 		packet, err := column.BuildColumn(
@@ -123,8 +123,8 @@ func TestReadCancellationAndClose(t *testing.T) {
 	if _, err = s.read(ctx, celler.ChunkPos{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err = s.read(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal(err)
+	if records, err := s.read(context.Background(), celler.ChunkPos{}); err != nil || records != (columnRecords{}) {
+		t.Fatalf("missing records: %v, %v", records, err)
 	}
 	s.Close()
 	if _, err = s.read(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrClosed) {

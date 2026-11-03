@@ -90,7 +90,7 @@ func TestColumnDiagnosticsKeepConversionCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil)
+	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil, nil)
 	var first []column.Issue
 	for _, y := range []int32{0, 8} {
 		packet, err := column.BuildColumn(
@@ -176,7 +176,7 @@ func TestReadersBorrowColumnsAndGroupEntities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(section.Blocks.Indices) != 4096 || section.Blocks.Get(0) != palette.Get(layer_storage.At(0, 0, 0)) || section.Entities[dispatcher.CellPos{15, 15, 2}]["id"] != "example:entity" {
+			if len(section.Blocks.Indices) != 4096 || section.Blocks.Get(0) != palette.Get(layer_storage.At(0, 0, 0)) || section.BlockEntities[dispatcher.CellPos{15, 15, 2}]["id"] != "example:entity" {
 				t.Fatal("block data or entity misplaced")
 			}
 			if section, err := reader.Section(context.Background(), dispatcher.SectionPos{}); err != nil || section != nil {
@@ -193,5 +193,14 @@ func TestReadersBorrowColumnsAndGroupEntities(t *testing.T) {
 	src.err = errors.New("read failed")
 	if _, err := s.Reader().Section(context.Background(), dispatcher.SectionPos{}); !errors.Is(err, src.err) {
 		t.Fatal(err)
+	}
+}
+
+func TestEntityOnlyConvertedColumn(t *testing.T) {
+	// 转换器已提供的普通实体不依赖地形 section 存在。
+	src := &chunks{values: map[celler.ChunkPos]*converter.ConvertedChunk{{}: {Entities: []nbt.Compound{{"id": "minecraft:item_frame", "Pos": []float64{1.5, -60, 2.5}, "Facing": int8(2)}}}}, calls: map[celler.ChunkPos]int{}}
+	section, err := bedrockworld.New(src).Reader().Section(context.Background(), dispatcher.SectionPos{Y: -4})
+	if err != nil || section == nil || section.Blocks != nil || section.Entities == nil || len(section.Entities.List) != 1 {
+		t.Fatalf("entity-only Bedrock section: %+v, %v", section, err)
 	}
 }

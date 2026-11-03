@@ -36,7 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, nil)
+	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, parser.Items, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

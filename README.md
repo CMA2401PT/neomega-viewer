@@ -27,7 +27,7 @@ Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再
 
 ## 用 section 来源组装浏览服务
 
-浏览存档、结构文件和内存场景时，变化的是方块从哪里来，渲染和网页加载的过程可以相同。一个 section 是 16×16×16 的方块区域。来源实现 `dispatcher.SectionSource`，按 section 坐标返回完整 Java 状态调色板和格内方块实体；不存在的位置返回 `nil, nil`，表示空气。这样，每种输入格式只需适配来源，浏览服务可以继续使用同一套组件。
+浏览存档、结构文件和内存场景时，变化的是方块从哪里来，渲染和网页加载的过程可以相同。一个 section 是 16×16×16 的方块区域。来源实现 `dispatcher.SectionSource`，按 section 坐标返回完整 Java 状态调色板、格内方块实体和可选的普通实体；不存在的位置返回 `nil, nil`，表示空气。这样，每种输入格式只需适配来源，浏览服务可以继续使用同一套组件。
 
 从数据到页面分成三步：来源提供 section，`dispatcher.Pipeline.BuildSections` 读取中心与六向邻居并生成快照，`column.BuildColumn` 将一列快照编码为 NVWC 字节。NVWC 是网页加载一段竖直区块列时使用的响应格式。`viewhttp` 调度构建、缓存这些字节并提供 HTTP 路由。它接收一个构建函数，因此来源与 Pipeline 由程序自行组合。
 
@@ -49,7 +49,7 @@ Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
 // 检查 err 后创建默认 Java 组合；陶罐与旗帜各自加载包内图片。
-pipeline, err := javapreset.NewPipeline(cube.New(16), resources.Tables, nil)
+pipeline, err := javapreset.NewPipeline(cube.New(16), resources.Tables, resources.Items, nil)
 ```
 
 Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `cmd/world-viewer` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
@@ -87,7 +87,7 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 })
 ```
 
-每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。展示框等普通实体保存在 `ConvertedChunk.Entities` 中，当前 dispatcher 只接收方块及方块实体，因此这些实体不会显示。
+每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。普通实体保存在 `ConvertedChunk.Entities` 中，来源按浮点位置分组后交给 `Section.Entities`。Java 来源独立读取地形和实体 region，两份记录任一缺失都不掩盖另一份。无方块的 section 也可包含实体。展示框组合普通静态物品与框体，物品失败时保留框体并返回实体诊断。
 
 内存场景直接填 map，无须构造世界句柄。下面在 section 原点附近放一块石头；map 的键是 section 坐标，`layer_storage.At` 使用 section 内的方块坐标：
 
@@ -156,11 +156,11 @@ Bedrock 的 adapt 等待者也可能先于底层读取返回取消。组装方�
 
 `column.BuildColumn` 只查询请求柱子的诊断，保留来源返回的每一条。来源诊断覆盖整根柱子，不按请求的高度窗口裁剪，也不混入为剔面读取的邻居诊断。来源应让同一代内容的条目及计数保持一致。网页按柱子坐标和条目内容消除高度窗口之间的重复报告；同一响应中的相同条目仍分别保留。
 
-渲染诊断按完整状态与原因去重。响应中的 `scope` 区分单格与整列，`origin` 区分渲染诊断与来源诊断，以便采用各自的去重规则。NVWC 头里的 `unknown` 只统计缺失模型的方块数量。协议布局和 JSON 示例见[读取与传输](cmd/world-viewer/README.md#读取与传输)。
+方块渲染诊断按完整状态与原因去重，普通实体诊断保留各自的位置和实体 ID。响应中的 `scope` 区分方块、普通实体与整列，`origin` 区分渲染诊断与来源诊断，以便采用各自的去重规则。NVWC 头里的 `unknown` 只统计缺失模型的方块数量。协议布局和 JSON 示例见[读取与传输](cmd/world-viewer/README.md#读取与传输)。
 
 Bedrock 来源保留 converter 按状态汇总的 `unknown_block` 和按实体 ID 汇总的 `unsupported_block_entity` 计数。单项 NBT 或规则错误按一项报告；有具体坐标时保留坐标。这些来源诊断始终覆盖请求柱子的全部高度，不增加缺失模型数量。
 
-需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。其他来源只要产出同一种实体值，就能使用这个函数。结构文件适配器可以先将结构放到所需的 section 坐标，再提供 `SectionSource`，或直接填充 `MemorySections`。
+需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。普通实体改用 `source.GroupEntities(entities)`，输入是含字符串 `id` 和三项 Double `Pos` 的 Compound 列表。它按位置决定唯一所属 section，保留局部浮点位置和原始 NBT。`List` 决定输出归属；可选的宽松 `Query` 只返回同一局部坐标系的候选，不会增加输出。其他来源只要产出相同数据，就能使用这些函数。结构文件适配器可以先将结构放到所需的 section 坐标，再提供 `SectionSource`，或直接填充 `MemorySections`。
 
 ## 运行浏览器
 

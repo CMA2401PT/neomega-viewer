@@ -10,11 +10,15 @@ import (
 
 	"celler"
 	"neomega-blocks/ir"
+	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/viewer/blockactor"
 	"neomega-viewer-core/viewer/blockdata"
 	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/effector"
+	"neomega-viewer-core/viewer/entity_render"
+	"neomega-viewer-core/viewer/geometry"
+	"neomega-viewer-core/viewer/javapreset"
 	"neomega-viewer-core/viewer/merger"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
@@ -37,7 +41,7 @@ func TestMemoryColumnMeshAndSourceDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil)
+	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil, nil)
 	center := celler.ChunkPos{
 		X: -2,
 		Z: 3,
@@ -160,5 +164,39 @@ func TestMemoryColumnMeshAndSourceDiagnostics(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sections.queried, []celler.ChunkPos{center, center}) {
 		t.Fatal(sections.queried)
+	}
+}
+
+func TestEntityDiagnosticsSurviveColumnEncoding(t *testing.T) {
+	// 两个相同类型的框在不同位置失败时，响应必须各自保留诊断与仍可绘制的框体。
+	resources, err := preset.Open(preset.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipeline, err := javapreset.NewPipeline(cube.New(16), resources.Tables, resources.Items, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entities := &entity_render.Input{}
+	for _, x := range []float64{1.5, 2.5} {
+		entities.List = append(entities.List, entity_render.Entity{ID: "minecraft:item_frame", Pos: geometry.Vec3{x, 3.5, 4.5}, NBT: nbt.Compound{"Facing": int8(2), "Item": nbt.Compound{"id": "example:missing"}}})
+	}
+	sections := source.MemorySections{dispatcher.SectionPos{X: -1, Y: -4, Z: 2}: {Entities: entities}}
+	packet, err := column.BuildColumn(context.Background(), pipeline, sections, column.Key{X: -1, Z: 2, MinY: -4, MaxY: -4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := int(binary.LittleEndian.Uint32(packet[16:]))
+	var issues []column.Issue
+	if err := json.Unmarshal(packet[len(packet)-size:], &issues); err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 2 || binary.LittleEndian.Uint32(packet[8:]) != 1 || binary.LittleEndian.Uint32(packet[12:]) != 0 {
+		t.Fatalf("entity packet issues=%+v", issues)
+	}
+	for index, issue := range issues {
+		if issue.Scope != "entity" || issue.EntityID != "minecraft:item_frame" || issue.Blockstate != "" || issue.BlockEntityID != "" || issue.Reason != "entity_error" || issue.Position != ([3]int32{-15 + int32(index), -61, 36}) {
+			t.Fatal(issue)
+		}
 	}
 }

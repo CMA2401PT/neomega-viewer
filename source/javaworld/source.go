@@ -2,6 +2,7 @@ package javaworld
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 
 	"celler"
@@ -16,8 +17,12 @@ type sourceRequest struct {
 	pos   celler.ChunkPos
 	reply chan sourceResult
 }
+
+// columnRecords 分别保留 Terrain 和 Entities；任一缺失都不掩盖另一份记录。
+type columnRecords [2]*region.Record
+
 type sourceResult struct {
-	record region.Record
+	record columnRecords
 	err    error
 }
 
@@ -51,7 +56,7 @@ func (s *Source) Reader() dispatcher.SectionSource {
 
 func (s *Source) run(ctx context.Context, world *java.World, dim java.Dimension) {
 	defer close(s.done)
-	cache := bytecache.New[celler.ChunkPos, region.Record](32 << 20)
+	cache := bytecache.New[celler.ChunkPos, columnRecords](32 << 20)
 	for {
 		select {
 		case <-ctx.Done():
@@ -63,9 +68,25 @@ func (s *Source) run(ctx context.Context, world *java.World, dim java.Dimension)
 			record, ok := cache.Get(request.pos)
 			var err error
 			if !ok {
-				record, err = world.ReadRaw(dim, java.Terrain, request.pos)
+				for index, kind := range []java.RegionKind{java.Terrain, java.Entities} {
+					value, readErr := world.ReadRaw(dim, kind, request.pos)
+					if errors.Is(readErr, fs.ErrNotExist) {
+						continue
+					}
+					if readErr != nil {
+						err = readErr
+						break
+					}
+					record[index] = &value
+				}
 				if err == nil {
-					cache.Put(request.pos, record, len(record.Data))
+					size := 0
+					for _, value := range record {
+						if value != nil {
+							size += len(value.Data)
+						}
+					}
+					cache.Put(request.pos, record, size)
 				}
 			}
 			request.reply <- sourceResult{
@@ -75,9 +96,9 @@ func (s *Source) run(ctx context.Context, world *java.World, dim java.Dimension)
 		}
 	}
 }
-func (s *Source) read(ctx context.Context, pos celler.ChunkPos) (region.Record, error) {
+func (s *Source) read(ctx context.Context, pos celler.ChunkPos) (columnRecords, error) {
 	if err := ctx.Err(); err != nil {
-		return region.Record{}, err
+		return columnRecords{}, err
 	}
 	reply := make(chan sourceResult, 1)
 	select {
@@ -87,17 +108,17 @@ func (s *Source) read(ctx context.Context, pos celler.ChunkPos) (region.Record, 
 		reply: reply,
 	}:
 	case <-ctx.Done():
-		return region.Record{}, ctx.Err()
+		return columnRecords{}, ctx.Err()
 	case <-s.done:
-		return region.Record{}, fs.ErrClosed
+		return columnRecords{}, fs.ErrClosed
 	}
 	select {
 	case result := <-reply:
 		return result.record, result.err
 	case <-ctx.Done():
-		return region.Record{}, ctx.Err()
+		return columnRecords{}, ctx.Err()
 	case <-s.done:
-		return region.Record{}, fs.ErrClosed
+		return columnRecords{}, fs.ErrClosed
 	}
 }
 func (s *Source) Close() {

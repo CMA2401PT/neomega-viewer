@@ -2,13 +2,14 @@ import { decodeFrame } from "@neomega/viewer/render";
 import type { FrameData } from "@neomega/viewer/render";
 
 export interface RenderIssue {
-  scope: "block" | "column";
+  scope: "block" | "entity" | "column";
   origin: "render" | "source";
   position: [number, number, number];
   blockstate?: string;
   reason: string;
   count: number;
   blockEntityId?: string;
+  entityId?: string;
   detail?: string;
 }
 

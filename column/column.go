@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"celler"
 	"neomega-viewer-core/viewer/dispatcher"
@@ -20,7 +21,7 @@ type Key struct {
 }
 
 type Issue struct {
-	// Scope 明确区分单格与整列；整列 Position 为柱子原点，不承担单格定位。
+	// Scope 区分方块、普通实体与整列；整列 Position 为柱子原点。
 	// Origin 区分来源与渲染两种去重规则，不依赖 Reason 名称或是否带有状态。
 	Scope         string   `json:"scope"`
 	Origin        string   `json:"origin"`
@@ -29,6 +30,7 @@ type Issue struct {
 	Reason        string   `json:"reason"`
 	Count         int      `json:"count"`
 	BlockEntityID string   `json:"blockEntityId,omitempty"`
+	EntityID      string   `json:"entityId,omitempty"`
 	Detail        string   `json:"detail,omitempty"`
 }
 
@@ -113,6 +115,12 @@ func BuildColumn(
 				missing++
 			}
 			report(issue)
+		}
+		for _, diagnostic := range result.EntityDiagnostics {
+			issues = append(issues, Issue{Scope: "entity", Origin: "render", Count: 1,
+				Position: [3]int32{positioned.Pos.X*16 + int32(math.Floor(diagnostic.Pos[0])), positioned.Pos.Y*16 + int32(math.Floor(diagnostic.Pos[1])), positioned.Pos.Z*16 + int32(math.Floor(diagnostic.Pos[2]))},
+				EntityID: diagnostic.ID, Reason: "entity_error", Detail: diagnostic.Err.Error(),
+			})
 		}
 		unknown += missing
 		if len(result.Frame.Mesh.Quads) == 0 && len(result.Frame.Actors) == 0 && len(result.Frame.Effects) == 0 {

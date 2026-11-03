@@ -8,9 +8,11 @@ import (
 	"neomega-viewer-core/viewer/dispatcher"
 	core "neomega-viewer-core/viewer/geometry"
 	"neomega-viewer-core/viewer/javapreset"
+	preset "neomega-viewer-core/viewer/resources"
 )
 
-func newPipeline(tables *core.Tables[uint32]) (*dispatcher.Pipeline, error) {
+func newPipeline(resources *preset.Preset) (*dispatcher.Pipeline, error) {
+	tables := resources.Tables
 	// 占位只持有石头形状的独立副本，不改变共享几何表的 ID 空间。
 	stone, err := tables.ModelIDs(ir.IRBlock("minecraft:stone []").Hash())
 	if err != nil || len(stone) == 0 {
@@ -23,5 +25,5 @@ func newPipeline(tables *core.Tables[uint32]) (*dispatcher.Pipeline, error) {
 		shape.Quads[i].Surface.Unlit = true
 		shape.Quads[i].Color = [3]float32{1, 0, 1}
 	}
-	return javapreset.NewPipeline(cube.New(16), tables, &shape)
+	return javapreset.NewPipeline(cube.New(16), tables, resources.Items, &shape)
 }

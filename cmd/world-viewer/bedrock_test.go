@@ -36,7 +36,7 @@ func TestBedrockFixtureBuildColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline, err := newPipeline(resources.Tables)
+	pipeline, err := newPipeline(resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestBedrockPickerAndFixSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline, err := newPipeline(resources.Tables)
+	pipeline, err := newPipeline(resources)
 	if err != nil {
 		t.Fatal(err)
 	}

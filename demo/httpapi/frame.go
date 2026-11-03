@@ -41,7 +41,7 @@ func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fi
 			states = fixpalette.FixSection(stateFixer, states, [6]*layer_storage.Palette[ir.IRBlock]{})
 		}
 		result, err := pipeline.Build(
-			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: entities},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), BlockEntities: entities},
 			dispatcher.Neighbours{},
 			dispatcher.Options{Mesh: options},
 		)

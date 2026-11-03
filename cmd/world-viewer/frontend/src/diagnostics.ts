@@ -14,7 +14,9 @@ export function createDiagnostics(
       const fragment = document.createDocumentFragment();
       for (const issue of issues) {
         let key: string;
-        if (issue.origin === "render") {
+        if (issue.scope === "entity") {
+          key = JSON.stringify(["entity", issue.position, issue.entityId, issue.reason, issue.detail]);
+        } else if (issue.origin === "render") {
           key = JSON.stringify(["render", issue.blockstate, issue.reason]);
         } else {
           const entry = JSON.stringify([
@@ -29,15 +31,18 @@ export function createDiagnostics(
         seen.add(key);
         const item = document.createElement("li");
         const state = document.createElement("code");
-        state.textContent = issue.blockstate || issue.blockEntityId || "来源数据异常";
+        state.textContent = issue.blockstate || issue.blockEntityId || issue.entityId || "来源数据异常";
         const location = document.createElement("div");
         const [x, y, z] = issue.position;
-        location.textContent = issue.scope === "block"
+        location.textContent = issue.scope !== "column"
           ? `首次发现：X ${x} · Y ${y} · Z ${z}`
           : `区块：${column[0]}, ${column[1]}`;
         const reason = document.createElement("div");
         const reasons: Record<string, string> = {
           missing_model: "当前资源缺少模型（紫色占位）",
+          invalid_entities: "无法读取普通实体列表",
+          invalid_entity: "已跳过异常的普通实体数据",
+          entity_error: "实体外观生成失败，保留可用部分",
           invalid_block_entities: "无法读取方块实体列表，保留静态模型",
           invalid_block_entity: "已跳过异常的方块实体数据",
           unknown_block: "来源无法转换方块状态",

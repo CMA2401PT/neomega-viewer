@@ -28,7 +28,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newPipeline(resources.Tables)
+	engine, err := newPipeline(resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 		cube.New(16),
 		resources.Tables,
 		effector.New(nil),
-		blockactor.New(failedDiagnosticActor{}),
+		blockactor.New(failedDiagnosticActor{}), nil,
 		&resources.Tables.Shapes[stone[0]],
 	)
 	packet, err = column.BuildColumn(

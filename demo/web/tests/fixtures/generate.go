@@ -30,7 +30,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(scene.Blocks)
-	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, nil)
+	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, parser.Items, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err := pipeline.Build(dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: scene.NBT}, dispatcher.Neighbours{}, dispatcher.Options{})
+	result, err := pipeline.Build(dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), BlockEntities: scene.NBT}, dispatcher.Neighbours{}, dispatcher.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}
