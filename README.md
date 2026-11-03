@@ -29,15 +29,15 @@ Bedrock 方块默认在内存中转换并修复栅栏连接、楼梯拐角等邻
 
 ## 下载编译版本
 
-仓库的 [Actions 页面](https://github.com/CMA2401PT/neomega-viewer/actions/workflows/build.yml) 提供“手动编译存档浏览器”工作流。点击 **Run workflow**，选择应用源码所在的分支，再运行即可。工作流不会随推送自动触发。
-
-运行成功后，在该次运行页面的 **Artifacts** 中下载对应系统的版本：
+从 [latest Release](https://github.com/CMA2401PT/neomega-viewer/releases/tag/latest) 下载最新成功构建的版本。这里只维护一个 `latest`，每次更新都会替换三个平台的下载包：
 
 - macOS arm64：`world-viewer-macos-arm64.tar.gz`。
 - Windows amd64：`world-viewer-windows-amd64.zip`。
 - Linux amd64：`world-viewer-linux-amd64.tar.gz`。
 
-压缩包内包含可独立运行的程序，解压后按前面的“浏览存档”说明启动。编译版本保留 30 天。
+压缩包内包含可独立运行的程序，解压后按前面的“浏览存档”说明启动。Release 中的下载包长期保留，直到下次成功发布时被替换。
+
+需要更新时，在 [Actions 页面](https://github.com/CMA2401PT/neomega-viewer/actions/workflows/build.yml) 打开“手动编译存档浏览器”，点击 **Run workflow** 并选择应用源码所在的分支。只有三个平台都构建成功后，工作流才会更新 `latest`。工作流不会随推送自动触发。该次运行的 **Artifacts** 也保留一份下载包，保留期为 30 天。
 
 工作流使用所选分支的应用源码，以及同一 GitHub 账户下各依赖仓库的默认分支。依赖按本地工作区的目录层级取齐，以满足 `go.mod` 中的 `replace` 路径。Go 版本取自应用的 `go.mod`，三个平台均关闭 CGO 并使用 Go 交叉编译。网页和几何资源直接使用已提交的内嵌产物。
 

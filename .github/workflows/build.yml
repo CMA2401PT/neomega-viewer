@@ -3,6 +3,11 @@ name: 手动编译存档浏览器
 on:
   workflow_dispatch:
 
+# latest 由每次成功构建替换，同一时间只运行一批，避免发布互相覆盖。
+concurrency:
+  group: world-viewer-latest
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -84,3 +89,47 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 30
+
+  publish:
+    name: 更新 latest Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: 读取本次构建对应的提交
+        uses: actions/checkout@v7
+
+      - name: 收齐三个平台的压缩包
+        uses: actions/download-artifact@v8
+        with:
+          pattern: world-viewer-*
+          path: dist
+          merge-multiple: true
+          # Windows 版本本身就是 zip，保留压缩包供 Release 下载。
+          skip-decompress: true
+
+      - name: 发布或替换 latest 的下载包
+        shell: bash
+        run: |
+          # latest 是固定下载入口，标签随成功构建移动到实际编译的提交。
+          git tag --force latest "$GITHUB_SHA"
+          git push --force origin refs/tags/latest
+
+          cat > release-notes.md <<'EOF'
+          最新成功构建的存档浏览器，提供 macOS arm64、Windows amd64 和 Linux amd64 版本。
+
+          解压后启动 world-viewer（Windows 为 world-viewer.exe），再在浏览器打开 http://127.0.0.1:2412。
+
+          每次手动构建成功后会替换这三个下载包。
+          EOF
+
+          if gh release view latest > /dev/null 2>&1; then
+            gh release upload latest dist/* --clobber
+            gh release edit latest --title latest --notes-file release-notes.md --latest
+          else
+            gh release create latest dist/* --verify-tag --title latest --notes-file release-notes.md --latest
+          fi
