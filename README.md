@@ -27,6 +27,20 @@ Bedrock 方块默认在内存中转换并修复栅栏连接、楼梯拐角等邻
 
 程序当前使用 Java 1.21.4 几何资源。未覆盖的 Java 状态显示为紫色方块；无法转换的 Bedrock 状态会变成空气，并在“渲染异常”中报告。异常面板只统计实际加载的区域。更完整的参数、读取范围与诊断说明见 [存档浏览器说明](cmd/world-viewer/README.md)。
 
+## 下载编译版本
+
+仓库的 [Actions 页面](https://github.com/CMA2401PT/neomega-viewer/actions/workflows/build.yml) 提供“手动编译存档浏览器”工作流。点击 **Run workflow**，选择应用源码所在的分支，再运行即可。工作流不会随推送自动触发。
+
+运行成功后，在该次运行页面的 **Artifacts** 中下载对应系统的版本：
+
+- macOS arm64：`world-viewer-macos-arm64.tar.gz`。
+- Windows amd64：`world-viewer-windows-amd64.zip`。
+- Linux amd64：`world-viewer-linux-amd64.tar.gz`。
+
+压缩包内包含可独立运行的程序，解压后按前面的“浏览存档”说明启动。编译版本保留 30 天。
+
+工作流使用所选分支的应用源码，以及同一 GitHub 账户下各依赖仓库的默认分支。依赖按本地工作区的目录层级取齐，以满足 `go.mod` 中的 `replace` 路径。Go 版本取自应用的 `go.mod`，三个平台均关闭 CGO 并使用 Go 交叉编译。网页和几何资源直接使用已提交的内嵌产物。
+
 ## 检查单个方块与网格
 
 需要比较方块状态、面剔除与网格合并时，运行演示页面。它需要 Node.js 24 或以上；网页构建后与 Go 服务一起使用：

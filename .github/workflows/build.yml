@@ -1,0 +1,86 @@
+name: 手动编译存档浏览器
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 编译 ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            goos: darwin
+            goarch: arm64
+            executable: world-viewer
+          - target: windows-amd64
+            goos: windows
+            goarch: amd64
+            executable: world-viewer.exe
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            executable: world-viewer
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '0'
+
+    steps:
+      - name: 读取选定版本的应用源码
+        uses: actions/checkout@v7
+        with:
+          path: apps/neomega-viewer
+
+      - name: 按工作区布局读取依赖仓库
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          # go.mod 的本地 replace 要求基础库与 apps 保持这一层级。
+          for module in neomega-nbt neomega-blocks neomega-celler neomega-packfs neomega-converter-core neomega-viewer-core; do
+            git clone --depth 1 "https://github.com/$REPOSITORY_OWNER/$module.git" "$module"
+          done
+          git clone --depth 1 "https://github.com/$REPOSITORY_OWNER/neomega-converter.git" apps/neomega-converter
+
+      - name: 准备 Go 和依赖缓存
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/neomega-viewer/go.mod
+          cache-dependency-path: '**/go.sum'
+
+      - name: 编译包含网页与资源的可执行文件
+        working-directory: apps/neomega-viewer
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: go build -trimpath -ldflags='-s -w' -o "dist/$EXECUTABLE" ./cmd/world-viewer
+
+      - name: 打包对应平台的版本
+        working-directory: apps/neomega-viewer
+        env:
+          TARGET: ${{ matrix.target }}
+          TARGET_OS: ${{ matrix.goos }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          mkdir -p dist/packages
+          if [ "$TARGET_OS" = windows ]; then
+            zip -j "dist/packages/world-viewer-$TARGET.zip" "dist/$EXECUTABLE"
+          else
+            # tar 保留 macOS 与 Linux 可执行文件的运行权限。
+            tar -czf "dist/packages/world-viewer-$TARGET.tar.gz" -C dist "$EXECUTABLE"
+          fi
+
+      - name: 上传可下载的编译版本
+        uses: actions/upload-artifact@v7
+        with:
+          path: apps/neomega-viewer/dist/packages/*
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
