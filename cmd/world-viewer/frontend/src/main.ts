@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   loadAtlas,
   createEffectRegistry,
+  enchantingTableBookTextureURL,
   SectionScene,
   type EffectRegistry,
   type SectionObject,
@@ -355,7 +356,7 @@ requestAnimationFrame(animate);
 async function loadTextures(): Promise<void> {
   atlas = await loadAtlas("/resources/atlas.png");
   try {
-    book = await loadAtlas("/resources/entity/enchanting_table_book.png");
+    book = await loadAtlas(enchantingTableBookTextureURL);
     effects = createEffectRegistry(book);
   } catch {
     /* The table's static shape remains available. */

@@ -16,8 +16,10 @@ import (
 	"neomega-converter-core"
 	convert "neomega-converter-core/bedrock"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/viewer/blockactor"
 	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/effector"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
 	"neomega-viewer/source"
@@ -88,7 +90,7 @@ func TestColumnDiagnosticsKeepConversionCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, nil, nil)
+	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil)
 	var first []column.Issue
 	for _, y := range []int32{0, 8} {
 		packet, err := column.BuildColumn(

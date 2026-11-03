@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log"
 	"math"
 	renderresources "neomega-viewer-core/viewer/resources"
@@ -17,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/viewassets"
 )
@@ -78,15 +75,7 @@ func run() error {
 		return err
 	}
 	assets, web := renderresources.Resources(), viewassets.Web()
-	data, err := fs.ReadFile(assets, "blocksAtlases.json")
-	if err != nil {
-		return err
-	}
-	atlas := &jmodel.Atlas{}
-	if err = json.Unmarshal(data, atlas); err != nil {
-		return err
-	}
-	pipeline, err := newPipeline(resources.Tables, atlas)
+	pipeline, err := newPipeline(resources.Tables)
 	if err != nil {
 		return err
 	}

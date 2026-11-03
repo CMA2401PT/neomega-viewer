@@ -4,6 +4,7 @@ import {
   decodeFrame,
   loadAtlas,
   createEffectRegistry,
+  enchantingTableBookTextureURL,
 } from "@neomega/viewer/render";
 import { getJSON } from "../browser/api";
 import "../browser/style.css";
@@ -233,7 +234,7 @@ async function start(): Promise<void> {
   const catalog = await getJSON<Catalog>("/api/subchunks");
   const [atlas, bookTexture] = await Promise.all([
     loadAtlas(catalog.atlasUrl),
-    loadAtlas("/assets/entity/enchanting_table_book.png"),
+    loadAtlas(enchantingTableBookTextureURL),
   ]);
   viewport = new MeshViewport(el("viewport"), atlas, {
     gridSize: 16,

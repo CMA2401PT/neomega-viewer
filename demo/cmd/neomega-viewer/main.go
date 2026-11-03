@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 
 	"neomega-viewer-core/fixer/java-postprocess"
 	"neomega-viewer-core/viewer/cube"
-	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	"neomega-viewer-core/viewer/javapreset"
 	"neomega-viewer-core/viewer/mesher"
 	blockmesh "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/demo/catalog"
@@ -20,7 +19,7 @@ import (
 )
 
 func main() {
-	assets := flag.String("assets", "../../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
+	assets := flag.String("assets", "../../neomega-viewer-core/viewer/resources/textures", "matching resource bundle")
 	tables := flag.String("tables", "", "geometry table file; empty uses bundled tables")
 	web := flag.String("web", "demo/web/dist", "built browser files")
 	listen := flag.String("listen", "127.0.0.1:2410", "HTTP listen address")
@@ -37,12 +36,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	atlasData, err := os.ReadFile(filepath.Join(*assets, "blocksAtlases.json"))
+	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, nil)
 	if err != nil {
-		log.Fatal(err)
-	}
-	var atlas jmodel.Atlas
-	if err := json.Unmarshal(atlasData, &atlas); err != nil {
 		log.Fatal(err)
 	}
 	server := &http.Server{
@@ -50,7 +45,7 @@ func main() {
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
 			Subchunks: mesher.NewMesher(cube.New(16), parser.Tables),
-			Frames:    httpapi.NewFramePipeline(parser.Tables, atlas),
+			Frames:    pipeline,
 			Fixer:     stateFixer,
 			Catalog:   entries,
 			AssetsDir: *assets,

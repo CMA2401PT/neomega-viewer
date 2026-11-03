@@ -50,7 +50,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newPipeline(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables)
 	if err != nil {
 		t.Fatal(err)
 	}

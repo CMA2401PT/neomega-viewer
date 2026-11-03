@@ -5,8 +5,7 @@
 查表渲染，含水方块可叠加水层（见 [多层渲染方案.md](../../neomega-viewer-core/viewer/多层渲染方案.md)）。`moving_piston` 缺少决定移动内容的数据，
 无法仅凭状态确定静态外形。
 
-带 NBT 的渲染使用 `dispatcher.Pipeline`，输入包含 hash 层与按格子坐标索引的 SNBT。SNBT 是 NBT 的文本表示，
-用于传递陶罐纹样等方块状态之外的信息。
+带 NBT 的渲染使用 `dispatcher.Pipeline`，输入包含完整 Java 状态与按格子坐标索引的已解码 NBT。应用中的 SNBT 是 NBT 的文本表示，解析后再进入核心。
 
 特殊外观所需的信息与处理方式分成三类：
 
@@ -65,7 +64,7 @@ NBT 才能保留这类外观信息。
 
 判据看的是 Java 侧。床的颜色在 Bedrock 里存 NBT，在 Java 里编进了方块名（`red_bed`、`blue_bed`），所以它属于 1b，不属于这里。
 
-- **旗帜的图案**：颜色在方块名里，朝向在 block state 里，图案只在 NBT 的 `patterns` 列表里。现在只能画出纯色旗帜。
+- **旗帜的图案**：颜色在方块名里，朝向在 block state 里，图案只在 NBT 的 `patterns` 列表里。Java 图案已由 Go 合成私有贴图，姿态固定；Bedrock 图案仍需转换器输出对应的 Java NBT。
 - **展示框**：在 Java 里，展示框是实体（entity），不是方块，本身就不在 LayerStorage 里，里面的物品更不在。
   Bedrock 的展示框是带 block entity 的方块，映射到 Java 时要从方块层挪到实体层。这一点凭记忆，未联网核实。
 
@@ -73,7 +72,7 @@ NBT 才能保留这类外观信息。
 NBT 算出几何。每种方块是 `blockactor/` 下的一个子包，新增一种只加一个包。
 
 - [x] 陶罐：四面纹样按 `sherds` 换贴图，NBT 结构见 `blockactor/decoratedpot/NBT.md`。
-- [ ] 旗帜：要按 `patterns` 合成纹理，并让前端按材质选贴图。
+- [x] 旗帜：按 Java `patterns` 或旧 `Patterns` 合成私有贴图，经 NVFR v2 传输并绑定，见 [旗帜说明](../../neomega-viewer-core/viewer/blockactor/banner/NBT.md)。
 - [ ] 箱子、潜影盒：不做开合动画，有静态外形，目前由 mesher 画。
 - [ ] 展示框：Java 里是实体，不在方块层，要另走实体通道。
 

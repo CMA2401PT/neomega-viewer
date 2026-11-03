@@ -44,12 +44,12 @@ Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再
 
 ### 三种来源的组装
 
-几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，图集元数据来自与它匹配的资源。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
+几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，特殊处理器自行携带固定图片。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
 
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
-// 检查 err 后创建 Pipeline。atlas 是已解析的图集；nil 表示不开启陶罐 actor。
-pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, atlas, nil)
+// 检查 err 后创建默认 Java 组合；陶罐与旗帜各自加载包内图片。
+pipeline, err := javapreset.NewPipeline(cube.New(16), resources.Tables, nil)
 ```
 
 Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `cmd/world-viewer` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
@@ -191,10 +191,9 @@ new-world/
 go run ./cmd/neomega-assets build -version 1.21.4
 ```
 
-viewer-core 的建表器直接读取资源生成目录，并检查资源版本与 Java 状态版本是否一致。服务使用 viewer-core 的图集定义，从 `-assets` 指定的目录读取以完整纹理资源 ID 为键的 `blocksAtlases.json`，并提供配套的 `blocksAtlasLatest.png` 和 `THIRD_PARTY_NOTICES.txt`。
+viewer-core 的建表器直接读取资源生成目录，并检查资源版本与 Java 状态版本是否一致。在 viewer-core 模块根目录运行 `go generate ./viewer/resources`，把几何表和配套图片交付到运行时资源目录。
 
-子区块页面启动时还会加载附魔书贴图。服务从相对于 `-assets` 的 `../works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png` 读取它。使用默认资源目录时，这个文件位于 `neomega-viewer-core/viewer-assets/dist/works/04-renderers/assets/minecraft/textures/entity/enchanting_table_book.png`。部署资源时需要一并保留这条相对路径。资源更新方式见 [viewer-assets README](../../neomega-viewer-core/viewer-assets/README.md)。
-
+demo 的 `-assets` 默认指向 `../../neomega-viewer-core/viewer/resources/textures`，其中只需 `atlas.png` 和来源声明。陶罐与旗帜图片内嵌在各自 Go 处理器中，附魔书图片随前端包构建，应用无需单独提供这些资源的 HTTP 路径。
 演示网页通过 `file:../../../../neomega-viewer-core/viewer/web` 依赖仓库内的共享前端包。`npm ci` 按锁文件安装演示页依赖，并链接共享包。在 `apps/neomega-viewer` 中构建网页并启动服务：
 
 ```sh
@@ -216,7 +215,7 @@ go run ./demo/cmd/neomega-viewer
 
 ```sh
 go run ./demo/cmd/neomega-viewer \
-  -assets /path/to/dist/final \
+  -assets /path/to/runtime/textures \
   -tables /path/to/geometry.nvtables \
   -web /path/to/web/dist \
   -listen 127.0.0.1:2410
@@ -276,7 +275,6 @@ wc -c /tmp/solid-raw.nvmesh /tmp/solid-culled.nvmesh /tmp/solid.nvmesh
 | `GET /api/subchunks/{scene}/frame` | NVFR 快照：静态几何、特效、block actor |
 | `POST /api/subchunk/frame` | 提交 `.nvblocks` 原始字节（无 NBT），返回 NVFR |
 | `GET /assets/atlas.png` | 与材质区域配套的 PNG |
-| `GET /assets/entity/enchanting_table_book.png` | 附魔书特效的贴图 |
 
 `POST /api/block` 的正文为 `{"id": <javaHash>}`。返回的 `binding` 标识完整 Java 状态，`renderer` 描述静态类别，`geometry` 包含绘制数据。`binding` 是 HTTP 展示格式，Go 核心与目录内部使用 IRBlock。
 

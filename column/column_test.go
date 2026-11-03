@@ -10,9 +10,11 @@ import (
 
 	"celler"
 	"neomega-blocks/ir"
+	"neomega-viewer-core/viewer/blockactor"
 	"neomega-viewer-core/viewer/blockdata"
 	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/effector"
 	"neomega-viewer-core/viewer/merger"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
@@ -35,7 +37,7 @@ func TestMemoryColumnMeshAndSourceDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, nil, nil)
+	pipeline := dispatcher.NewPipeline(cube.New(16), resources.Tables, effector.New(nil), blockactor.New(), nil)
 	center := celler.ChunkPos{
 		X: -2,
 		Z: 3,

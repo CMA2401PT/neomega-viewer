@@ -30,7 +30,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newPipeline(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newPipeline(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestEmbeddedSiteAndResources(t *testing.T) {
 		Assets: assets,
 		Web:    web,
 	})
-	for _, name := range []string{"/", "/resources/atlas.png", "/resources/blocksAtlases.json", "/resources/entity/enchanting_table_book.png", "/resources/THIRD_PARTY_NOTICES.txt", "/LICENSE.txt", "/THREE-LICENSE.txt"} {
+	for _, name := range []string{"/", "/resources/atlas.png", "/resources/THIRD_PARTY_NOTICES.txt", "/LICENSE.txt", "/THREE-LICENSE.txt"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", name, nil))
 		if response.Code != 200 || response.Body.Len() == 0 {

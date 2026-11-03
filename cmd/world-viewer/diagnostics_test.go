@@ -19,7 +19,6 @@ import (
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/effector"
 	"neomega-viewer-core/viewer/merger"
-	"neomega-viewer-core/viewer/mesher/geometry"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
 )
@@ -29,7 +28,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newPipeline(resources.Tables, nil)
+	engine, err := newPipeline(resources.Tables)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,6 +187,6 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 type failedDiagnosticActor struct{}
 
 func (failedDiagnosticActor) BlockNames() []string { return []string{"example:missing"} }
-func (failedDiagnosticActor) Build(input blockactor.Input) (geometry.Mesh, error) {
-	return geometry.Mesh{}, errors.New("actor appearance unavailable")
+func (failedDiagnosticActor) Build(input blockactor.Input) (blockactor.Appearance, error) {
+	return blockactor.Appearance{}, errors.New("actor appearance unavailable")
 }

@@ -4,32 +4,22 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"os"
-	"path/filepath"
 
 	"celler/layer_storage"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
-	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
+	"neomega-viewer-core/viewer/javapreset"
 	blockmesh "neomega-viewer-core/viewer/resources"
-	"neomega-viewer/demo/httpapi"
 	"neomega-viewer/demo/scenes"
+	viewsource "neomega-viewer/source"
 )
 
 func main() {
-	assets := flag.String("assets", "../../neomega-viewer-core/viewer-assets/dist/final", "matching resource bundle")
 	output := flag.String("out", "../../neomega-viewer-core/viewer/web/tests/fixtures/block_entities.nvframe", "frame output")
 	flag.Parse()
-	data, err := os.ReadFile(filepath.Join(*assets, "blocksAtlases.json"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	var atlas jmodel.Atlas
-	if err := json.Unmarshal(data, &atlas); err != nil {
-		log.Fatal(err)
-	}
 	parser, err := blockmesh.Open(blockmesh.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
@@ -40,8 +30,15 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(scene.Blocks)
-	pipeline := httpapi.NewFramePipeline(parser.Tables, atlas)
-	result, err := pipeline.Build(plain.Data, scene.NBT, dispatcher.Options{})
+	pipeline, err := javapreset.NewPipeline(cube.New(16), parser.Tables, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	states, err := viewsource.PaletteFromHashes(plain.Data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	result, err := pipeline.Build(dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: scene.NBT}, dispatcher.Neighbours{}, dispatcher.Options{})
 	if err != nil {
 		log.Fatal(err)
 	}

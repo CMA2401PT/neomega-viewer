@@ -10,20 +10,12 @@ import (
 	"neomega-converter/fixpalette"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
-	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
-	blockgeometry "neomega-viewer-core/viewer/geometry"
-	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 	"neomega-viewer-core/viewer/merger"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
 	viewsource "neomega-viewer/source"
 )
-
-func NewFramePipeline(tables *blockgeometry.Tables[uint32], atlas jmodel.Atlas) *dispatcher.Pipeline {
-	// demo 使用共享的 Java 处理器组合，缺失模型继续由 mesher 返回错误。
-	return dispatcher.NewJavaPipeline(cube.New(16), tables, &atlas, nil)
-}
 
 func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fixer.Fixer) {
 	send := func(
