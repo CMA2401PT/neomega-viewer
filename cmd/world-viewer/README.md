@@ -111,7 +111,7 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 
 ## 读取与传输
 
-程序负责打开存档、选择维度、确定初始落点和切换内容。Java 来源通过 `source/javaworld` 串行读取原始记录，各次列请求分别解码。Bedrock 由 converter 的 adapt 层按坐标转换并缓存，`source/bedrockworld` 将转换结果适配为相同的 section 输入。`column` 调用共享 Pipeline 读取六向邻居并构建快照，再编码成 NVWC 响应。`viewhttp` 管理并发、响应缓存和静态资源。各块的边界及组装方法见[模块说明](../../README.md#用-section-来源组装浏览服务)。
+程序负责打开存档、选择维度、确定初始落点和切换内容。Java 来源通过 `source/javaworld` 串行读取原始记录，各次列请求分别解码。Bedrock 由 converter 的 adapt 层按坐标转换并缓存，`source/bedrockworld` 将转换结果适配为相同的 section 输入。`column` 调用共享 Pipeline 读取六向邻居与四个水平邻居上方的 section 并构建快照，再编码成 NVWC 响应。`viewhttp` 管理并发、响应缓存和静态资源。各块的边界及组装方法见[模块说明](../../README.md#用-section-来源组装浏览服务)。
 
 Java 压缩区块缓存为 32 MiB，最多打开 16 个 region。Bedrock 转换缓存和修复缓存各为 64 MiB。各格式的列响应缓存为 64 MiB。Bedrock 冷请求较慢：渲染一根修复后的柱子需要它和四个水平邻居，共五根修复柱子；每次修复又需要周围 3×3 的转换结果，合起来约需转换 21 根柱子。缓存会复用这些重叠的读取、转换和修复结果。
 

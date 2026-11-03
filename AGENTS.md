@@ -15,7 +15,7 @@
 
 浏览存档、结构文件和内存场景时，变化的是方块从哪里来，渲染和网页加载的过程可以相同。一个 section 是 16×16×16 的方块区域。来源实现 `dispatcher.SectionSource`，按 section 坐标返回完整 Java 状态调色板、格内方块实体和可选的普通实体；不存在的位置返回 `nil, nil`，表示空气。这样，每种输入格式只需适配来源，浏览服务可以继续使用同一套组件。
 
-从数据到页面分成三步：来源提供 section，`dispatcher.Pipeline.BuildSections` 读取中心与六向邻居并生成快照，`column.BuildColumn` 将一列快照编码为 NVWC 字节。NVWC 是网页加载一段竖直区块列时使用的响应格式。`viewhttp` 调度构建、缓存这些字节并提供 HTTP 路由。它接收一个构建函数，因此来源与 Pipeline 由程序自行组合。
+从数据到页面分成三步：来源提供 section，`dispatcher.Pipeline.BuildSections` 读取中心、六向邻居与四个水平邻居上方的 section 并生成快照，`column.BuildColumn` 将一列快照编码为 NVWC 字节。NVWC 是网页加载一段竖直区块列时使用的响应格式。`viewhttp` 调度构建、缓存这些字节并提供 HTTP 路由。它接收一个构建函数，因此来源与 Pipeline 由程序自行组合。
 
 | 组件 | 负责的边界 |
 |---|---|
