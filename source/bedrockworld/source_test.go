@@ -16,6 +16,7 @@ import (
 	"neomega-converter-core"
 	convert "neomega-converter-core/bedrock"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
@@ -87,7 +88,7 @@ func TestColumnDiagnosticsKeepConversionCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewJavaPipeline(resources.Tables, nil, nil)
+	pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, nil, nil)
 	var first []column.Issue
 	for _, y := range []int32{0, 8} {
 		packet, err := column.BuildColumn(
@@ -173,8 +174,8 @@ func TestReadersBorrowColumnsAndGroupEntities(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if section.Blocks != palette || section.Entities[dispatcher.CellPos{15, 15, 2}]["id"] != "example:entity" {
-				t.Fatal("palette copied or entity misplaced")
+			if len(section.Blocks.Indices) != 4096 || section.Blocks.Get(0) != palette.Get(layer_storage.At(0, 0, 0)) || section.Entities[dispatcher.CellPos{15, 15, 2}]["id"] != "example:entity" {
+				t.Fatal("block data or entity misplaced")
 			}
 			if section, err := reader.Section(context.Background(), dispatcher.SectionPos{}); err != nil || section != nil {
 				t.Fatal(section, err)

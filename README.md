@@ -35,7 +35,7 @@ Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再
 |---|---|
 | `source.MemorySections` | 用 map 提供只读 section，适合手搓场景或已载入内存的结构 |
 | `source/javaworld.Source` | 独占已打开的 Java 世界，缓存原始记录；每次 `Reader()` 独立解码 |
-| `source/bedrockworld.Source` | 接收 `adapt.ChunkSource`，借用转换柱子的调色板；每次 `Reader()` 保存请求内的柱子引用 |
+| `source/bedrockworld.Source` | 接收 `adapt.ChunkSource`，展开转换柱子的调色板为渲染输入；每次 `Reader()` 保存请求内的柱子引用 |
 | `column.BuildColumn` | 构建请求高度范围，汇合渲染与来源诊断，编码 NVWC |
 | `viewhttp.View` | 一代固定内容的 revision、取消范围、构建闭包和列字节缓存 |
 | `viewhttp.Handler` | 跨代共用的 worker 限额、排队、`/api/chunk`、资源与静态页面 |
@@ -49,7 +49,7 @@ Bedrock 方块在内存中转换为 Java 状态，默认经过邻接修复，再
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
 // 检查 err 后创建 Pipeline。atlas 是已解析的图集；nil 表示不开启陶罐 actor。
-pipeline := dispatcher.NewJavaPipeline(resources.Tables, atlas, nil)
+pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, atlas, nil)
 ```
 
 Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `cmd/world-viewer` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
@@ -68,7 +68,7 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 
 `Reader()` 必须放在构建闭包内部。一个 reader 缓存本次请求解码过的区块及整列诊断，由该请求串行使用。不同 worker 只共享不可变的原始记录字节。`java.World` 的内部 region 缓存会在读取时变化，因此来源用一个 goroutine 串行访问句柄。缓存中的内容以打开时为准；重新读取修改后的存档需要创建新的来源。
 
-Bedrock 需要先把状态转换为 Java 表达。`neomega-converter-core/adapt` 的 `Converted` 按坐标读取、转换并缓存柱子，`neomega-converter/adapt.Fixed` 在它外面叠加可选的邻接修复。两层都实现 `adapt.ChunkSource`，因此 `bedrockworld.Source` 只依赖这个取柱接口。选择转换方式属于组装方，渲染来源只负责借用调色板、分组方块实体和转接诊断。
+Bedrock 需要先把状态转换为 Java 表达。`neomega-converter-core/adapt` 的 `Converted` 按坐标读取、转换并缓存柱子，`neomega-converter/adapt.Fixed` 在它外面叠加可选的邻接修复。两层都实现 `adapt.ChunkSource`，因此 `bedrockworld.Source` 只依赖这个取柱接口。选择转换方式属于组装方，渲染来源负责通过 `source.BlocksFromPalette` 展开调色板、分组方块实体和转接诊断。
 
 以下 `adapt` 来自 converter-core，`fixedadapt` 来自 converter；`renderresources` 来自 viewer-core/viewer/resources。
 
@@ -95,12 +95,15 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 blocks := layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:air []"))
 blocks.Set(layer_storage.At(1, 0, 1), ir.IRBlock("minecraft:stone []"))
 sections := source.MemorySections{
-    dispatcher.SectionPos{}: &dispatcher.Section{Blocks: blocks},
+    dispatcher.SectionPos{}: &dispatcher.Section{Blocks: source.BlocksFromPalette(blocks)},
 }
 view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
     return column.BuildColumn(ctx, pipeline, sections, key)
 })
 ```
+
+`source.BlocksFromPalette` 按 celler 的压缩字批量解包，生成每格一个 uint32 的连续索引；单值调色板直接使用全零索引。
+返回的调色板和索引独立于源存储，core 无需了解压缩位宽与填充规则。
 
 交给 View 后，map、section、调色板和实体 NBT 都保持只读。修改场景时创建新的数据和 View。Pipeline 接收完整状态，栅栏连接等属性由来源准备；含水拆层由 Pipeline 处理。
 

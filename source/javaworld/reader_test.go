@@ -16,6 +16,7 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	nbt "neomega-nbt/presets/v1"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
@@ -62,7 +63,7 @@ func TestReaderDiagnosticsBelongToRequestedColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewJavaPipeline(resources.Tables, nil, nil)
+	pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, nil, nil)
 	for _, y := range []int32{0, 4} {
 		reader := s.Reader()
 		packet, err := column.BuildColumn(

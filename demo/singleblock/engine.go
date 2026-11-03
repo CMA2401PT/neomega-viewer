@@ -6,6 +6,7 @@ import (
 
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer-core/viewer/mesher/geometry"
 	blockmesh "neomega-viewer-core/viewer/resources"
@@ -23,7 +24,7 @@ type Block struct {
 }
 
 func New(resolver *blockmesh.Preset) *Engine {
-	return &Engine{Preset: resolver, mesher: mesher.NewMesher(resolver.Tables)}
+	return &Engine{Preset: resolver, mesher: mesher.NewMesher(cube.New(1), resolver.Tables)}
 }
 
 func Open(options blockmesh.OpenOptions) (*Engine, error) {

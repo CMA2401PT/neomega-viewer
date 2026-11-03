@@ -14,6 +14,8 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	"neomega-viewer-core/viewer/blockactor"
+	"neomega-viewer-core/viewer/blockdata"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/effector"
 	"neomega-viewer-core/viewer/merger"
@@ -36,7 +38,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	missing := ir.IRBlock("example:missing []")
 	for _, state := range []ir.IRBlock{"minecraft:grass []", "minecraft:short_grass []", "minecraft:air []"} {
 		result, err := engine.Build(
-			dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(state)},
+			dispatcher.Section{Blocks: blockdata.Uniform(4096, state)},
 			dispatcher.Neighbours{},
 			dispatcher.Options{},
 		)
@@ -134,6 +136,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	failingEngine := dispatcher.NewPipeline(
+		cube.New(16),
 		resources.Tables,
 		effector.New(nil),
 		blockactor.New(failedDiagnosticActor{}),
@@ -168,7 +171,7 @@ func TestColumnMissingModelDiagnostics(t *testing.T) {
 	// Splitting a waterlogged state must not strip properties from its report.
 	original := ir.IRBlock(`example:missing ["waterlogged"="true"]`)
 	result, err := engine.Build(
-		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(original)},
+		dispatcher.Section{Blocks: blockdata.Uniform(4096, original)},
 		dispatcher.Neighbours{},
 		dispatcher.Options{},
 	)

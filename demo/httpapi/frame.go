@@ -7,19 +7,22 @@ import (
 
 	"celler/layer_storage"
 	"neomega-blocks/ir"
+	"neomega-converter/fixpalette"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	blockgeometry "neomega-viewer-core/viewer/geometry"
 	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 	"neomega-viewer-core/viewer/merger"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
+	viewsource "neomega-viewer/source"
 )
 
 func NewFramePipeline(tables *blockgeometry.Tables[uint32], atlas jmodel.Atlas) *dispatcher.Pipeline {
 	// demo 使用共享的 Java 处理器组合，缺失模型继续由 mesher 返回错误。
-	return dispatcher.NewJavaPipeline(tables, &atlas, nil)
+	return dispatcher.NewJavaPipeline(cube.New(16), tables, &atlas, nil)
 }
 
 func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fixer.Fixer) {
@@ -36,17 +39,17 @@ func addFrames(mux *http.ServeMux, pipeline *dispatcher.Pipeline, stateFixer *fi
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(blocks)
-		states, err := dispatcher.BlocksFromHashes(plain.Data)
+		states, err := viewsource.PaletteFromHashes(plain.Data)
 		if err != nil {
 			writeError(w, 422, err)
 			return
 		}
 		if r.URL.Query().Get("fix") == "1" {
 			// 独立预览使用六面 section 入口，缺失邻居由规则按空气或缺数据处理。
-			states = stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+			states = fixpalette.FixSection(stateFixer, states, [6]*layer_storage.Palette[ir.IRBlock]{})
 		}
 		result, err := pipeline.Build(
-			dispatcher.Section{Blocks: states, Entities: entities},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: entities},
 			dispatcher.Neighbours{},
 			dispatcher.Options{Mesh: options},
 		)

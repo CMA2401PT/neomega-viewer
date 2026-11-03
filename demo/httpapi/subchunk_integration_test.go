@@ -12,8 +12,9 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
+	"neomega-converter/fixpalette"
 	"neomega-viewer-core/fixer/java-postprocess"
-	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer-core/viewer/mesher/geometry"
 	blockmesh "neomega-viewer-core/viewer/resources"
@@ -22,6 +23,7 @@ import (
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
+	viewsource "neomega-viewer/source"
 )
 
 func TestSubchunkBinaryTransport(t *testing.T) {
@@ -39,7 +41,7 @@ func TestSubchunkBinaryTransport(t *testing.T) {
 	}
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
-		Subchunks: mesher.NewMesher(parser.Tables),
+		Subchunks: mesher.NewMesher(cube.New(16), parser.Tables),
 		Fixer:     stateFixer,
 		AssetsDir: dir,
 		WebDir:    t.TempDir(),
@@ -98,7 +100,7 @@ func TestDirtyFenceRepairTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine := mesher.NewMesher(parser.Tables)
+	engine := mesher.NewMesher(cube.New(16), parser.Tables)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
 		Subchunks: engine,
@@ -113,7 +115,7 @@ func TestDirtyFenceRepairTransport(t *testing.T) {
 		t.Helper()
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(layer)
-		result, err := engine.MeshSubchunk(plain.Data, mesher.Options{})
+		result, err := engine.MeshLayer(plain.Data, mesher.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +184,7 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine := mesher.NewMesher(parser.Tables)
+	engine := mesher.NewMesher(cube.New(16), parser.Tables)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
 		Subchunks: engine,
@@ -200,11 +202,11 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 		t.Fatal("scene default properties discarded waterlogged")
 	}
 	for _, fix := range []string{"0", "1"} {
-		layers := splitlayer.New().SplitSubchunk(plain.Data)
+		layers := splitlayer.New().SplitBlocks(plain.Data)
 		if fix == "1" {
 			layers[0] = fixedHashes(t, stateFixer, layers[0])
 		}
-		want, err := engine.MeshMultiLayerSubchunks(layers, mesher.Options{})
+		want, err := engine.MeshLayers(layers, mesher.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,11 +241,11 @@ func TestWaterloggedSceneAndUploadTransport(t *testing.T) {
 func fixedHashes(t *testing.T, f *fixer.Fixer, hashes []uint32) []uint32 {
 	// HTTP 的 hash 层在 viewer 侧还原为 Java 状态，再交给 section 修复入口。
 	t.Helper()
-	states, err := dispatcher.BlocksFromHashes(hashes)
+	states, err := viewsource.PaletteFromHashes(hashes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixed := f.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+	fixed := fixpalette.FixSection(f, states, [6]*layer_storage.Palette[ir.IRBlock]{})
 	var result layer_storage.Plain[uint32]
 	result.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
 	return result.Data

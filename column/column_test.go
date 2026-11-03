@@ -9,8 +9,9 @@ import (
 	"testing"
 
 	"celler"
-	"celler/layer_storage"
 	"neomega-blocks/ir"
+	"neomega-viewer-core/viewer/blockdata"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/merger"
 	preset "neomega-viewer-core/viewer/resources"
@@ -34,7 +35,7 @@ func TestMemoryColumnMeshAndSourceDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := dispatcher.NewJavaPipeline(resources.Tables, nil, nil)
+	pipeline := dispatcher.NewJavaPipeline(cube.New(16), resources.Tables, nil, nil)
 	center := celler.ChunkPos{
 		X: -2,
 		Z: 3,
@@ -49,12 +50,12 @@ func TestMemoryColumnMeshAndSourceDiagnostics(t *testing.T) {
 				X: -2,
 				Y: 0,
 				Z: 3,
-			}: {Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:stone []"))},
+			}: {Blocks: blockdata.Uniform(4096, ir.IRBlock("minecraft:stone []"))},
 			{
 				X: -1,
 				Y: 0,
 				Z: 3,
-			}: {Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:stone []"))},
+			}: {Blocks: blockdata.Uniform(4096, ir.IRBlock("minecraft:stone []"))},
 		},
 		issues: map[celler.ChunkPos][]source.Issue{
 			center: {

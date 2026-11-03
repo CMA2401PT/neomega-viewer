@@ -7,16 +7,16 @@ import (
 	"strconv"
 
 	"celler/layer_storage"
-
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
+	"neomega-converter/fixpalette"
 	"neomega-viewer-core/fixer/java-postprocess"
-	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer-core/viewer/mesher/geometry"
 	"neomega-viewer-core/viewer/splitlayer"
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/subchunk"
+	viewsource "neomega-viewer/source"
 )
 
 func sectionOptions(r *http.Request) (mesher.Options, error) {
@@ -53,20 +53,20 @@ func addSubchunks(mux *http.ServeMux, engine *mesher.Mesher[uint32], stateFixer 
 		}
 		var plain layer_storage.Plain[uint32]
 		plain.CopyFrom(layer)
-		layers := layerSplitter.SplitSubchunk(plain.Data)
+		layers := layerSplitter.SplitBlocks(plain.Data)
 		if r.URL.Query().Get("fix") == "1" {
 			// 独立预览没有相邻子区块，只修复当前层内的连接。
-			states, err := dispatcher.BlocksFromHashes(layers[0])
+			states, err := viewsource.PaletteFromHashes(layers[0])
 			if err != nil {
 				writeError(w, 422, err)
 				return
 			}
-			fixed := stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+			fixed := fixpalette.FixSection(stateFixer, states, [6]*layer_storage.Palette[ir.IRBlock]{})
 			var repaired layer_storage.Plain[uint32]
 			repaired.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
 			layers[0] = repaired.Data
 		}
-		result, err := engine.MeshMultiLayerSubchunks(layers, options)
+		result, err := engine.MeshLayers(layers, options)
 		if err != nil {
 			writeError(w, 422, err)
 			return

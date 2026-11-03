@@ -9,6 +9,7 @@ import (
 
 	"celler/layer_storage"
 	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 	"neomega-viewer-core/viewer/merger"
@@ -20,6 +21,7 @@ import (
 	"neomega-viewer/demo/scenes"
 	"neomega-viewer/demo/singleblock"
 	"neomega-viewer/demo/subchunk"
+	viewsource "neomega-viewer/source"
 )
 
 func TestBlockEntitiesFrame(t *testing.T) {
@@ -40,7 +42,7 @@ func TestBlockEntitiesFrame(t *testing.T) {
 	pipeline := httpapi.NewFramePipeline(parser.Tables, atlas)
 	handler := httpapi.New(httpapi.Options{
 		Engine:    singleblock.New(parser),
-		Subchunks: mesher.NewMesher(parser.Tables),
+		Subchunks: mesher.NewMesher(cube.New(16), parser.Tables),
 		Frames:    pipeline,
 		Fixer:     stateFixer,
 	})
@@ -87,12 +89,12 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		states, err := dispatcher.BlocksFromHashes(input)
+		states, err := viewsource.PaletteFromHashes(input)
 		if err != nil {
 			t.Fatal(err)
 		}
 		direct, err := pipeline.Build(
-			dispatcher.Section{Blocks: states, Entities: scene.NBT},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: scene.NBT},
 			dispatcher.Neighbours{},
 			options,
 		)
@@ -123,12 +125,12 @@ func TestBlockEntitiesFrame(t *testing.T) {
 		if strings.Contains(query, "cull=false") {
 			options.Mesh.Meshing = meshing.Options{DisableCulling: true, DisableGreedy: true}
 		}
-		states, err := dispatcher.BlocksFromHashes(input)
+		states, err := viewsource.PaletteFromHashes(input)
 		if err != nil {
 			t.Fatal(err)
 		}
 		direct, err := pipeline.Build(
-			dispatcher.Section{Blocks: states, Entities: nil},
+			dispatcher.Section{Blocks: viewsource.BlocksFromPalette(states), Entities: nil},
 			dispatcher.Neighbours{},
 			options,
 		)

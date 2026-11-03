@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"neomega-blocks/ir"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/dispatcher"
 	core "neomega-viewer-core/viewer/geometry"
 	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
@@ -22,5 +23,5 @@ func newPipeline(tables *core.Tables[uint32], atlas *jmodel.Atlas) (*dispatcher.
 		shape.Quads[i].Surface.Unlit = true
 		shape.Quads[i].Color = [3]float32{1, 0, 1}
 	}
-	return dispatcher.NewJavaPipeline(tables, atlas, &shape), nil
+	return dispatcher.NewJavaPipeline(cube.New(16), tables, atlas, &shape), nil
 }

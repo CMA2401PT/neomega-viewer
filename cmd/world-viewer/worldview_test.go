@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io/fs"
-	renderresources "neomega-viewer-core/viewer/resources"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -17,9 +16,11 @@ import (
 	"celler/storage"
 	"neomega-blocks/ir"
 	packfs "neomega-packfs"
+	"neomega-viewer-core/viewer/blockdata"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/merger"
 	preset "neomega-viewer-core/viewer/resources"
+	renderresources "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/column"
 	"neomega-viewer/viewassets"
 )
@@ -189,7 +190,7 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := engine.Build(
-		dispatcher.Section{Blocks: layer_storage.MakePaletteStorage(ir.IRBlock("example:unknown []"))},
+		dispatcher.Section{Blocks: blockdata.Uniform(4096, ir.IRBlock("example:unknown []"))},
 		dispatcher.Neighbours{},
 		dispatcher.Options{},
 	)

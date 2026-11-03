@@ -42,7 +42,7 @@ type reader struct {
 }
 
 func (r *reader) Section(ctx context.Context, pos dispatcher.SectionPos) (*dispatcher.Section, error) {
-	// 调色板和实体 NBT 直接借用；普通实体没有对应的 dispatcher 输入。
+	// 调色板展开为渲染输入，实体 NBT 保持只读借用；普通实体没有对应的 dispatcher 输入。
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (r *reader) Section(ctx context.Context, pos dispatcher.SectionPos) (*dispa
 		return nil, nil
 	}
 	return &dispatcher.Section{
-		Blocks:   c.chunk.Sections[pos.Y].Blocks,
+		Blocks:   source.BlocksFromPalette(c.chunk.Sections[pos.Y].Blocks),
 		Entities: c.entities[pos.Y],
 	}, nil
 }

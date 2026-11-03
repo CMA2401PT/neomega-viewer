@@ -29,7 +29,7 @@ import (
 func TestBedrockFixtureBuildColumn(t *testing.T) {
 	// LevelDB 只打开临时副本，样例目录始终作为普通文件复制来源。
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, os.DirFS("../../../../resource/基岩版")); err != nil {
+	if err := os.CopyFS(dir, os.DirFS("../../../../resource/基岩版中地图")); err != nil {
 		t.Fatal(err)
 	}
 	resources, err := preset.Open(preset.OpenOptions{})
@@ -251,7 +251,7 @@ func TestBedrockPickerAndFixSetting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			state, _ := section.Blocks.Get(layer_storage.At(15, 4, 8)).States().Get("east")
+			state, _ := section.Blocks.Get(15<<8 | 8<<4 | 4).States().Get("east")
 			if state != fmt.Sprint(!skip) {
 				t.Fatalf("skip fix %v: east = %v", skip, state)
 			}

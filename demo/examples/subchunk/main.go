@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"celler/layer_storage"
+	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer-core/viewer/mesher/meshing"
 	blockmesh "neomega-viewer-core/viewer/resources"
@@ -46,7 +47,7 @@ func main() {
 	}
 	var plain layer_storage.Plain[uint32]
 	plain.CopyFrom(layer)
-	result, err := mesher.NewMesher(parser.Tables).MeshSubchunk(plain.Data, mesher.Options{
+	result, err := mesher.NewMesher(cube.New(16), parser.Tables).MeshLayer(plain.Data, mesher.Options{
 		Meshing: meshing.Options{
 			DisableCulling: !*cull,
 			DisableGreedy:  !*greedy,

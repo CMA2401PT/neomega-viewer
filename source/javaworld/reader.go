@@ -89,7 +89,7 @@ func (s *sectionSource) Section(ctx context.Context, pos dispatcher.SectionPos) 
 		return nil, fmt.Errorf("chunk %v section %d: %w", cp, pos.Y, err)
 	}
 	return &dispatcher.Section{
-		Blocks:   section.Blocks,
+		Blocks:   source.BlocksFromPalette(section.Blocks),
 		Entities: column.entities[pos.Y],
 	}, nil
 }

@@ -6,9 +6,10 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
+	"neomega-converter/fixpalette"
 	"neomega-viewer-core/fixer/java-postprocess"
-	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/demo/scenes"
+	viewsource "neomega-viewer/source"
 )
 
 func TestSpecialNEMCSourceData(t *testing.T) {
@@ -57,11 +58,11 @@ func TestSpecialNEMCMatchesJavaAfterFix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	states, err := dispatcher.BlocksFromHashes(source.Data)
+	states, err := viewsource.PaletteFromHashes(source.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixed := stateFixer.FixSection(states, [6]*layer_storage.Palette[ir.IRBlock]{})
+	fixed := fixpalette.FixSection(stateFixer, states, [6]*layer_storage.Palette[ir.IRBlock]{})
 	var repaired layer_storage.Plain[uint32]
 	repaired.CopyFrom(layer_storage.ConvertPalette(fixed, java.BlockToHash))
 	for _, stage := range []struct {

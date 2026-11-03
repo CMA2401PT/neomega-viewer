@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"neomega-viewer-core/fixer/java-postprocess"
+	"neomega-viewer-core/viewer/cube"
 	jmodel "neomega-viewer-core/viewer/geometry/java_block_model"
 	"neomega-viewer-core/viewer/mesher"
 	blockmesh "neomega-viewer-core/viewer/resources"
@@ -48,7 +49,7 @@ func main() {
 		Addr: *listen,
 		Handler: httpapi.New(httpapi.Options{
 			Engine:    singleblock.New(parser),
-			Subchunks: mesher.NewMesher(parser.Tables),
+			Subchunks: mesher.NewMesher(cube.New(16), parser.Tables),
 			Frames:    httpapi.NewFramePipeline(parser.Tables, atlas),
 			Fixer:     stateFixer,
 			Catalog:   entries,
