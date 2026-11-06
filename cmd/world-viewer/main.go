@@ -33,7 +33,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:2412", "HTTP listen address")
 	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
-	structureWorkers := flag.Int("structure-workers", 0, "结构转 Java 的写出并发数上限，0 自动选择")
+	structureWorkers := flag.Int("structure-workers", 0, "结构转换写出并发数上限，0 自动选择")
 	browser := flag.Bool("browser", true, "启动后用默认浏览器打开页面")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
