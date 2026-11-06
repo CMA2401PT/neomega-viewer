@@ -73,7 +73,7 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 })
 ```
 
-每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。普通实体保存在 `ConvertedChunk.Entities` 中，来源按浮点位置分组后交给 `Section.Entities`。Java 来源独立读取地形和实体 region，两份记录任一缺失都不掩盖另一份。无方块的 section 也可包含实体。展示框组合普通静态物品与框体，物品失败时保留框体并返回实体诊断。
+每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。普通实体保存在 `JavaChunk.Entities` 中，来源按浮点位置分组后交给 `Section.Entities`。Java 来源独立读取地形和实体 region，两份记录任一缺失都不掩盖另一份。无方块的 section 也可包含实体。展示框组合普通静态物品与框体，物品失败时保留框体并返回实体诊断。
 
 内存场景直接填 map，无须构造世界句柄。下面在 section 原点附近放一块石头；map 的键是 section 坐标，`layer_storage.At` 使用 section 内的方块坐标：
 

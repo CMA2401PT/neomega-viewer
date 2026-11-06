@@ -32,7 +32,7 @@ func (s *Source) Reader() dispatcher.SectionSource {
 }
 
 type column struct {
-	chunk         *converter.ConvertedChunk
+	chunk         *converter.JavaChunk
 	blockEntities map[int32]map[dispatcher.CellPos]nbt.Compound
 	entities      map[dispatcher.SectionPos]*entity_render.Input
 	issues        []source.Issue

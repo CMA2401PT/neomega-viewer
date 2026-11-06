@@ -27,12 +27,12 @@ import (
 )
 
 type chunks struct {
-	values map[celler.ChunkPos]*converter.ConvertedChunk
+	values map[celler.ChunkPos]*converter.JavaChunk
 	calls  map[celler.ChunkPos]int
 	err    error
 }
 
-func (s *chunks) Chunk(ctx context.Context, pos celler.ChunkPos) (*converter.ConvertedChunk, error) {
+func (s *chunks) Chunk(ctx context.Context, pos celler.ChunkPos) (*converter.JavaChunk, error) {
 	s.calls[pos]++
 	return s.values[pos], s.err
 }
@@ -74,7 +74,7 @@ func TestColumnDiagnosticsKeepConversionCounts(t *testing.T) {
 		},
 	)
 	src := bedrockworld.New(&chunks{
-		values: map[celler.ChunkPos]*converter.ConvertedChunk{
+		values: map[celler.ChunkPos]*converter.JavaChunk{
 			{}: center,
 			{X: 1}: {
 				Diagnostics: []converter.Diagnostic{{
@@ -148,9 +148,9 @@ func TestReadersBorrowColumnsAndGroupEntities(t *testing.T) {
 	palette := layer_storage.MakePaletteStorage(ir.IRBlock("minecraft:stone []"))
 	pos := celler.ChunkPos{X: -1}
 	src := &chunks{
-		values: map[celler.ChunkPos]*converter.ConvertedChunk{
+		values: map[celler.ChunkPos]*converter.JavaChunk{
 			pos: {
-				Sections: map[int32]*converter.ConvertedSection{
+				Sections: map[int32]*converter.JavaSection{
 					-1: {Blocks: palette},
 				},
 				BlockEntities: []java.BlockEntity{{
@@ -198,7 +198,7 @@ func TestReadersBorrowColumnsAndGroupEntities(t *testing.T) {
 
 func TestEntityOnlyConvertedColumn(t *testing.T) {
 	// 转换器已提供的普通实体不依赖地形 section 存在。
-	src := &chunks{values: map[celler.ChunkPos]*converter.ConvertedChunk{{}: {Entities: []nbt.Compound{{"id": "minecraft:item_frame", "Pos": []float64{1.5, -60, 2.5}, "Facing": int8(2)}}}}, calls: map[celler.ChunkPos]int{}}
+	src := &chunks{values: map[celler.ChunkPos]*converter.JavaChunk{{}: {Entities: []nbt.Compound{{"id": "minecraft:item_frame", "Pos": []float64{1.5, -60, 2.5}, "Facing": int8(2)}}}}, calls: map[celler.ChunkPos]int{}}
 	section, err := bedrockworld.New(src).Reader().Section(context.Background(), dispatcher.SectionPos{Y: -4})
 	if err != nil || section == nil || section.Blocks != nil || section.Entities == nil || len(section.Entities.List) != 1 {
 		t.Fatalf("entity-only Bedrock section: %+v, %v", section, err)
