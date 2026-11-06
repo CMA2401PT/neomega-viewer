@@ -32,6 +32,8 @@ func run() error {
 	position := flag.String("position", "", "initial camera position: x,y,z")
 	listen := flag.String("listen", "127.0.0.1:2412", "HTTP listen address")
 	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
+	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
+	structureWorkers := flag.Int("structure-workers", 0, "结构转 Java 的写出并发数上限，0 自动选择")
 	flag.Parse()
 	if *directory != "" && *pack != "" {
 		return fmt.Errorf("choose -world or -pack")
@@ -39,10 +41,15 @@ func run() error {
 	if *workers < 1 || *workers > 8 {
 		return fmt.Errorf("-workers must be 1..8")
 	}
+	if *structureMemory < 64 || *structureWorkers < 0 {
+		return fmt.Errorf("结构转换内存预算至少 64 MiB，workers 不能为负数")
+	}
 	options := SourceOptions{
-		Pack:           *pack,
-		Dimension:      *dimension,
-		SkipBedrockFix: !*bedrockFix,
+		StructureMemoryMiB: *structureMemory,
+		StructureWorkers:   *structureWorkers,
+		Pack:               *pack,
+		Dimension:          *dimension,
+		SkipBedrockFix:     !*bedrockFix,
 	}
 	if *directory != "" {
 		parsed, err := sourceAtPath(*directory)
@@ -51,6 +58,8 @@ func run() error {
 		}
 		parsed.Dimension = options.Dimension
 		parsed.SkipBedrockFix = options.SkipBedrockFix
+		parsed.StructureMemoryMiB = options.StructureMemoryMiB
+		parsed.StructureWorkers = options.StructureWorkers
 		options = parsed
 	}
 	if *position != "" {
@@ -98,12 +107,14 @@ func run() error {
 	server := &http.Server{
 		Addr: *listen,
 		Handler: Handler(ServerOptions{
-			Worlds:          worlds,
-			Assets:          assets,
-			Web:             web,
-			ResourceVersion: resources.Metadata.Version,
-			Workers:         *workers,
-			SkipBedrockFix:  !*bedrockFix,
+			StructureMemoryMiB: *structureMemory,
+			StructureWorkers:   *structureWorkers,
+			Worlds:             worlds,
+			Assets:             assets,
+			Web:                web,
+			ResourceVersion:    resources.Metadata.Version,
+			Workers:            *workers,
+			SkipBedrockFix:     !*bedrockFix,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

@@ -20,6 +20,8 @@
 
 结构文件先转换再预览：schem、schematic、litematic、nbt 生成 Java 世界，mcstructure、mcworld 生成 Bedrock 世界。输出在源文件旁的同名文件夹中，例如 `城堡.schem` → `城堡/`，不需要额外指定目录。同名文件夹已经是存档时直接复用，以保留其中的编辑。源文件更新后，需要移走或删除旧存档目录再打开；非空且不是存档的目录不会被覆盖。
 
+结构转换默认使用 512 MiB 工作预算；启动时加 `-structure-memory-mib 1024` 可以提高到 1 GiB，最小值为 64 MiB。`-structure-workers` 设置 Java 写出任务数上限，默认 0 按 CPU 自动选择（最多 8 个），仍受预算限制。预算不是进程内存硬上限。这两个参数同时用于启动时和网页中打开的结构文件；渲染并发由独立的 `-workers` 参数控制。
+
 默认加载主世界。Java 优先识别根目录 `region`，其次识别 `dimensions/minecraft/overworld/region`。其他 Java 维度通过 `-dimension` 指定相对于存档根目录的目录，例如 `DIM-1` 或 `dimensions/minecraft/the_nether`。Bedrock 的 `-dimension` 使用编号：0 是主世界，1 是下界，2 是末地，默认 0。
 
 邻接修复根据周围方块补全栅栏连接、楼梯拐角等 Java 属性。需要查看 Bedrock 的直接转换结果时，启动参数加 `-bedrock-fix=false`。这个设置也用于网页中打开的 Bedrock 存档，以及 mcstructure 转出的 Bedrock 存档。修复只发生在预览时，已经写成的 Java 世界不受影响。

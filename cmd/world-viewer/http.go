@@ -12,11 +12,13 @@ import (
 )
 
 type ServerOptions struct {
-	Worlds          *Worlds
-	Assets, Web     fs.FS
-	ResourceVersion string
-	Workers         int
-	SkipBedrockFix  bool
+	StructureMemoryMiB int
+	StructureWorkers   int
+	Worlds             *Worlds
+	Assets, Web        fs.FS
+	ResourceVersion    string
+	Workers            int
+	SkipBedrockFix     bool
 }
 
 func Handler(options ServerOptions) http.Handler {
@@ -56,6 +58,8 @@ func Handler(options ServerOptions) http.Handler {
 			return
 		}
 		source.SkipBedrockFix = options.SkipBedrockFix
+		source.StructureMemoryMiB = options.StructureMemoryMiB
+		source.StructureWorkers = options.StructureWorkers
 		// 流式响应沿用同一次打开请求，进度只属于当前调用者；断开连接会取消转换。
 		if strings.Contains(r.Header.Get("Accept"), "application/x-ndjson") {
 			ctx, cancel := context.WithCancel(r.Context())

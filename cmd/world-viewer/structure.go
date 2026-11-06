@@ -22,7 +22,11 @@ func openStructureFile(ctx context.Context, options SourceOptions) (*Source, err
 	entries, err := os.ReadDir(directory)
 	if os.IsNotExist(err) || (err == nil && len(entries) == 0) {
 		started := time.Now()
-		if _, err = structure.ConvertFile(ctx, absolute, directory, structure.Options{Progress: options.Progress}); err != nil {
+		if _, err = structure.ConvertFile(ctx, absolute, directory, structure.Options{
+			Progress:  options.Progress,
+			MemoryMiB: options.StructureMemoryMiB,
+			Workers:   options.StructureWorkers,
+		}); err != nil {
 			return nil, err
 		}
 		seconds := time.Since(started).Seconds()

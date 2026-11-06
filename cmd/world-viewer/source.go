@@ -23,6 +23,8 @@ type Info struct {
 }
 
 type SourceOptions struct {
+	StructureMemoryMiB int
+	StructureWorkers   int
 	// 同一参数在识别格式后解释：Java 维度是相对目录，Bedrock 维度是编号。
 	Directory      string
 	Pack           string
