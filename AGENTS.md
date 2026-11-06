@@ -54,7 +54,7 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 
 `Reader()` 必须放在构建闭包内部。一个 reader 缓存本次请求解码过的区块及整列诊断，由该请求串行使用。不同 worker 只共享不可变的原始记录字节。`java.World` 的内部 region 缓存会在读取时变化，因此来源用一个 goroutine 串行访问句柄。缓存中的内容以打开时为准；重新读取修改后的存档需要创建新的来源。
 
-Bedrock 需要先把状态转换为 Java 表达。`neomega-converter-core/adapt` 的 `Converted` 按坐标读取、转换并缓存柱子，`neomega-converter/adapt.Fixed` 在它外面叠加可选的邻接修复。两层都实现 `adapt.ChunkSource`，因此 `bedrockworld.Source` 只依赖这个取柱接口。选择转换方式属于组装方，渲染来源负责通过 `source.BlocksFromPalette` 展开调色板、分组方块实体和转接诊断。
+Bedrock 需要先把状态转换为 Java 表达。`neomega-converter-core/be2je/adapt` 的 `Converted` 按坐标读取、转换并缓存柱子，`neomega-converter/adapt.Fixed` 在它外面叠加可选的邻接修复。两层都实现 `adapt.ChunkSource`，因此 `bedrockworld.Source` 只依赖这个取柱接口。选择转换方式属于组装方，渲染来源负责通过 `source.BlocksFromPalette` 展开调色板、分组方块实体和转接诊断。
 
 以下 `adapt` 来自 converter-core，`fixedadapt` 来自 converter；`renderresources` 来自 viewer-core/viewer/resources。
 

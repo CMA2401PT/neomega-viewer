@@ -5,7 +5,7 @@ import (
 
 	"celler"
 	"neomega-converter-core"
-	"neomega-converter-core/adapt"
+	"neomega-converter-core/be2je/adapt"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/entity_render"

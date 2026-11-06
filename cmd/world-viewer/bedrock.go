@@ -11,7 +11,7 @@ import (
 
 	"celler"
 	"celler/bedrock"
-	"neomega-converter-core/adapt"
+	"neomega-converter-core/be2je/adapt"
 	fixedadapt "neomega-converter/adapt"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
