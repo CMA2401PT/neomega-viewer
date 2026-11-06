@@ -83,6 +83,8 @@ GPU 查询每帧最多发起 8 次，结果异步读取，尚未得到结果的�
 go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 ```
 
+直接构建时版本号是 `dev`。发布版本由工作流用 `-ldflags "-X main.version=v0.0.10"` 把 Git 标签注入程序，终端开场和网页面板都会显示它；本地需要同样的版本号时也可以自己加上这个参数。`world-viewer -version` 只打印版本号后退出。
+
 只分发生成的 `world-viewer` 文件即可。目标电脑需要另外提供要浏览的存档。为其他平台构建时指定 Go 的目标平台，例如：
 
 ```sh

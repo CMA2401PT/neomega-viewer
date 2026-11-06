@@ -35,17 +35,32 @@ Bedrock 方块默认在内存中转换并修复栅栏连接、楼梯拐角等邻
 
 ## 下载编译版本
 
-从 [latest Release](https://github.com/CMA2401PT/neomega-viewer/releases/tag/latest) 下载最新成功构建的版本。这里只维护一个 `latest`，每次更新都会替换三个平台的下载包：
+从 [Releases](https://github.com/CMA2401PT/neomega-viewer/releases) 下载。每个形如 `v0.0.10` 的版本标签对应一个 Release，包含三个平台的下载包：
 
 - macOS arm64：`world-viewer-macos-arm64.tar.gz`。
 - Windows amd64：`world-viewer-windows-amd64.zip`。
 - Linux amd64：`world-viewer-linux-amd64.tar.gz`。
 
-压缩包内包含可独立运行的程序，解压后按前面的“浏览存档”说明启动。Release 中的下载包长期保留，直到下次成功发布时被替换。
+压缩包内包含可独立运行的程序，解压后按前面的“浏览存档”说明启动。版本 Release 中的下载包长期保留。
 
-需要更新时，在 [Actions 页面](https://github.com/CMA2401PT/neomega-viewer/actions/workflows/build.yml) 打开“手动编译存档浏览器”，点击 **Run workflow** 并选择应用源码所在的分支。只有三个平台都构建成功后，工作流才会更新 `latest`。工作流不会随推送自动触发。该次运行的 **Artifacts** 也保留一份下载包，保留期为 30 天。
+另有一个浮动的 [latest Release](https://github.com/CMA2401PT/neomega-viewer/releases/tag/latest)，由手动工作流更新，用来获取从分支构建的最新版本；它的版本号显示为 `dev-<短提交>`。
 
-工作流使用所选分支的应用源码，以及同一 GitHub 账户下各依赖仓库的默认分支。依赖按本地工作区的目录层级取齐，以满足 `go.mod` 中的 `replace` 路径。Go 版本取自应用的 `go.mod`，三个平台均关闭 CGO 并使用 Go 交叉编译。网页和几何资源直接使用已提交的内嵌产物。
+### 发布新版本
+
+程序里不再写死版本号，版本只来自 Git 标签。把要发布的提交推送到 `main` 后，创建并推送版本标签：
+
+```sh
+git tag -a v0.0.10 -m "v0.0.10"
+git push origin v0.0.10
+```
+
+工作流自动构建三个平台。全部成功后创建与标签同名的 Release 并上传压缩包；构建时用 `-ldflags "-X main.version=v0.0.10"` 把标签写进程序，因此终端开场和网页右下角面板都会显示这个版本号。标签必须形如 `v1.2.3`，重复运行同一标签会替换已有 Release 的下载包。
+
+本地直接 `go build` 不带该参数，版本显示为 `dev`；只查看版本号可以运行 `world-viewer -version`。
+
+需要从分支构建而不发版时，在 [Actions 页面](https://github.com/CMA2401PT/neomega-viewer/actions/workflows/build.yml) 打开“编译并发布存档浏览器”，点击 **Run workflow** 并选择分支。该路径不创建版本 Release，成功后更新 `latest`。本次运行的 **Artifacts** 也保留一份下载包，保留期为 30 天。
+
+工作流使用标签或所选分支的应用源码，以及同一 GitHub 账户下各依赖仓库的默认分支。依赖按本地工作区的目录层级取齐，以满足 `go.mod` 中的 `replace` 路径。Go 版本取自应用的 `go.mod`，三个平台均关闭 CGO 并使用 Go 交叉编译。网页和几何资源直接使用已提交的内嵌产物。
 
 ## 检查单个方块与网格
 

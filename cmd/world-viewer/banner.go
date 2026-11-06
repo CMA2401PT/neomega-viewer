@@ -11,8 +11,12 @@ import (
 	"strings"
 )
 
-// version 显示在终端开场和网页面板上。
-const version = "v0.0.9"
+// version 显示在终端开场和网页面板上，由发布标签在编译时注入：
+//
+//	go build -ldflags "-X main.version=v0.0.10"
+//
+// 直接 go build 时保持 dev，避免本地构建冒充某个已发布的版本。
+var version = "dev"
 
 // 开场画面与网页默认场景是同一幅画：海面升起的莫比乌斯环，扭转处收成一条细线。
 const (

@@ -1,11 +1,15 @@
-name: 手动编译存档浏览器
+name: 编译并发布存档浏览器
 
+# 推版本标签时自动构建并发布；手动运行用于从分支构建最新版本。
 on:
+  push:
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch:
 
-# latest 由每次成功构建替换，同一时间只运行一批，避免发布互相覆盖。
+# 标签构建按标签串行；手动构建共用一个组，避免同时改写 latest。
 concurrency:
-  group: world-viewer-latest
+  group: world-viewer-${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
   cancel-in-progress: false
 
 permissions:
@@ -59,13 +63,41 @@ jobs:
           go-version-file: apps/neomega-viewer/go.mod
           cache-dependency-path: '**/go.sum'
 
+      - name: 确定版本号
+        id: version
+        working-directory: apps/neomega-viewer
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            # 版本标签是唯一来源，格式在这里把关。
+            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "版本标签必须形如 v0.0.10，实际为 $REF_NAME" >&2
+              exit 1
+            fi
+            echo "value=$REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            # 手动构建不发布正式版本，用提交短号区分，避免冒充已发布标签。
+            echo "value=dev-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 编译包含网页与资源的可执行文件
         working-directory: apps/neomega-viewer
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           EXECUTABLE: ${{ matrix.executable }}
-        run: go build -trimpath -ldflags='-s -w' -o "dist/$EXECUTABLE" ./cmd/world-viewer
+          VERSION: ${{ steps.version.outputs.value }}
+        run: go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o "dist/$EXECUTABLE" ./cmd/world-viewer
+
+      - name: 核对注入的版本号
+        # 只有 Linux 产物能在 runner 上执行，用它确认 -ldflags 没有写错变量名。
+        if: matrix.target == 'linux-amd64'
+        working-directory: apps/neomega-viewer
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: test "$(./dist/world-viewer -version)" = "$VERSION"
 
       - name: 打包对应平台的版本
         working-directory: apps/neomega-viewer
@@ -91,7 +123,7 @@ jobs:
           retention-days: 30
 
   publish:
-    name: 更新 latest Release
+    name: 发布 Release
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -112,24 +144,37 @@ jobs:
           # Windows 版本本身就是 zip，保留压缩包供 Release 下载。
           skip-decompress: true
 
-      - name: 发布或替换 latest 的下载包
+      - name: 发布版本或更新 latest
         shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          # latest 是固定下载入口，标签随成功构建移动到实际编译的提交。
-          git tag --force latest "$GITHUB_SHA"
-          git push --force origin refs/tags/latest
-
           cat > release-notes.md <<'EOF'
-          最新成功构建的存档浏览器，提供 macOS arm64、Windows amd64 和 Linux amd64 版本。
+          存档浏览器，提供 macOS arm64、Windows amd64 和 Linux amd64 版本。
 
           解压后启动 world-viewer（Windows 为 world-viewer.exe），再在浏览器打开 http://127.0.0.1:2412。
 
-          每次手动构建成功后会替换这三个下载包。
+          Release 中的下载包解压后即可运行；版本 Release 与同名 Git 标签对应，latest 是浮动的最新构建入口。
           EOF
 
-          if gh release view latest > /dev/null 2>&1; then
-            gh release upload latest dist/* --clobber
-            gh release edit latest --title latest --notes-file release-notes.md --latest
+          if [ "$REF_TYPE" = "tag" ]; then
+            # 标签构建发布同名 Release。重跑同一标签时只替换下载包。
+            if gh release view "$REF_NAME" > /dev/null 2>&1; then
+              gh release upload "$REF_NAME" dist/* --clobber
+              gh release edit "$REF_NAME" --title "$REF_NAME" --notes-file release-notes.md --latest
+            else
+              gh release create "$REF_NAME" dist/* --verify-tag --title "$REF_NAME" --notes-file release-notes.md --latest
+            fi
           else
-            gh release create latest dist/* --verify-tag --title latest --notes-file release-notes.md --latest
+            # 手动构建更新固定下载入口 latest，标签随成功构建移动到实际编译的提交。
+            git tag --force latest "$GITHUB_SHA"
+            git push --force origin refs/tags/latest
+
+            if gh release view latest > /dev/null 2>&1; then
+              gh release upload latest dist/* --clobber
+              gh release edit latest --title latest --notes-file release-notes.md --latest
+            else
+              gh release create latest dist/* --verify-tag --title latest --notes-file release-notes.md --latest
+            fi
           fi
