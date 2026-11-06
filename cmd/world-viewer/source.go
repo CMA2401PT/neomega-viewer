@@ -46,20 +46,22 @@ type Source struct {
 	close  func()
 }
 
+// OpenSource 按选项打开一种来源：结构文件先转成原生存档，其余直接打开。
+// Directory、Pack、File 三选一，都不给时按 Java 存档目录处理。
 func OpenSource(ctx context.Context, options SourceOptions) (*Source, error) {
 	// 命令行和页面共用格式识别；结构文件先生成原生存档再打开。
-	chosen := 0
+	sources := 0
 	if options.Directory != "" {
-		chosen++
+		sources++
 	}
 	if options.Pack != "" {
-		chosen++
+		sources++
 	}
 	if options.File != "" {
-		chosen++
+		sources++
 	}
-	if chosen > 1 {
-		return nil, fmt.Errorf("choose -world or -pack")
+	if sources > 1 {
+		return nil, fmt.Errorf("只能指定一种来源：存档目录、PackFS 或结构文件")
 	}
 	if options.File != "" {
 		return openStructureFile(ctx, options)
@@ -76,6 +78,7 @@ func isBedrockDirectory(directory string) bool {
 	return err == nil && stat.IsDir()
 }
 
+// Reader 为一次列构建申请独立 reader；来源没有 reader 时返回空场景。
 func (s *Source) Reader() dispatcher.SectionSource {
 	if s.reader == nil {
 		return source.MemorySections{}

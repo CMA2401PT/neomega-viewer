@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
-	"neomega-converter-core/structure"
 	"net/http"
 	"strings"
 
+	"neomega-converter-core/structure"
 	"neomega-viewer/viewhttp"
 )
 
@@ -62,29 +62,7 @@ func Handler(options ServerOptions) http.Handler {
 		source.StructureWorkers = options.StructureWorkers
 		// 流式响应沿用同一次打开请求，进度只属于当前调用者；断开连接会取消转换。
 		if strings.Contains(r.Header.Get("Accept"), "application/x-ndjson") {
-			ctx, cancel := context.WithCancel(r.Context())
-			defer cancel()
-			w.Header().Set("Content-Type", "application/x-ndjson")
-			w.Header().Set("Cache-Control", "no-store")
-			encoder := json.NewEncoder(w)
-			emit := func(event openEvent) {
-				if err := encoder.Encode(event); err != nil {
-					cancel()
-					return
-				}
-				if err := http.NewResponseController(w).Flush(); err != nil {
-					cancel()
-				}
-			}
-			emit(openEvent{Type: "progress", Progress: &structure.Progress{Stage: "opening"}})
-			source.Progress = func(progress structure.Progress) { emit(openEvent{Type: "progress", Progress: &progress}) }
-			info, err := options.Worlds.Open(ctx, source)
-			if err != nil {
-				emit(openEvent{Type: "error", Error: err.Error()})
-				return
-			}
-			info.ResourceVersion = options.ResourceVersion
-			emit(openEvent{Type: "complete", Info: &info})
+			streamOpen(w, r, options, source)
 			return
 		}
 		info, err := options.Worlds.Open(r.Context(), source)
@@ -107,6 +85,34 @@ func Handler(options ServerOptions) http.Handler {
 		},
 	))
 	return http.NewCrossOriginProtection().Handler(mux)
+}
+
+// streamOpen 按 NDJSON 逐行推送打开进度，成功后才发布新内容。
+// 写响应失败说明客户端已断开，取消转换，不让它在后台跑完。
+func streamOpen(w http.ResponseWriter, r *http.Request, options ServerOptions, source SourceOptions) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-store")
+	encoder := json.NewEncoder(w)
+	emit := func(event openEvent) {
+		if err := encoder.Encode(event); err != nil {
+			cancel()
+			return
+		}
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			cancel()
+		}
+	}
+	emit(openEvent{Type: "progress", Progress: &structure.Progress{Stage: "opening"}})
+	source.Progress = func(progress structure.Progress) { emit(openEvent{Type: "progress", Progress: &progress}) }
+	info, err := options.Worlds.Open(ctx, source)
+	if err != nil {
+		emit(openEvent{Type: "error", Error: err.Error()})
+		return
+	}
+	info.ResourceVersion = options.ResourceVersion
+	emit(openEvent{Type: "complete", Info: &info})
 }
 
 // openEvent 是 POST 打开请求的逐行响应，成功前失败不会替换当前存档。

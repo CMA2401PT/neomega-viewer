@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	renderresources "neomega-viewer-core/viewer/resources"
 	"net"
 	"net/http"
 	"os"
@@ -51,22 +50,24 @@ func run() error {
 	if *structureMemory < 64 || *structureWorkers < 0 {
 		return fmt.Errorf("结构转换内存预算至少 64 MiB，workers 不能为负数")
 	}
+	// 这一组选项同时给首次打开和页面里的打开请求用，所以两边共用同一个值。
+	skipFix := !*bedrockFix
 	options := SourceOptions{
 		StructureMemoryMiB: *structureMemory,
 		StructureWorkers:   *structureWorkers,
 		Pack:               *pack,
 		Dimension:          *dimension,
-		SkipBedrockFix:     !*bedrockFix,
+		SkipBedrockFix:     skipFix,
 	}
 	if *directory != "" {
 		parsed, err := sourceAtPath(*directory)
 		if err != nil {
 			return err
 		}
-		parsed.Dimension = options.Dimension
-		parsed.SkipBedrockFix = options.SkipBedrockFix
-		parsed.StructureMemoryMiB = options.StructureMemoryMiB
-		parsed.StructureWorkers = options.StructureWorkers
+		parsed.StructureMemoryMiB = *structureMemory
+		parsed.StructureWorkers = *structureWorkers
+		parsed.Dimension = *dimension
+		parsed.SkipBedrockFix = skipFix
 		options = parsed
 	}
 	if *position != "" {
@@ -93,6 +94,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// 交给 Worlds 之前由这里持有，之后由 Worlds 关闭。
 	owned := true
 	defer func() {
 		if owned {
@@ -103,7 +105,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	assets, web := renderresources.Resources(), viewassets.Web()
 	pipeline, err := newPipeline(resources)
 	if err != nil {
 		return err
@@ -114,14 +115,14 @@ func run() error {
 	server := &http.Server{
 		Addr: *listen,
 		Handler: Handler(ServerOptions{
-			StructureMemoryMiB: *structureMemory,
-			StructureWorkers:   *structureWorkers,
+			StructureMemoryMiB: options.StructureMemoryMiB,
+			StructureWorkers:   options.StructureWorkers,
 			Worlds:             worlds,
-			Assets:             assets,
-			Web:                web,
+			Assets:             preset.Resources(),
+			Web:                viewassets.Web(),
 			ResourceVersion:    resources.Metadata.Version,
 			Workers:            *workers,
-			SkipBedrockFix:     !*bedrockFix,
+			SkipBedrockFix:     options.SkipBedrockFix,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
