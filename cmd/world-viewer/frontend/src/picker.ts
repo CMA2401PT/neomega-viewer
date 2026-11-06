@@ -1,4 +1,5 @@
 import { fileAppearance, fileIcon } from "./file-kind.ts";
+import type { BackdropInfo } from "./backdrop.ts";
 import { openWorld, progressLabel, type OpenProgress } from "./open-world.ts";
 
 export interface WorldInfo {
@@ -13,6 +14,9 @@ export interface WorldInfo {
   reusedStructure?: boolean;
   position: [number, number, number];
   resourceVersion: string;
+  version: string;
+  /** 存在时表示默认场景。 */
+  backdrop?: BackdropInfo;
 }
 interface Entry {
   name: string;
@@ -152,10 +156,11 @@ export function createWorldPicker(
       controls.disabled = false;
     }
   }
-  element<HTMLButtonElement>("open-world").addEventListener("click", () => {
-    dialog.showModal();
-    void browse(current()?.path ?? "");
-  });
+  for (const button of document.querySelectorAll("[data-open-world]"))
+    button.addEventListener("click", () => {
+      dialog.showModal();
+      void browse(current()?.path ?? "");
+    });
   element<HTMLFormElement>("browse-path").addEventListener(
     "submit",
     (event) => {

@@ -21,6 +21,7 @@ func newContent(source *Source, revision uint64, pipeline *dispatcher.Pipeline) 
 	// 构建闭包固定来源，每次调用单独申请 reader，避免请求之间共享解码状态。
 	info := source.Info
 	info.Revision = revision
+	info.Version = version
 	return &openedContent{
 		Info: info,
 		View: viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {

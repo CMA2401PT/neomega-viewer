@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	renderresources "neomega-viewer-core/viewer/resources"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,6 +35,7 @@ func run() error {
 	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
 	structureWorkers := flag.Int("structure-workers", 0, "结构转 Java 的写出并发数上限，0 自动选择")
+	browser := flag.Bool("browser", true, "启动后用默认浏览器打开页面")
 	flag.Parse()
 	if *directory != "" && *pack != "" {
 		return fmt.Errorf("choose -world or -pack")
@@ -118,9 +120,18 @@ func run() error {
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	// 先占住端口再印开场，网址出现时页面已经能打开。
+	listener, err := net.Listen("tcp", *listen)
+	if err != nil {
+		return err
+	}
 	done := make(chan error, 1)
-	go func() { done <- server.ListenAndServe() }()
-	log.Printf("http://%s · world=%q · dimension=%s", *listen, source.Info.Name, source.Info.Dimension)
+	go func() { done <- server.Serve(listener) }()
+	address := browserAddress(listener.Addr())
+	printBanner(os.Stdout, address, terminalColors())
+	if *browser {
+		openBrowser(address)
+	}
 	select {
 	case err := <-done:
 		if err != http.ErrServerClosed {

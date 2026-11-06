@@ -145,6 +145,9 @@ func openJavaSource(options SourceOptions) (_ *Source, err error) {
 			return nil, err
 		}
 	}
+	if world == nil {
+		applySunrise(opened)
+	}
 	if options.Position != nil {
 		opened.Info.Position = *options.Position
 	}

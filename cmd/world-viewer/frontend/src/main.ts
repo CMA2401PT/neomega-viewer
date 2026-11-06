@@ -12,6 +12,9 @@ import { decodeColumn } from "./packet.ts";
 import { createWorldPicker, type WorldInfo } from "./picker.ts";
 import { FrameRate, geometryMemoryBytes } from "./metrics.ts";
 import { createDiagnostics } from "./diagnostics.ts";
+import { Backdrop, lineArtStyle } from "./backdrop.ts";
+import { createPanelToggle } from "./panel.ts";
+import { createStage } from "./stage.ts";
 import "./style.css";
 
 const element = <T extends HTMLElement>(id: string): T =>
@@ -22,6 +25,7 @@ const coordinateDisplay = element<HTMLOutputElement>("coordinates");
 const fpsDisplay = element<HTMLOutputElement>("fps");
 const memoryDisplay = element<HTMLOutputElement>("memory");
 const frameRate = new FrameRate();
+const stage = createStage();
 const diagnostics = createDiagnostics(
   element<HTMLOutputElement>("issue-count"),
   element<HTMLUListElement>("issue-list"),
@@ -57,8 +61,9 @@ renderer.domElement.setAttribute(
   "三维场景，拖动转向，WASD 水平移动，Shift 下降，空格上升",
 );
 host.append(renderer.domElement);
+const worldFogColor = 0xd9dee3;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xd9dee3);
+scene.background = new THREE.Color(worldFogColor);
 // Section placement is fixed. Update it on attachment, and animated frames explicitly.
 scene.matrixWorldAutoUpdate = false;
 let worldScene: SectionScene | undefined;
@@ -87,13 +92,24 @@ interface ColumnPayload {
   column: [number, number];
 }
 let stream: ChunkStream<LoadedSection, ColumnPayload, Map<number, ColumnSection>> | undefined;
-let loaded = false,
+// 默认场景以环为中心加载，这个半径刚好盖住整片海。
+const backdropRadius = 18;
+const worldFov = 65;
+let streaming = false,
   dragging = false,
   disposed = false;
 let lastTime = performance.now(),
   lastHUD = 0;
 let failure = "";
 let currentWorld: WorldInfo | undefined;
+// 进入默认场景前的视距，打开存档时还给用户。
+let radiusBeforeBackdrop: string | undefined;
+let backdrop: Backdrop | undefined;
+// 相机静止时轻轻漂移，线框随之闪动成波光；用户一动手就停。
+let swayOrigin: THREE.Vector3 | undefined;
+// 默认场景的点亮时机：加载完自动开始；鼠标一动就提前，不必等远处的空区块。
+let revealWanted = false;
+let streamStats: StreamStats | undefined;
 let worldEpoch = 0;
 let textures: Promise<void> | undefined;
 function updateStatus(stats?: StreamStats): void {
@@ -103,7 +119,7 @@ function updateStatus(stats?: StreamStats): void {
     status.textContent = error;
     return;
   }
-  if (!loaded) {
+  if (!currentWorld?.loaded) {
     status.textContent = "未打开存档";
     return;
   }
@@ -157,18 +173,18 @@ function clampPosition(): void {
 function refresh(): void {
   clampPosition();
   const radius = Number(radiusInput.value);
-  camera.far = (radius + 2) * 16 * 1.7;
+  camera.far = backdrop ? 2400 : (radius + 2) * 16 * 1.7;
   camera.updateProjectionMatrix();
-  scene.fog = new THREE.Fog(
-    0xd9dee3,
-    Math.max(16, (radius - 0.6) * 16),
-    camera.far,
-  );
-  if (loaded)
+  scene.fog = backdrop
+    ? null
+    : new THREE.Fog(worldFogColor, Math.max(16, (radius - 0.6) * 16), camera.far);
+  // 默认场景是有限的一片，加载中心钉在环上，走到哪里都看得到全貌。
+  const anchor = backdrop ? new THREE.Vector3(...backdrop.info.center) : camera.position;
+  if (streaming)
     stream?.update(
-      Math.floor(camera.position.x / 16),
-      Math.floor(camera.position.z / 16),
-      Math.max(-128, Math.min(127, Math.floor(camera.position.y / 16))),
+      Math.floor(anchor.x / 16),
+      Math.floor(anchor.z / 16),
+      Math.max(-128, Math.min(127, Math.floor(anchor.y / 16))),
       radius,
     );
 }
@@ -190,6 +206,7 @@ function jump(position: [number, number, number]): void {
     return;
   }
   failure = "";
+  swayOrigin = undefined;
   camera.position.set(...position);
   syncFields();
   refresh();
@@ -200,7 +217,9 @@ element<HTMLFormElement>("teleport").addEventListener("submit", (event) => {
   jump(fields.map((field) => Number(field.value)) as [number, number, number]);
 });
 wireframe.addEventListener("change", () => {
-  worldScene?.setWireframe(wireframe.checked);
+  wireframe.dataset.tried = "";
+  if (backdrop) backdrop.setLineArt(wireframe.checked);
+  else worldScene?.setWireframe(wireframe.checked);
 });
 occlusion.addEventListener("change", () => worldScene?.setOcclusion(occlusion.checked));
 radiusInput.addEventListener("input", () => {
@@ -210,6 +229,7 @@ radiusInput.addEventListener("input", () => {
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 && event.button !== 2) return;
   renderer.domElement.focus();
+  stopSway();
   dragging = true;
   renderer.domElement.setPointerCapture(event.pointerId);
 });
@@ -236,6 +256,7 @@ renderer.domElement.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
+    stopSway();
     camera.getWorldDirection(forward);
     camera.position.addScaledVector(
       forward,
@@ -258,6 +279,7 @@ renderer.domElement.addEventListener("keydown", (event) => {
     ].includes(event.code)
   ) {
     event.preventDefault();
+    stopSway();
     pressed.add(event.code);
   }
 });
@@ -272,6 +294,7 @@ const resize = new ResizeObserver(() => {
   renderer.setSize(host.clientWidth, host.clientHeight, false);
   camera.aspect = host.clientWidth / host.clientHeight;
   camera.updateProjectionMatrix();
+  backdrop?.resize(renderer);
 });
 resize.observe(host);
 function drawAxes(): void {
@@ -302,6 +325,27 @@ function drawAxes(): void {
     axisContext.stroke();
     axisContext.fillText(label, 38 + v.x * 33, 40 - v.y * 33);
   }
+}
+function drawScene(): void {
+  if (worldScene) worldScene.render(renderer, camera);
+  else renderer.render(scene, camera);
+}
+/** 加载按距离由近到远，四分之一时环和近处的海已经齐了，可以点亮。 */
+function tryReveal(): void {
+  if (!backdrop || !streamStats?.loaded) return;
+  const ready = !streamStats.pending
+    || (revealWanted && streamStats.loaded >= streamStats.wanted / 4);
+  if (ready) backdrop.beginReveal(performance.now());
+}
+for (const type of ["pointermove", "pointerdown"] as const)
+  window.addEventListener(type, () => {
+    if (revealWanted) return;
+    revealWanted = true;
+    tryReveal();
+  });
+function stopSway(): void {
+  if (swayOrigin) camera.position.copy(swayOrigin);
+  swayOrigin = undefined;
 }
 function animate(now: number): void {
   if (disposed) return;
@@ -336,10 +380,20 @@ function animate(now: number): void {
     camera.position.y = THREE.MathUtils.clamp(camera.position.y, -2048, 2047);
     refresh();
   }
+  if (swayOrigin) {
+    const t = now / 1000;
+    camera.position.set(
+      swayOrigin.x + Math.sin(t * 0.11) * 3.2,
+      swayOrigin.y + Math.sin(t * 0.17) * 0.5,
+      swayOrigin.z + Math.cos(t * 0.07) * 1.5,
+    );
+  }
   stream?.processFrame();
   worldScene?.update(camera, now / 1000);
-  if (worldScene) worldScene.render(renderer, camera);
-  else renderer.render(scene, camera);
+  camera.updateMatrixWorld();
+  if (backdrop) backdrop.render(camera, now);
+  else drawScene();
+  stage.update(camera, now);
   const fps = frameRate.sample(now);
   if (fps !== undefined) {
     fpsDisplay.value = `FPS ${fps.toFixed(0)}`;
@@ -362,6 +416,33 @@ async function loadTextures(): Promise<void> {
     /* The table's static shape remains available. */
   }
 }
+function lookAt(target: [number, number, number]): void {
+  camera.lookAt(...target);
+  rotation.setFromQuaternion(camera.quaternion);
+}
+/** 默认场景走线描画面；存档恢复实体绘制与明亮背景，用户调过的视距也一并还原。 */
+function applyAtmosphere(info: WorldInfo): void {
+  document.body.dataset.scene = info.backdrop ? "backdrop" : "world";
+  wireframe.checked = info.backdrop !== undefined;
+  backdrop?.dispose();
+  backdrop = undefined;
+  if (info.backdrop) {
+    camera.position.set(...info.position);
+    camera.fov = info.backdrop.fov;
+    camera.updateProjectionMatrix();
+    backdrop = new Backdrop(renderer, camera, info.backdrop, drawScene);
+    scene.background = null;
+    radiusBeforeBackdrop ??= radiusInput.value;
+    radiusInput.value = String(backdropRadius);
+  } else {
+    camera.fov = worldFov;
+    scene.background = new THREE.Color(worldFogColor);
+    if (radiusBeforeBackdrop !== undefined) radiusInput.value = radiusBeforeBackdrop;
+    radiusBeforeBackdrop = undefined;
+  }
+  stage.show(info.backdrop);
+  element<HTMLOutputElement>("radius-label").value = radiusInput.value;
+}
 async function showWorld(info: WorldInfo): Promise<void> {
   if (currentWorld && info.revision < currentWorld.revision) return;
   const epoch = ++worldEpoch;
@@ -375,7 +456,9 @@ async function showWorld(info: WorldInfo): Promise<void> {
   dragging = false;
   failure = "";
   currentWorld = info;
-  loaded = info.loaded;
+  streamStats = undefined;
+  streaming = info.loaded || info.backdrop !== undefined;
+  applyAtmosphere(info);
   element<HTMLOutputElement>("world-name").value = info.loaded
     ? info.name
     : "未打开存档";
@@ -385,27 +468,39 @@ async function showWorld(info: WorldInfo): Promise<void> {
   conversion.value = info.conversionSeconds !== undefined
     ? `转换完成 · 用时 ${info.conversionSeconds.toFixed(1)} 秒`
     : info.reusedStructure ? "已复用同名存档，无需转换" : "";
-  element<HTMLButtonElement>("open-world").textContent = info.loaded
-    ? "切换存档…"
-    : "打开存档…";
+  element<HTMLElement>("open-world-label").textContent = info.loaded
+    ? "切换存档"
+    : "打开存档";
   element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
   camera.position.set(...info.position);
+  swayOrigin = info.backdrop ? camera.position.clone() : undefined;
+  if (info.backdrop) lookAt(info.backdrop.look);
+  else {
+    // 存档沿用一贯的初始朝向：朝北略微俯视，不继承默认场景的取景。
+    rotation.set(-0.35, 0, 0, "YXZ");
+    camera.quaternion.setFromEuler(rotation);
+  }
   syncFields();
   refresh();
-  if (!loaded) {
-    updateStatus();
-    return;
-  }
-  status.textContent = "载入材质…";
+  updateStatus();
+  if (!streaming) return;
+  if (info.loaded) status.textContent = "载入材质…";
   textures ??= loadTextures().catch((error) => {
     textures = undefined;
     throw error;
   });
   await textures;
   if (disposed || epoch !== worldEpoch) return;
-  const draw = new SectionScene(scene, atlas!, effects, renderer);
-  draw.setWireframe(wireframe.checked);
-  draw.setOcclusion(occlusion.checked);
+  const draw = new SectionScene(
+    scene,
+    atlas!,
+    effects,
+    renderer,
+    16,
+    info.backdrop ? lineArtStyle : undefined,
+  );
+  draw.setWireframe(wireframe.checked && !info.backdrop);
+  draw.setOcclusion(occlusion.checked && !info.backdrop);
   worldScene = draw;
   stream = new ChunkStream({
     load: (keys, signal) => fetchColumn(keys, signal, info.revision),
@@ -425,10 +520,15 @@ async function showWorld(info: WorldInfo): Promise<void> {
       };
     },
     attach: (_key, value) => draw.add(value.section),
-    changed: updateStatus,
+    changed: (stats) => {
+      updateStatus(stats);
+      streamStats = stats;
+      tryReveal();
+    },
   });
   refresh();
 }
+createPanelToggle();
 createWorldPicker(
   (info) => {
     void showWorld(info).catch(showError);
@@ -442,7 +542,9 @@ function showError(error: unknown): void {
 async function start(): Promise<void> {
   const response = await fetch("/api/world", { cache: "no-store" });
   if (!response.ok) throw new Error("无法读取存档信息");
-  await showWorld(await response.json());
+  const info: WorldInfo = await response.json();
+  element<HTMLOutputElement>("version").value = info.version;
+  await showWorld(info);
 }
 void start().catch((error: unknown) => {
   failure = error instanceof Error ? error.message : String(error);
@@ -456,6 +558,7 @@ window.addEventListener("pagehide", () => {
   window.removeEventListener("resize", updateResolution);
   document.removeEventListener("visibilitychange", resetFrameRate);
   renderer.dispose();
+  backdrop?.dispose();
   atlas?.dispose();
   book?.dispose();
 });

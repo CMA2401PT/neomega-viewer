@@ -15,11 +15,14 @@ import (
 type Info struct {
 	// 场景描述复用页面契约，存档选择器需要的路径和格式由程序补充。
 	viewhttp.Description
+	Version           string   `json:"version"`
 	Path              string   `json:"path"`
 	Kind              string   `json:"kind"`
 	Dimension         string   `json:"dimension"`
 	ConversionSeconds *float64 `json:"conversionSeconds,omitempty"`
 	ReusedStructure   bool     `json:"reusedStructure,omitempty"`
+	// 非空表示当前显示默认场景，页面据此换上线框、天空和取景。
+	Backdrop *Backdrop `json:"backdrop,omitempty"`
 }
 
 type SourceOptions struct {
