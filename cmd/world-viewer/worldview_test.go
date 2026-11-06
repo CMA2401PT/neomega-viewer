@@ -83,7 +83,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			source, err := OpenSource(options)
+			source, err := OpenSource(context.Background(), options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +170,7 @@ func TestWorldDirectoryAndPack(t *testing.T) {
 }
 
 func TestEmptySourceAndUnknownState(t *testing.T) {
-	source, err := OpenSource(SourceOptions{})
+	source, err := OpenSource(context.Background(), SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestEmptySourceAndUnknownState(t *testing.T) {
 }
 
 func TestEmbeddedSiteAndResources(t *testing.T) {
-	source, err := OpenSource(SourceOptions{})
+	source, err := OpenSource(context.Background(), SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

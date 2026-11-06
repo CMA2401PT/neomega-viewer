@@ -13,15 +13,19 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 ./cmd/world-viewer/world-viewer
 ```
 
-打开 <http://127.0.0.1:2412>，点击右下角“打开存档…”，选择服务所在电脑上的 Java／Bedrock 世界目录、`level.dat` 或 Java PackFS 文件。PackFS 是把世界目录保存成单文件的容器。也可以在启动时直接指定：
+打开 <http://127.0.0.1:2412>，点击右下角“打开存档…”，选择服务所在电脑上的 Java／Bedrock 世界目录、`level.dat`、Java PackFS 文件，或 `.schem`、`.schematic`、`.litematic`、`.nbt`、`.mcstructure`、`.mcworld`。PackFS 是把世界目录保存成单文件的容器。也可以在启动时直接指定：
 
 ```sh
 ./cmd/world-viewer/world-viewer -world /path/to/java-world
 ./cmd/world-viewer/world-viewer -world /path/to/bedrock-world
 ./cmd/world-viewer/world-viewer -pack /path/to/world.pack
+./cmd/world-viewer/world-viewer \
+  -world /path/to/build.schem
 ```
 
-Bedrock 方块默认在内存中转换并修复栅栏连接、楼梯拐角等邻接属性，结果不写回存档。加 `-bedrock-fix=false` 可以查看直接转换的结果。Bedrock 维度用 `-dimension 0`、`1`、`2` 选择主世界、下界、末地；Java 维度用存档内相对目录，例如 `-dimension DIM-1`。
+结构文件先转换再预览：schem、schematic、litematic、nbt 生成 Java 世界，mcstructure、mcworld 生成 Bedrock 世界。输出在源文件旁的同名文件夹中，例如 `城堡.schem` → `城堡/`，不需要额外指定目录。同名文件夹已经是存档时直接复用，以保留其中的编辑。源文件更新后，需要移走或删除旧存档目录再打开；非空且不是存档的目录不会被覆盖。
+
+Bedrock 方块默认在内存中转换并修复栅栏连接、楼梯拐角等邻接属性，结果不写回存档。加 `-bedrock-fix=false` 可以查看直接转换的结果。这个开关也用于转换后的 mcstructure 存档预览，修复结果只留在内存。Bedrock 维度用 `-dimension 0`、`1`、`2` 选择主世界、下界、末地；Java 维度用存档内相对目录，例如 `-dimension DIM-1`。结构文件忽略 `-dimension`。
 
 拖动鼠标转向，`W/A/S/D` 水平移动，空格上升，`Shift` 下降。右下角面板提供坐标跳转、线框、视距和渲染分辨率。视距默认 8 个区块，增大视距会增加内存与绘制开销。
 

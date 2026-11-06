@@ -42,7 +42,7 @@ func TestBedrockFixtureBuildColumn(t *testing.T) {
 	}
 	for _, skip := range []bool{true, false} {
 		t.Run(fmt.Sprintf("skip_fix=%v", skip), func(t *testing.T) {
-			src, err := OpenSource(SourceOptions{
+			src, err := OpenSource(context.Background(), SourceOptions{
 				Directory:      dir,
 				SkipBedrockFix: skip,
 			})
@@ -180,7 +180,7 @@ func TestBedrockOpenDimensionsAndSpawn(t *testing.T) {
 			position:  [3]float64{136, 24, 40},
 		},
 	} {
-		src, err := OpenSource(SourceOptions{
+		src, err := OpenSource(context.Background(), SourceOptions{
 			Directory:      dir,
 			Dimension:      test.dimension,
 			SkipBedrockFix: true,
@@ -194,7 +194,7 @@ func TestBedrockOpenDimensionsAndSpawn(t *testing.T) {
 		src.Close()
 	}
 	position := [3]float64{1, 2, 3}
-	src, err := OpenSource(SourceOptions{
+	src, err := OpenSource(context.Background(), SourceOptions{
 		Directory: dir,
 		Position:  &position,
 	})
@@ -206,7 +206,7 @@ func TestBedrockOpenDimensionsAndSpawn(t *testing.T) {
 		t.Fatal(src.Info.Position)
 	}
 	for _, invalid := range []string{"DIM-1", "-1", "3"} {
-		if _, err := OpenSource(SourceOptions{
+		if _, err := OpenSource(context.Background(), SourceOptions{
 			Directory: dir,
 			Dimension: invalid,
 		}); err == nil {
@@ -237,7 +237,7 @@ func TestBedrockPickerAndFixSetting(t *testing.T) {
 			}
 		}
 		for _, skip := range []bool{true, false} {
-			src, err := OpenSource(SourceOptions{
+			src, err := OpenSource(context.Background(), SourceOptions{
 				Directory:      dir,
 				SkipBedrockFix: skip,
 			})
@@ -268,7 +268,7 @@ func TestBedrockPickerAndFixSetting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			empty, err := OpenSource(SourceOptions{})
+			empty, err := OpenSource(context.Background(), SourceOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -360,5 +360,36 @@ func TestBedrockSwitchWaitsForRawRead(t *testing.T) {
 			t.Fatal("late adapt callback entered a closed database", err)
 		}
 		worlds.Close()
+	})
+}
+
+func TestBedrockCloseWaitsForActorRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		started, release := make(chan struct{}), make(chan struct{})
+		reads := &bedrockReads{actors: func(context.Context, celler.ChunkPos) ([]nbt.Compound, error) {
+			close(started)
+			<-release
+			return nil, nil
+		}}
+		go func() {
+			if _, err := reads.ReadActors(context.Background(), celler.ChunkPos{}); err != nil {
+				t.Error(err)
+			}
+		}()
+		<-started
+		closed := false
+		go func() { reads.Close(); closed = true }()
+		synctest.Wait()
+		if closed {
+			t.Fatal("普通实体读取未结束就关闭了数据库")
+		}
+		close(release)
+		synctest.Wait()
+		if !closed {
+			t.Fatal("实体读取归还后仍未关闭")
+		}
+		if _, err := reads.ReadActors(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrClosed) {
+			t.Fatal(err)
+		}
 	})
 }

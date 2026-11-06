@@ -42,7 +42,7 @@ func TestWorldSwitchIsolatesCachesAndRejectsStaleRequests(t *testing.T) {
 	stone, air := t.TempDir(), t.TempDir()
 	writePickerWorld(t, stone, "minecraft:stone []")
 	writePickerWorld(t, air, "minecraft:air []")
-	source, err := OpenSource(SourceOptions{})
+	source, err := OpenSource(context.Background(), SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestFileBrowserPathsAndPackSelection(t *testing.T) {
 			t.Fatal(options, err)
 		}
 	}
-	source, err := OpenSource(SourceOptions{})
+	source, err := OpenSource(context.Background(), SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,5 +189,28 @@ func TestFileBrowserPathsAndPackSelection(t *testing.T) {
 	}
 	if _, err = fs.Stat(os.DirFS(directory), "region"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPickerFileKinds(t *testing.T) {
+	dir := t.TempDir()
+	names := map[string]string{"a.SCHEM": "schem", "b.schematic": "schematic", "c.litematic": "litematic", "d.nbt": "nbt", "e.mcstructure": "mcstructure", "f.mcworld": "mcworld", "world.PACK": "pack", "level.dat": "level", "photo.webp": "unknown"}
+	for name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte{1}, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "folder.schem"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	names["folder.schem"] = "folder"
+	listing, err := browseDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range listing.Entries {
+		if entry.Kind != names[entry.Name] {
+			t.Fatal(entry)
+		}
 	}
 }

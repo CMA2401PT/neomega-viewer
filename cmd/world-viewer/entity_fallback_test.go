@@ -64,7 +64,7 @@ func TestColumnEntityFailuresKeepTerrain(t *testing.T) {
 			if err = world.Close(); err != nil {
 				t.Fatal(err)
 			}
-			source, err := OpenSource(SourceOptions{Directory: root})
+			source, err := OpenSource(context.Background(), SourceOptions{Directory: root})
 			if err != nil {
 				t.Fatal(err)
 			}

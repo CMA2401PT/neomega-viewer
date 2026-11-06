@@ -6,7 +6,7 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	java "neomega-blocks/presets/java/v1"
-	"neomega-converter-core/bedrock"
+	bedrock "neomega-converter-core/be2je"
 	nbt "neomega-nbt/presets/v1"
 )
 

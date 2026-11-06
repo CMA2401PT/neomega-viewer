@@ -13,6 +13,7 @@ import (
 	"celler/bedrock"
 	"neomega-converter-core/adapt"
 	fixedadapt "neomega-converter/adapt"
+	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
 	"neomega-viewer/source/bedrockworld"
 	"neomega-viewer/viewhttp"
@@ -26,6 +27,7 @@ type bedrockReads struct {
 	active sync.WaitGroup
 	closed bool
 	read   adapt.ReadChunk
+	actors adapt.ReadActors
 }
 
 func (r *bedrockReads) Read(ctx context.Context, pos celler.ChunkPos) (*bedrock.Chunk, error) {
@@ -41,6 +43,22 @@ func (r *bedrockReads) Read(ctx context.Context, pos celler.ChunkPos) (*bedrock.
 		return nil, err
 	}
 	return r.read(ctx, pos)
+}
+
+// ReadActors 与地形读取共用关闭屏障，取消等待后也不会读取已关闭的数据库。
+func (r *bedrockReads) ReadActors(ctx context.Context, pos celler.ChunkPos) ([]nbt.Compound, error) {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil, fs.ErrClosed
+	}
+	r.active.Add(1)
+	r.mu.Unlock()
+	defer r.active.Done()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.actors(ctx, pos)
 }
 
 func (r *bedrockReads) Close() {
@@ -67,6 +85,17 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 	reads := &bedrockReads{
 		read: func(ctx context.Context, pos celler.ChunkPos) (*bedrock.Chunk, error) {
 			return world.ReadChunk(int32(dimension), pos)
+		},
+		actors: func(ctx context.Context, pos celler.ChunkPos) ([]nbt.Compound, error) {
+			documents, err := world.ReadChunkActors(int32(dimension), pos)
+			if err != nil {
+				return nil, err
+			}
+			values := make([]nbt.Compound, len(documents))
+			for i, document := range documents {
+				values[i] = document.Value
+			}
+			return values, nil
 		},
 	}
 	opened := &Source{
@@ -102,7 +131,7 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		Kind:      "bedrock",
 		Dimension: strconv.FormatInt(dimension, 10),
 	}
-	converted := adapt.NewConverted(reads.Read, adapt.Options{})
+	converted := adapt.NewConverted(reads.Read, adapt.Options{}, reads.ReadActors)
 	var chunks adapt.ChunkSource = converted
 	if !options.SkipBedrockFix {
 		f, err := sharedFixer()

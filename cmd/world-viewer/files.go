@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"neomega-converter-core/structure"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ type fileEntry struct {
 	Name      string `json:"name"`
 	Path      string `json:"path"`
 	Directory bool   `json:"directory"`
+	Kind      string `json:"kind"`
 }
 type directoryListing struct {
 	Selected string      `json:"selected"`
@@ -70,7 +72,18 @@ func browseDirectory(name string) (directoryListing, error) {
 		if !isDir && !entry.Type().IsRegular() && entry.Type()&os.ModeSymlink == 0 {
 			continue
 		}
-		listing.Entries = append(listing.Entries, fileEntry{Name: entry.Name(), Path: path, Directory: isDir})
+		kind := structure.FileKind(path)
+		switch {
+		case isDir:
+			kind = "folder"
+		case strings.EqualFold(entry.Name(), "level.dat"):
+			kind = "level"
+		case strings.EqualFold(filepath.Ext(path), ".pack"), strings.EqualFold(filepath.Ext(path), ".packfs"):
+			kind = "pack"
+		case kind == "":
+			kind = "unknown"
+		}
+		listing.Entries = append(listing.Entries, fileEntry{Name: entry.Name(), Path: path, Directory: isDir, Kind: kind})
 	}
 	slices.SortFunc(listing.Entries, func(a, b fileEntry) int {
 		if a.Directory != b.Directory {
@@ -90,7 +103,7 @@ func sourceAtPath(name string) (SourceOptions, error) {
 		name = name[1 : len(name)-1]
 	}
 	if name == "" {
-		return SourceOptions{}, fmt.Errorf("请选择存档目录或 PackFS 文件")
+		return SourceOptions{}, fmt.Errorf("请选择存档目录、level.dat、PackFS 或结构文件")
 	}
 	absolute, err := filepath.Abs(name)
 	if err != nil {
@@ -118,7 +131,11 @@ func sourceAtPath(name string) (SourceOptions, error) {
 	// PackFS owns format validation. Reject empty files because packfs.Open
 	// treats them as a request to create a new container.
 	if !stat.Mode().IsRegular() || stat.Size() == 0 {
-		return SourceOptions{}, fmt.Errorf("请选择已有的 PackFS 存档文件")
+		return SourceOptions{}, fmt.Errorf("请选择非空的 PackFS 或结构文件")
 	}
+	if kind := structure.FileKind(absolute); kind != "" {
+		return SourceOptions{File: absolute, Kind: kind}, nil
+	}
+
 	return SourceOptions{Pack: absolute}, nil
 }

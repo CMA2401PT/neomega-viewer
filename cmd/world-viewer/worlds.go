@@ -55,7 +55,7 @@ func (w *Worlds) Open(ctx context.Context, options SourceOptions) (Info, error) 
 	// 新内容可读后才发布；退役等到旧构建结束，来源关闭再等到底层 I/O 结束。
 	w.switchMu.Lock()
 	defer w.switchMu.Unlock()
-	source, err := OpenSource(options)
+	source, err := OpenSource(ctx, options)
 	if err != nil {
 		return Info{}, err
 	}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"neomega-converter-core/structure"
 	"os"
 	"path/filepath"
 
@@ -13,18 +15,23 @@ import (
 type Info struct {
 	// 场景描述复用页面契约，存档选择器需要的路径和格式由程序补充。
 	viewhttp.Description
-	Path      string `json:"path"`
-	Kind      string `json:"kind"`
-	Dimension string `json:"dimension"`
+	Path              string   `json:"path"`
+	Kind              string   `json:"kind"`
+	Dimension         string   `json:"dimension"`
+	ConversionSeconds *float64 `json:"conversionSeconds,omitempty"`
+	ReusedStructure   bool     `json:"reusedStructure,omitempty"`
 }
 
 type SourceOptions struct {
 	// 同一参数在识别格式后解释：Java 维度是相对目录，Bedrock 维度是编号。
 	Directory      string
 	Pack           string
+	File           string
+	Kind           string
 	Dimension      string
 	Position       *[3]float64
 	SkipBedrockFix bool
+	Progress       func(structure.Progress)
 }
 
 type Source struct {
@@ -34,10 +41,23 @@ type Source struct {
 	close  func()
 }
 
-func OpenSource(options SourceOptions) (*Source, error) {
-	// 命令行和页面选出的目录经过同一次格式识别，PackFS 保持 Java 读取路径。
-	if options.Directory != "" && options.Pack != "" {
+func OpenSource(ctx context.Context, options SourceOptions) (*Source, error) {
+	// 命令行和页面共用格式识别；结构文件先生成原生存档再打开。
+	chosen := 0
+	if options.Directory != "" {
+		chosen++
+	}
+	if options.Pack != "" {
+		chosen++
+	}
+	if options.File != "" {
+		chosen++
+	}
+	if chosen > 1 {
 		return nil, fmt.Errorf("choose -world or -pack")
+	}
+	if options.File != "" {
+		return openStructureFile(ctx, options)
 	}
 	if options.Directory != "" && isBedrockDirectory(options.Directory) {
 		return openBedrockSource(options)

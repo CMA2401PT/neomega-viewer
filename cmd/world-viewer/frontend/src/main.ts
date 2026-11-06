@@ -380,6 +380,11 @@ async function showWorld(info: WorldInfo): Promise<void> {
     ? info.name
     : "未打开存档";
   element<HTMLOutputElement>("world-name").title = info.path ?? "";
+  const conversion = element<HTMLOutputElement>("conversion-summary");
+  conversion.hidden = info.conversionSeconds === undefined && !info.reusedStructure;
+  conversion.value = info.conversionSeconds !== undefined
+    ? `转换完成 · 用时 ${info.conversionSeconds.toFixed(1)} 秒`
+    : info.reusedStructure ? "已复用同名存档，无需转换" : "";
   element<HTMLButtonElement>("open-world").textContent = info.loaded
     ? "切换存档…"
     : "打开存档…";

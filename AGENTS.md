@@ -146,7 +146,9 @@ Bedrock 的 adapt 等待者也可能先于底层读取返回取消。组装方�
 
 Bedrock 来源保留 converter 按状态汇总的 `unknown_block` 和按实体 ID 汇总的 `unsupported_block_entity` 计数。单项 NBT 或规则错误按一项报告；有具体坐标时保留坐标。这些来源诊断始终覆盖请求柱子的全部高度，不增加缺失模型数量。
 
-需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。普通实体改用 `source.GroupEntities(entities)`，输入是含字符串 `id` 和三项 Double `Pos` 的 Compound 列表。它按位置决定唯一所属 section，保留局部浮点位置和原始 NBT。`List` 决定输出归属；可选的宽松 `Query` 只返回同一局部坐标系的候选，不会增加输出。其他来源只要产出相同数据，就能使用这些函数。结构文件适配器可以先将结构放到所需的 section 坐标，再提供 `SectionSource`，或直接填充 `MemorySections`。
+需要把读取或转换得到的实体交给 Pipeline 时，调用 `source.GroupBlockEntities(entities)`。它接收同一柱子的 `[]java.BlockEntity`，按 section Y 和格内坐标分组，支持负坐标，并复用输入 NBT。普通实体改用 `source.GroupEntities(entities)`，输入是含字符串 `id` 和三项 Double `Pos` 的 Compound 列表。它按位置决定唯一所属 section，保留局部浮点位置和原始 NBT。`List` 决定输出归属；可选的宽松 `Query` 只返回同一局部坐标系的候选，不会增加输出。其他来源只要产出相同数据，就能使用这些函数。
+
+结构文件先转换再预览：schem、schematic、litematic、nbt 生成 Java 世界，mcstructure、mcworld 生成 Bedrock 世界。输出在源文件旁的同名文件夹中，例如 `城堡.schem` → `城堡/`，不需要额外指定目录。同名文件夹已经是存档时直接复用，以保留其中的编辑。源文件更新后，需要移走或删除旧存档目录再打开；非空且不是存档的目录不会被覆盖。
 
 ## 演示格式与接口
 

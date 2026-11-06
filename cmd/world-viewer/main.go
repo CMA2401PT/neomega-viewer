@@ -25,7 +25,7 @@ func main() {
 	}
 }
 func run() error {
-	directory := flag.String("world", "", "Java or Bedrock world directory; omit for an empty scene")
+	directory := flag.String("world", "", "Java/Bedrock 存档目录，或 schem/schematic/litematic/nbt/mcstructure/mcworld 文件")
 	pack := flag.String("pack", "", "PackFS container with a Java world at its root")
 	dimension := flag.String("dimension", "", "Java dimension directory or Bedrock dimension 0/1/2; default overworld")
 	bedrockFix := flag.Bool("bedrock-fix", true, "repair Bedrock neighbour states after conversion")
@@ -33,14 +33,25 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:2412", "HTTP listen address")
 	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
 	flag.Parse()
+	if *directory != "" && *pack != "" {
+		return fmt.Errorf("choose -world or -pack")
+	}
 	if *workers < 1 || *workers > 8 {
 		return fmt.Errorf("-workers must be 1..8")
 	}
 	options := SourceOptions{
-		Directory:      *directory,
 		Pack:           *pack,
 		Dimension:      *dimension,
 		SkipBedrockFix: !*bedrockFix,
+	}
+	if *directory != "" {
+		parsed, err := sourceAtPath(*directory)
+		if err != nil {
+			return err
+		}
+		parsed.Dimension = options.Dimension
+		parsed.SkipBedrockFix = options.SkipBedrockFix
+		options = parsed
 	}
 	if *position != "" {
 		parts := strings.Split(*position, ",")
@@ -60,7 +71,9 @@ func run() error {
 		}
 		options.Position = &p
 	}
-	source, err := OpenSource(options)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	source, err := OpenSource(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -94,8 +107,6 @@ func run() error {
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 	log.Printf("http://%s · world=%q · dimension=%s", *listen, source.Info.Name, source.Info.Dimension)

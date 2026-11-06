@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
+	"neomega-converter-core/structure"
 	"net/http"
 	"strings"
 
@@ -54,6 +56,33 @@ func Handler(options ServerOptions) http.Handler {
 			return
 		}
 		source.SkipBedrockFix = options.SkipBedrockFix
+		// 流式响应沿用同一次打开请求，进度只属于当前调用者；断开连接会取消转换。
+		if strings.Contains(r.Header.Get("Accept"), "application/x-ndjson") {
+			ctx, cancel := context.WithCancel(r.Context())
+			defer cancel()
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.Header().Set("Cache-Control", "no-store")
+			encoder := json.NewEncoder(w)
+			emit := func(event openEvent) {
+				if err := encoder.Encode(event); err != nil {
+					cancel()
+					return
+				}
+				if err := http.NewResponseController(w).Flush(); err != nil {
+					cancel()
+				}
+			}
+			emit(openEvent{Type: "progress", Progress: &structure.Progress{Stage: "opening"}})
+			source.Progress = func(progress structure.Progress) { emit(openEvent{Type: "progress", Progress: &progress}) }
+			info, err := options.Worlds.Open(ctx, source)
+			if err != nil {
+				emit(openEvent{Type: "error", Error: err.Error()})
+				return
+			}
+			info.ResourceVersion = options.ResourceVersion
+			emit(openEvent{Type: "complete", Info: &info})
+			return
+		}
 		info, err := options.Worlds.Open(r.Context(), source)
 		if err != nil {
 			http.Error(w, err.Error(), 422)
@@ -74,4 +103,12 @@ func Handler(options ServerOptions) http.Handler {
 		},
 	))
 	return http.NewCrossOriginProtection().Handler(mux)
+}
+
+// openEvent 是 POST 打开请求的逐行响应，成功前失败不会替换当前存档。
+type openEvent struct {
+	Type     string              `json:"type"`
+	Progress *structure.Progress `json:"progress,omitempty"`
+	Info     *Info               `json:"info,omitempty"`
+	Error    string              `json:"error,omitempty"`
 }

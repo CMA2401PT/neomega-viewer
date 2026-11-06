@@ -1,6 +1,6 @@
 # Java 与 Bedrock 存档浏览器
 
-`world-viewer` 是一个可以单独分发的 Java 与 Bedrock 存档浏览程序。Go 服务只读访问相机附近的区块，再用 viewer 生成网格。Bedrock 方块在内存里转换成 Java 状态，默认经过邻接修复后进入同一条渲染路径，转换和修复结果不写回文件。浏览器在全屏 Three.js 场景中显示它们，移动时只补入新进入范围的 section。section 是区块中一个 16×16×16 的方块区域。
+`world-viewer` 是一个可以单独分发的 Java 与 Bedrock 存档浏览程序。Go 服务只读访问相机附近的区块，再用 viewer 生成网格。Bedrock 方块在内存里转换成 Java 状态，默认经过邻接修复后进入同一条渲染路径，转换和修复结果不写回文件。结构文件会先写成对应的 Java 或 Bedrock 世界目录，再沿同一条区块读取路径显示。浏览器在全屏 Three.js 场景中显示它们，移动时只补入新进入范围的 section。section 是区块中一个 16×16×16 的方块区域。
 
 程序内嵌网页、Three.js、图集、附魔书贴图和几何表。运行时只需要一个与目标操作系统及处理器匹配的可执行文件、一份存档和支持 WebGL 2 的浏览器。没有指定存档时，页面仍是同一个空场景。
 
@@ -12,15 +12,17 @@
 ./world-viewer
 ```
 
-打开 <http://127.0.0.1:2412>，点击右下角“打开存档…”。对话框列出 Go 服务所在电脑上的目录和文件。双击文件夹进入，使用“上一级”返回；选中世界目录、`level.dat` 或 Java PackFS 文件后点击“打开”。当前目录本身也可以直接打开。包含 `db/` 子目录的世界目录按 Bedrock 打开，即使没有 `level.dat` 也可以使用。选中 `level.dat` 时打开它所在的世界目录。存档数据由 Go 按路径读取，浏览器不上传整个文件。
+打开 <http://127.0.0.1:2412>，点击右下角“打开存档…”。对话框列出 Go 服务所在电脑上的目录和文件。双击文件夹进入，使用“上一级”返回；选中世界目录、`level.dat`、Java PackFS 文件，或 `.schem`、`.schematic`、`.litematic`、`.nbt`、`.mcstructure`、`.mcworld` 后点击“打开”。当前目录本身也可以直接打开。包含 `db/` 子目录的世界目录按 Bedrock 打开，即使没有 `level.dat` 也可以使用。选中 `level.dat` 时打开它所在的世界目录。存档数据由 Go 按路径读取，浏览器不上传整个文件。
 
 路径框可以直接输入或粘贴路径。“转到”用于浏览该位置，“打开”用于载入输入的存档。Windows 版支持盘符选择、`D:\Minecraft\我的世界` 这类路径，以及 `\\server\share\世界` 这样的 UNC 路径。路径属于运行 Go 程序的电脑，Windows 使用 `world-viewer.exe`。
 
 载入后，同一个按钮变为“切换存档…”。新存档成功打开后，旧请求会取消，旧网格和缓存会释放；打开失败则保留原存档。也可以从命令行预选：`-world /path/to/java-world`、`-world /path/to/bedrock-world` 或 `-pack /path/to/world.pack`。PackFS 容器以 Java 世界目录为根，只支持 Java 存档。
 
+结构文件先转换再预览：schem、schematic、litematic、nbt 生成 Java 世界，mcstructure、mcworld 生成 Bedrock 世界。输出在源文件旁的同名文件夹中，例如 `城堡.schem` → `城堡/`，不需要额外指定目录。同名文件夹已经是存档时直接复用，以保留其中的编辑。源文件更新后，需要移走或删除旧存档目录再打开；非空且不是存档的目录不会被覆盖。
+
 默认加载主世界。Java 优先识别根目录 `region`，其次识别 `dimensions/minecraft/overworld/region`。其他 Java 维度通过 `-dimension` 指定相对于存档根目录的目录，例如 `DIM-1` 或 `dimensions/minecraft/the_nether`。Bedrock 的 `-dimension` 使用编号：0 是主世界，1 是下界，2 是末地，默认 0。
 
-邻接修复根据周围方块补全栅栏连接、楼梯拐角等 Java 属性。需要查看 Bedrock 的直接转换结果时，启动参数加 `-bedrock-fix=false`。这个设置也用于网页中打开的 Bedrock 存档，Java 存档不受影响。
+邻接修复根据周围方块补全栅栏连接、楼梯拐角等 Java 属性。需要查看 Bedrock 的直接转换结果时，启动参数加 `-bedrock-fix=false`。这个设置也用于网页中打开的 Bedrock 存档，以及 mcstructure 转出的 Bedrock 存档。修复只发生在预览时，已经写成的 Java 世界不受影响。
 
 初始位置取 `level.dat` 中的 SpawnX、SpawnY、SpawnZ，并向上偏移 12 格。Java 从 Data 内读取，Bedrock 从根读取。没有出生点时先尝试坐标 `(0,80,0)`。该位置没有区块时，定位到所选维度第一个已存区块的最高非空气 section 上方，找到后停止扫描。也可以用 `-position '128,100,-256'` 指定初始坐标。`-listen` 调整监听地址，默认只监听本机。
 
@@ -117,7 +119,7 @@ Java 压缩区块缓存为 32 MiB，最多打开 16 个 region。Bedrock 转换�
 
 服务默认允许四个列请求并发构建，可通过 `-workers` 调整；每列内部的 section 仍依次构建。并发调度由 HTTP 层负责，Pipeline 在一次批量调用内缓存 section 准备结果，mesher 接收单个 section 及邻居的渲染层并返回几何。服务按需读取地形与普通实体记录，启动时只探测初始落点。缓存以打开存档时的内容为准。修改存档后，重新选择同一份存档即可重新读取。
 
-`GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`kind` 为 `directory`、`pack` 或 `bedrock`，分别表示 Java 目录、Java PackFS 和 Bedrock 目录。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
+`GET /api/world` 返回存档编号、路径、初始坐标、维度和资源版本。`kind` 为 `directory`、`pack`、`bedrock` 或结构文件的扩展名（schem、schematic、litematic、nbt、mcstructure、mcworld）。结构来源的 `path` 保留用户选中的文件路径，区块读取来自旁边的同名原生存档。`GET /api/files?path=...` 浏览服务端目录；`POST /api/world` 接收 JSON `{ "path": "..." }` 打开存档，并返回新的存档编号。`GET /api/chunk?world=1&x=0&z=0&minY=2&maxY=6` 请求指定区块列中的连续 section。参数错误返回 400，存档编号已过期返回 409，无法构建几何返回 422，排队已满返回 503。多个页面共享服务端当前打开的存档，其他页面在切换后刷新即可同步。
 
 区块响应为固定小端的 NVWC v3。20 字节头包含 `NVWC` 标记、uint32 版本、uint32 section 数量、uint32 缺失模型总数和 uint32 诊断 JSON 字节数。每个 section 随后写入 int32 Y、uint32 帧长度、uint32 缺失模型数和完整 NVFR 帧。所有 section 帧之后附带 UTF-8 JSON 诊断数组。无诊断时字节数为零。静态几何、actor 和特效都为空的 section 不写帧，前端将其记为空 section。单次响应上限 24 MiB。NVFR 内部格式见 [快照格式](../../../../neomega-viewer-core/viewer/merger/FORMAT.md)。
 
@@ -162,4 +164,4 @@ npm --prefix apps/neomega-viewer/cmd/world-viewer/frontend test
 npm --prefix apps/neomega-viewer/cmd/world-viewer/frontend run build
 ```
 
-测试覆盖文件浏览、存档切换与缓存隔离、退役等待在途构建、Java 目录与 PackFS 读取、内存来源出网格、跨 section 剔面和整列诊断归属。Bedrock 测试只打开样例的临时副本，验证转换与修复两种组装能生成网格，并覆盖维度、出生点、目录识别、修复开关、诊断计数和关闭前等待原始读取。前端工程测试移动与视距变化时保留网格、取消过期请求、完整视距加载、列响应解码和跨高度窗口的诊断去重。共享包测试跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和绘制二进制解码。
+测试覆盖文件浏览、存档切换与缓存隔离、退役等待在途构建、Java 目录与 PackFS 读取、结构文件写成 Java／Bedrock 世界后再读取、内存来源出网格、跨 section 剔面和整列诊断归属。Bedrock 测试只打开样例的临时副本，验证转换与修复两种组装能生成网格，并覆盖维度、出生点、目录识别、修复开关、诊断计数和关闭前等待原始读取。前端工程测试移动与视距变化时保留网格、取消过期请求、完整视距加载、列响应解码和跨高度窗口的诊断去重。共享包测试跨 section 批绘制、共享材质生命周期、分层可见性、遮挡查询的异步处理与失效、缓冲收缩、特效动画和绘制二进制解码。

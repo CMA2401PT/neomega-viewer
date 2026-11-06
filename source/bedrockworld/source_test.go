@@ -14,7 +14,7 @@ import (
 	"celler/layer_storage"
 	"neomega-blocks/ir"
 	"neomega-converter-core"
-	convert "neomega-converter-core/bedrock"
+	convert "neomega-converter-core/be2je"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/viewer/blockactor"
 	"neomega-viewer-core/viewer/cube"

@@ -1,3 +1,6 @@
+import { fileAppearance, fileIcon } from "./file-kind.ts";
+import { openWorld, progressLabel, type OpenProgress } from "./open-world.ts";
+
 export interface WorldInfo {
   revision: number;
   canOpen?: boolean;
@@ -6,6 +9,8 @@ export interface WorldInfo {
   path?: string;
   kind?: string;
   dimension?: string;
+  conversionSeconds?: number;
+  reusedStructure?: boolean;
   position: [number, number, number];
   resourceVersion: string;
 }
@@ -13,6 +18,7 @@ interface Entry {
   name: string;
   path: string;
   directory: boolean;
+  kind: string;
 }
 interface Listing {
   path: string;
@@ -22,8 +28,7 @@ interface Listing {
   entries: Entry[];
 }
 
-/** A view of the Go host filesystem. Paths returned by Go remain opaque strings,
- * so drive letters, backslashes and UNC paths do not acquire URL semantics. */
+/** 浏览服务所在电脑的文件系统，路径原样交回 Go，保留盘符与 UNC 路径语义。 */
 export function createWorldPicker(
   opened: (info: WorldInfo) => void,
   current: () => WorldInfo | undefined,
@@ -38,6 +43,9 @@ export function createWorldPicker(
   const error = element<HTMLOutputElement>("picker-error");
   const selection = element<HTMLOutputElement>("picker-selection");
   const up = element<HTMLButtonElement>("picker-up");
+  const progressPanel = element<HTMLDivElement>("picker-progress");
+  const progressBar = element<HTMLProgressElement>("picker-progress-bar");
+  const progressText = element<HTMLOutputElement>("picker-progress-text");
   let selected = "",
     parent = "",
     switching = false;
@@ -77,8 +85,11 @@ export function createWorldPicker(
         const name = document.createElement("span");
         name.textContent = entry.name;
         const kind = document.createElement("small");
-        kind.textContent = entry.directory ? "文件夹" : "文件";
-        button.append(name, kind);
+        const appearance = fileAppearance(entry.kind, entry.directory);
+        name.className = "file-name";
+        kind.textContent = appearance.label;
+        button.title = `${entry.name} · ${appearance.label}`;
+        button.append(fileIcon(appearance.icon), name, kind);
         button.addEventListener("click", () => select(entry.path));
         button.addEventListener("dblclick", () => {
           if (entry.directory) void browse(entry.path);
@@ -108,21 +119,35 @@ export function createWorldPicker(
     browsing?.abort();
     switching = true;
     controls.disabled = true;
-    error.value = "打开存档…";
+    error.value = "";
+    progressPanel.hidden = false;
+    const started = performance.now();
+    let received = started;
+    let progress: OpenProgress = { stage: "opening", completed: 0, total: 0, elapsedSeconds: 0 };
+    function renderProgress(): void {
+      const converting = progress.stage !== "opening";
+      const seconds = converting
+        ? progress.elapsedSeconds + (progress.stage === "complete" ? 0 : (performance.now() - received) / 1000)
+        : (performance.now() - started) / 1000;
+      progressText.value = `${progressLabel(progress)} · ${converting ? "转换已用" : "已用"} ${seconds.toFixed(1)} 秒`;
+      if (progress.total > 0) progressBar.value = progress.completed / progress.total;
+      else progressBar.removeAttribute("value");
+    }
+    renderProgress();
+    const timer = window.setInterval(renderProgress, 100);
     try {
-      const response = await fetch("/api/world", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: selected || address.value }),
+      const info = await openWorld(selected || address.value, (value) => {
+        progress = value;
+        received = performance.now();
+        renderProgress();
       });
-      if (!response.ok) throw new Error(await response.text());
-      const info: WorldInfo = await response.json();
       opened(info);
       dialog.close();
     } catch (failure) {
-      error.value =
-        failure instanceof Error ? failure.message : String(failure);
+      error.value = `打开失败（已用 ${((performance.now() - started) / 1000).toFixed(1)} 秒）：${failure instanceof Error ? failure.message : String(failure)}`;
     } finally {
+      window.clearInterval(timer);
+      progressPanel.hidden = true;
       switching = false;
       controls.disabled = false;
     }

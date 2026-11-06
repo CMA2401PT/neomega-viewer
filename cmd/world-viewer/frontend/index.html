@@ -18,6 +18,7 @@
     <details id="panel" open>
       <summary>控制</summary>
       <output id="world-name">未打开存档</output>
+      <output id="conversion-summary" hidden></output>
       <button id="open-world" type="button">打开存档…</button>
       <form id="teleport">
         <div class="coordinates">
@@ -71,7 +72,7 @@
     </details>
     <dialog id="world-picker" aria-labelledby="picker-title">
       <h2 id="picker-title">打开存档</h2>
-      <p>浏览 Go 服务所在电脑，选择 Java/Bedrock 世界目录、level.dat 或 Java PackFS 文件。</p>
+      <p>选择此电脑上的 Java／基岩存档目录、level.dat、PackFS 文件，或以下结构文件：<br /><strong>.schem · .schematic · .litematic · .nbt · .mcstructure · .mcworld</strong><br />结构文件首次打开会在旁边生成同名存档文件夹；已有存档直接复用。</p>
       <fieldset id="picker-controls">
         <form id="browse-path" class="path-row">
           <select id="picker-roots" aria-label="位置"></select>
@@ -94,6 +95,10 @@
           <button id="picker-open" type="button">打开</button>
         </div>
       </fieldset>
+      <div id="picker-progress" hidden>
+        <output id="picker-progress-text" role="status" aria-live="polite"></output>
+        <progress id="picker-progress-bar" max="1" aria-label="当前转换阶段进度"></progress>
+      </div>
       <output id="picker-error" role="status"></output>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
