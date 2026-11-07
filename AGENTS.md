@@ -6,7 +6,7 @@
 
 ## 维护边界
 
-`cmd/world-viewer` 负责打开、切换存档和页面接口；`source` 适配数据来源；`column` 编码列响应；`viewhttp` 管理 HTTP 调度与缓存。`demo` 负责方块搜索、场景检查及上传预览。
+`cmd/world-viewer` 负责打开、切换存档和页面接口；`source` 适配数据来源；`column` 编码列响应；`viewhttp` 管理 HTTP 调度与缓存。`minimap` 从相同的 section 来源生成俯视图，管理每代的索引、图片缓存和退役等待。`demo` 负责方块搜索、场景检查及上传预览。
 
 网格生成和共享 Web 绘制放在 viewer-core，转换规则放在 converter-core，邻接修复通过 converter 组合。基础库与 core 不反向依赖本应用。需要讲解核心 API 时，把最小示例留在相应核心库；本应用保留实际浏览器和复杂演示。
 
@@ -30,7 +30,7 @@
 
 ### 三种来源的组装
 
-几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，特殊处理器自行携带固定图片。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
+几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，特殊处理器自行携带固定图片。Java 状态与资源的目标版本统一取自 `neomega-blocks/presets/java/v1.JavaTargetVersion`（当前为 26.3）。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
 
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
@@ -75,6 +75,10 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
 
 每次构建也使用独立 reader，保留本次取得的共享只读柱子引用。转换和修复缓存由 adapt 管理，同一来源的不同 reader 可以复用它们。未知方块在转换时已变成空气，其按状态汇总的诊断仍随请求柱子返回。普通实体保存在 `JavaChunk.Entities` 中，来源按浮点位置分组后交给 `Section.Entities`。Java 来源独立读取地形和实体 region，两份记录任一缺失都不掩盖另一份。无方块的 section 也可包含实体。展示框组合普通静态物品与框体，物品失败时保留框体并返回实体诊断。
 
+小地图同样从 `dispatcher.SectionSource` 读取 Java 状态，因为这样 Java、Bedrock 和结构转换后的存档可以共用选面与着色。Bedrock 小地图绑定 `bedrockworld.New(converted).Reader`，与三维来源共享按坐标即时转换的缓存。它使用未修复的转换层，因为邻接修复需要多读周围柱子，对俯视颜色几乎没有影响。Java 小地图使用同一个 `javaworld.Source` 的独立 reader。
+
+缩远后只画区块占用图，避免遍历整张世界的方块。索引在每代内容第一次请求时启动后台扫描，并使用该代自己的取消范围。页面请求只等待结果，取消等待不会丢弃扫描。近景图块直接读取局部 section，先显示附近地形。Java 的区块扫描也作为请求交给独占 World 的 goroutine；Bedrock 只遍历键，索引迭代器和地形、实体读取共用关闭屏障。主世界使用 Y -64..319，下界 0..127，末地 0..255。下界从顶部先越过实体顶棚，遇到空气后才寻找可见地表。
+
 内存场景直接填 map，无须构造世界句柄。下面在 section 原点附近放一块石头；map 的键是 section 坐标，`layer_storage.At` 使用 section 内的方块坐标：
 
 ```go
@@ -87,6 +91,8 @@ view := viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]
     return column.BuildColumn(ctx, pipeline, sections, key)
 })
 ```
+
+默认场景的三维视图和小地图共享同一份 `source.MemorySections`。`MemorySections.Chunks` 将不同高度的 section 合并为不重复的水平区块坐标，供内存场景生成俯视索引。页面根据 `Info.Minimap` 显示地图，因此未打开存档时仍能浏览默认场景的俯视图。
 
 `source.BlocksFromPalette` 按 celler 的压缩字批量解包，生成每格一个 uint32 的连续索引；单值调色板直接使用全零索引。
 返回的调色板和索引独立于源存储，core 无需了解压缩位宽与填充规则。
@@ -127,8 +133,13 @@ mux.Handle("GET /api/world", viewhttp.DescriptionHandler(viewhttp.Description{
 ```go
 current.Store(next)     // next 已经包含描述、新 View 和来源关闭函数。
 previous.View.Retire()  // 拒绝新任务、取消旧任务，并等待在途构建结束。
+if previous.Minimap != nil {
+    previous.Minimap.Retire() // 同样取消并等待小地图读取，随后才能关闭共享来源。
+}
 previous.close()       // 等底层读取结束，再关闭 World 和文件容器。
 ```
+
+`openedContent` 把小地图和 View 放在同一代。打开成功后的切换和 `Worlds.Close` 都必须先退役三维 View，再退役小地图，最后关闭来源。小地图的登记与退役共用锁，等待包含排队、索引扫描、地表查询和图块构建。HTTP 层为图块与地表查询提供两个跨代共享的并发名额，与三维 worker 分开。索引扫描单独登记在该代的在途任务中，等待索引的 HTTP 请求不占构建名额。页面切换时取消旧请求并释放全部图片；收起和展开共用同一个画布、图块缓存与可见范围调度。
 
 Handler 每个列请求只读取一次 `current()`，避免中心和邻居来自不同内容。过期 revision 或退役期间尚未发送的响应返回 409。队列和 worker 限额属于 Handler，切换 View 不会创建额外 worker。响应开始发送时已释放构建名额，只持有生成的字节，因此慢客户端不会拖住来源关闭。已经开始发送的响应不能改成 409，配套前端切换时会丢弃旧代结果。
 
@@ -167,7 +178,7 @@ go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]'
 go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
 ```
 
-网格合并与编码解决的是不同问题。以 Java 1.21.4 资源、当前 Java 状态全集、固定首候选的满石头层为例：
+网格合并与编码解决的是不同问题。以下测量使用 Java 1.21.4 资源、当时的 Java 状态全集，以及固定首候选的满石头层：
 
 | 开启的处理 | 输出四边形 | NVMS 字节数 |
 |---|---:|---:|
@@ -175,7 +186,7 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 | 仅面剔除 | 1,536 | 381,152 |
 | 面剔除与合并 | 6 | 1,712 |
 
-这些是未压缩的文件大小。下面的命令在本模块目录生成表中三份文件，并输出各阶段面数：
+这些是未压缩的文件大小。下面的命令在本模块目录生成三份文件，并输出各阶段面数。复现表中数字需要上述测量资源，使用当前目标资源时以实际输出为准：
 
 ```sh
 go run ./demo/examples/subchunk -scene solid -cull=false -greedy=false -mesh /tmp/solid-raw.nvmesh

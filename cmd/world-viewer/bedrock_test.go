@@ -251,6 +251,14 @@ func TestBedrockPickerAndFixSetting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			mapSection, err := src.minimap.Reader().Section(context.Background(), dispatcher.SectionPos{X: -1, Z: 2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapEast, _ := mapSection.Blocks.Get(15<<8 | 8<<4 | 4).States().Get("east")
+			if mapEast == "true" {
+				t.Fatal("小地图错误地读取了邻接修复层")
+			}
 			state, _ := section.Blocks.Get(15<<8 | 8<<4 | 4).States().Get("east")
 			if state != fmt.Sprint(!skip) {
 				t.Fatalf("skip fix %v: east = %v", skip, state)
@@ -389,6 +397,60 @@ func TestBedrockCloseWaitsForActorRead(t *testing.T) {
 			t.Fatal("实体读取归还后仍未关闭")
 		}
 		if _, err := reads.ReadActors(context.Background(), celler.ChunkPos{}); !errors.Is(err, fs.ErrClosed) {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestBedrockChunksOnlyKeysAndDimension(t *testing.T) {
+	// 任意值都不能解码为区块；索引应只看键，并把同一柱子的多个键合为一个。
+	dir := t.TempDir()
+	world, err := bedrock.Open(dir, bedrock.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer world.Close()
+	for _, dim := range []int32{0, 1, 2} {
+		for _, tag := range []byte{0x2b, 0x2c} {
+			key := append(bedrock.ChunkPrefix(celler.ChunkPos{X: -3, Z: dim + 4}, dim), tag)
+			if err := world.DB.Put(key, []byte("不是区块值"), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := world.DB.Put([]byte("level metadata"), []byte("ignored"), nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, dim := range []int32{0, 1, 2} {
+		got, err := bedrockChunks(context.Background(), world, dim)
+		if err != nil || len(got) != 1 || got[0] != (celler.ChunkPos{X: -3, Z: dim + 4}) {
+			t.Fatal(dim, got, err)
+		}
+	}
+}
+
+func TestBedrockCloseWaitsForIndex(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		reads := &bedrockReads{chunks: func(context.Context) ([]celler.ChunkPos, error) { <-release; return nil, nil }}
+		go func() {
+			if _, err := reads.Chunks(context.Background()); err != nil {
+				t.Error(err)
+			}
+		}()
+		synctest.Wait()
+		closed := false
+		go func() { reads.Close(); closed = true }()
+		synctest.Wait()
+		if closed {
+			t.Fatal("索引迭代器归还前关闭数据库")
+		}
+		close(release)
+		synctest.Wait()
+		if !closed {
+			t.Fatal("索引结束后仍未关闭")
+		}
+		if _, err := reads.Chunks(context.Background()); !errors.Is(err, fs.ErrClosed) {
 			t.Fatal(err)
 		}
 	})

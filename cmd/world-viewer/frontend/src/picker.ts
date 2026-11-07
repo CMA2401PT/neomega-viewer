@@ -6,6 +6,7 @@ export interface WorldInfo {
   revision: number;
   canOpen?: boolean;
   loaded: boolean;
+  minimap?: boolean;
   name: string;
   path?: string;
   kind?: string;

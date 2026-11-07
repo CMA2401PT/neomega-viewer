@@ -19,7 +19,7 @@
 分清是哪一类，就知道该去哪里改：1a 改 neomega-converter 的 `fixer`，1b 改 neomega-converter 的转换器，2 加一个 block actor 处理器，3 加一个前端特效。
 2、3 的通道设计见 `渲染分发方案.md`。
 
-Java 事实以仓库目标版本 Java 1.21.4 为准，拿不准的地方已标注。
+Java 事实以 `neomega-blocks/presets/java/v1.JavaTargetVersion` 定义的目标版本为准（当前为 26.3），拿不准的地方已标注。
 
 ## 1. 映射丢信息
 

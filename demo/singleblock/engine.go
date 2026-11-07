@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"neomega-blocks/ir"
-	java "neomega-viewer-core/viewer/javastates"
+	java "neomega-blocks/presets/java/v1"
 	"neomega-viewer-core/viewer/cube"
 	"neomega-viewer-core/viewer/mesher"
 	"neomega-viewer-core/viewer/mesher/geometry"

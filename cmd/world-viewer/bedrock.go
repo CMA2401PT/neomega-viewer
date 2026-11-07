@@ -17,6 +17,7 @@ import (
 	"neomega-viewer-core/fixer/java-postprocess"
 	resources "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/internal/previewitems"
+	"neomega-viewer/minimap"
 	"neomega-viewer/source/bedrockworld"
 	"neomega-viewer/viewhttp"
 )
@@ -30,6 +31,7 @@ type bedrockReads struct {
 	closed bool
 	read   adapt.ReadChunk
 	actors adapt.ReadActors
+	chunks func(context.Context) ([]celler.ChunkPos, error)
 }
 
 func (r *bedrockReads) Read(ctx context.Context, pos celler.ChunkPos) (*bedrock.Chunk, error) {
@@ -63,6 +65,19 @@ func (r *bedrockReads) ReadActors(ctx context.Context, pos celler.ChunkPos) ([]n
 	return r.actors(ctx, pos)
 }
 
+func (r *bedrockReads) Chunks(ctx context.Context) ([]celler.ChunkPos, error) {
+	// 索引只读取键，也需要在关闭数据库前归还迭代器。
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil, fs.ErrClosed
+	}
+	r.active.Add(1)
+	r.mu.Unlock()
+	defer r.active.Done()
+	return r.chunks(ctx)
+}
+
 func (r *bedrockReads) Close() {
 	// 返回时原始读取已结束；迟到的后台回调也不能重新进入已归还的句柄。
 	r.mu.Lock()
@@ -85,6 +100,9 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		return nil, err
 	}
 	reads := &bedrockReads{
+		chunks: func(ctx context.Context) ([]celler.ChunkPos, error) {
+			return bedrockChunks(ctx, world, int32(dimension))
+		},
 		read: func(ctx context.Context, pos celler.ChunkPos) (*bedrock.Chunk, error) {
 			return world.ReadChunk(int32(dimension), pos)
 		},
@@ -133,16 +151,11 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		Kind:      "bedrock",
 		Dimension: strconv.FormatInt(dimension, 10),
 	}
-	fallback, err := preview26Mapping()
-	if err != nil {
-		return nil, err
-	}
 	assets, err := resources.Open(resources.OpenOptions{})
 	if err != nil {
 		return nil, err
 	}
 	converted := adapt.NewConverted(reads.Read, adapt.Options{
-		StateFallback:     fallback,
 		FrameItemResolver: previewitems.Resolver(assets.Items),
 	}, reads.ReadActors)
 	var chunks adapt.ChunkSource = converted
@@ -154,6 +167,11 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		chunks = fixedadapt.NewFixed(converted, f, adapt.Options{})
 	}
 	opened.reader = bedrockworld.New(chunks).Reader
+	terrain, err := minimap.NewTerrain(minimap.Dimension(dimension))
+	if err != nil {
+		return nil, err
+	}
+	opened.minimap = &minimap.Options{Terrain: terrain, Reader: bedrockworld.New(converted).Reader, Chunks: reads.Chunks}
 	return opened, nil
 }
 
@@ -207,4 +225,23 @@ func bedrockPosition(world *bedrock.World, dimension int32) ([3]float64, error) 
 		err = nil
 	}
 	return position, err
+}
+
+func bedrockChunks(ctx context.Context, world *bedrock.World, dimension int32) ([]celler.ChunkPos, error) {
+	// 同一柱子通常有多个键，只扫描键并按维度去重，避免为远景解码整个世界。
+	iter := world.DB.NewIterator(nil, nil)
+	defer iter.Release()
+	seen := map[celler.ChunkPos]bool{}
+	positions := make([]celler.ChunkPos, 0)
+	for iter.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		pos, dim, _, ok := bedrock.ParseChunkKey(iter.Key())
+		if ok && dim == dimension && !seen[pos] {
+			seen[pos] = true
+			positions = append(positions, pos)
+		}
+	}
+	return positions, iter.Error()
 }

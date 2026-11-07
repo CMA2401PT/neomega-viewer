@@ -14,11 +14,17 @@ Three.js 的 MIT 原文保存在 [demo/web/public/THIRD_PARTY_NOTICES.txt](demo/
 
 子区块使用工作区根目录 `neomega-celler` 中的 `celler/layer_storage.Palette[uint32]` 存储接口。
 
-Java 状态全集和方块哈希使用工作区根目录的 `neomega-blocks` preset。转换数据的准备依赖 Amulet Team 的 PyMCTranslate。本项目使用现有 Java 1.21.4 目标表；本地转换库记录的 build 317 对应上游 1.2.30。该版本采用 Amulet Team License 1.0.0，包含非商业、教育和非竞争等使用条款；它不是 MIT 许可。完整条款和来源见 [neomega-blocks 的声明](../../neomega-blocks/third_party/pymctranslate-notices/NOTICE.md)。
+Java 与 Bedrock 的状态全集、方块哈希、历史状态兼容映射和跨版本转换数据由工作区根目录的 `neomega-blocks` preset 提供，全部由 Amulet Team 的 PyMCTranslate 1.2.53（build 396）生成。目标版本由 `neomega-blocks/presets/java/v1.JavaTargetVersion` 定义（当前为 Java 26.3）。
+
+PyMCTranslate 需要购买授权才能使用。本项目已在 amuletmc.com 购买 Amulet 授权（2026-11-07，订单号 KBPp706mBN）。如果你还没有 Amulet 授权，也建议购买一份，支持 Amulet 的持续开发。完整条款和来源见 [neomega-blocks 的声明](../../neomega-blocks/third_party/pymctranslate-notices/NOTICE.md)。
 
 Required Notice: Copyright Amulet Team. (https://www.amuletmc.com/)
 
-模型、纹理和特殊方块的静态外形来自 `viewer-assets` 交付文件。其中的社区模板来自 `zardoy/mc-assets` 固定提交 `c63d6dacd358a8ea73b453d6958167b49dcc3f6c`，声明为 `Copyright 2024 Vitaly Turovsky, contributors`，采用 MIT。原始模型署名由资源生成器保留。具体来源和适配关系见 [neomega-viewer-core/viewer-assets/NOTICE.md](../../neomega-viewer-core/viewer-assets/NOTICE.md)。
+模型、公共图集和特殊方块的静态外形来自 viewer-core 的 `viewer-assets` 交付文件，与 Java 状态目标版本一致。
+
+旗帜、陶罐、告示牌、位图字体和附魔书使用同一目标客户端的固定资源；Unifont 来自官方资源索引，具体来源见 [viewer-core 的声明](../../neomega-viewer-core/NOTICE.md)。
+
+社区模板来自 `zardoy/mc-assets` 固定提交 `c63d6dacd358a8ea73b453d6958167b49dcc3f6c`，声明为 `Copyright 2024 Vitaly Turovsky, contributors`，采用 MIT。原始模型署名由资源生成器保留。具体来源和适配关系见 [neomega-viewer-core/viewer-assets/NOTICE.md](../../neomega-viewer-core/viewer-assets/NOTICE.md)。
 
 Minecraft 模型、纹理及其衍生素材保留原权利人的权利。资源提取、图集打包和顶点生成不产生新的素材授权。应用分发资源时，应保留 `dist/final/THIRD_PARTY_NOTICES.txt`，并遵守输入素材适用的 [Minecraft EULA](https://www.minecraft.net/eula)、[Usage Guidelines](https://www.minecraft.net/usage-guidelines) 和额外资源包条款。
 

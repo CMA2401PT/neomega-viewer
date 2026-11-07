@@ -7,14 +7,16 @@ import (
 
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/column"
+	"neomega-viewer/minimap"
 	"neomega-viewer/viewhttp"
 )
 
 type openedContent struct {
 	// 描述、浏览代次与关闭动作一起发布，读取者不会拼出两代内容。
-	Info  Info
-	View  *viewhttp.View
-	close func()
+	Info    Info
+	View    *viewhttp.View
+	Minimap *minimap.Map
+	close   func()
 }
 
 func newContent(source *Source, revision uint64, pipeline *dispatcher.Pipeline) *openedContent {
@@ -22,8 +24,14 @@ func newContent(source *Source, revision uint64, pipeline *dispatcher.Pipeline) 
 	info := source.Info
 	info.Revision = revision
 	info.Version = version
+	var mapView *minimap.Map
+	if source.minimap != nil {
+		mapView = minimap.New(*source.minimap)
+	}
+	info.Minimap = mapView != nil
 	return &openedContent{
-		Info: info,
+		Info:    info,
+		Minimap: mapView,
 		View: viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
 			return column.BuildColumn(
 				ctx,
@@ -68,6 +76,9 @@ func (w *Worlds) Open(ctx context.Context, options SourceOptions) (Info, error) 
 	current := newContent(source, previous.Info.Revision+1, w.pipeline)
 	w.current.Store(current)
 	previous.View.Retire()
+	if previous.Minimap != nil {
+		previous.Minimap.Retire()
+	}
 	previous.close()
 	return current.Info, nil
 }
@@ -76,5 +87,8 @@ func (w *Worlds) Close() {
 	defer w.switchMu.Unlock()
 	current := w.view()
 	current.View.Retire()
+	if current.Minimap != nil {
+		current.Minimap.Retire()
+	}
 	current.close()
 }

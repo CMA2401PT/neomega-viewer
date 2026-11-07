@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	java "neomega-viewer-core/viewer/javastates"
+	java "neomega-blocks/presets/java/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer-core/viewer/mesher"

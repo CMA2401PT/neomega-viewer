@@ -46,3 +46,34 @@ func TestMemorySectionsMissingAndCancelled(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMemorySectionsChunks(t *testing.T) {
+	sections := MemorySections{
+		{X: -2, Y: -4, Z: 3}: &dispatcher.Section{},
+		{X: -2, Y: 8, Z: 3}:  &dispatcher.Section{},
+		{X: 5, Y: 0, Z: -1}:  &dispatcher.Section{},
+	}
+	chunks, err := sections.Chunks(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[celler.ChunkPos]bool{{X: -2, Z: 3}: true, {X: 5, Z: -1}: true}
+	if len(chunks) != len(want) {
+		t.Fatal("不同高度没有合并为水平区块", chunks)
+	}
+	for _, pos := range chunks {
+		if !want[pos] {
+			t.Fatal("区块坐标重复或偏移", pos)
+		}
+		delete(want, pos)
+	}
+	empty, err := (MemorySections{}).Chunks(context.Background())
+	if err != nil || len(empty) != 0 {
+		t.Fatal(empty, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := sections.Chunks(ctx); err != context.Canceled {
+		t.Fatal(err)
+	}
+}

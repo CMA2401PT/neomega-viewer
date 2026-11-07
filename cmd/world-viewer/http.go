@@ -23,6 +23,7 @@ type ServerOptions struct {
 
 func Handler(options ServerOptions) http.Handler {
 	mux := http.NewServeMux()
+	registerMinimap(mux, options.Worlds)
 	mux.HandleFunc("GET /api/world", func(w http.ResponseWriter, r *http.Request) {
 		info := options.Worlds.view().Info
 		info.ResourceVersion = options.ResourceVersion
