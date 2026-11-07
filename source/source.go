@@ -35,6 +35,23 @@ func (s MemorySections) Section(ctx context.Context, pos dispatcher.SectionPos) 
 	return s[pos], ctx.Err()
 }
 
+func (s MemorySections) Chunks(ctx context.Context) ([]celler.ChunkPos, error) {
+	// 同一柱子可以包含多个高度的 section，俯视索引只需要保留一次水平坐标。
+	seen := make(map[celler.ChunkPos]bool)
+	positions := make([]celler.ChunkPos, 0)
+	for pos := range s {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		chunk := celler.ChunkPos{X: pos.X, Z: pos.Z}
+		if !seen[chunk] {
+			seen[chunk] = true
+			positions = append(positions, chunk)
+		}
+	}
+	return positions, ctx.Err()
+}
+
 func GroupBlockEntities(entities []java.BlockEntity) map[int32]map[dispatcher.CellPos]nbt.Compound {
 	// Java 读取器与转换器使用相同的实体类型，统一换算负高度与格内坐标。
 	// entities 属于同一根柱子，返回的 Compound 沿用输入，构建期间保持只读。

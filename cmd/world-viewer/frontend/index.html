@@ -7,6 +7,14 @@
   </head>
   <body>
     <main id="scene" aria-label="方块三维场景"></main>
+    <dialog id="minimap" aria-label="俯视地图" data-expanded="false">
+      <header class="minimap-expanded"><span>地形图 <small>拖动平移 · 滚轮缩放 · 点选定位</small></span><button id="minimap-close" type="button" aria-label="收起地图">关闭 · Esc</button></header>
+      <canvas id="minimap-canvas" tabindex="0" aria-label="小地图，滚轮缩放，点击展开"></canvas>
+      <output id="minimap-scale"></output>
+      <footer class="minimap-expanded"><output id="minimap-selection">点选地图查看坐标</output><button id="minimap-jump" type="button" disabled>跳转</button></footer>
+      <div class="minimap-expanded minimap-message"><output id="minimap-status"></output><button id="minimap-retry" type="button">重试加载</button></div>
+      <span class="minimap-hint">点击展开</span>
+    </dialog>
     <div id="hud" aria-hidden="true">
       <canvas id="axes" width="80" height="80"></canvas
       ><output id="coordinates">X 0.0　Y 80.0　Z 0.0</output>

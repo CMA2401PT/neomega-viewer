@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer/minimap"
 	"neomega-viewer/source"
 	"neomega-viewer/viewhttp"
 )
@@ -15,6 +16,7 @@ import (
 type Info struct {
 	// 场景描述复用页面契约，存档选择器需要的路径和格式由程序补充。
 	viewhttp.Description
+	Minimap           bool     `json:"minimap"`
 	Version           string   `json:"version"`
 	Path              string   `json:"path"`
 	Kind              string   `json:"kind"`
@@ -41,9 +43,10 @@ type SourceOptions struct {
 
 type Source struct {
 	// 打开方绑定 reader 工厂与关闭动作，列构建不需要知道原生句柄的类型。
-	Info   Info
-	reader func() dispatcher.SectionSource
-	close  func()
+	Info    Info
+	reader  func() dispatcher.SectionSource
+	minimap *minimap.Options
+	close   func()
 }
 
 // OpenSource 按选项打开一种来源：结构文件先转成原生存档，其余直接打开。

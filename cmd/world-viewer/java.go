@@ -11,6 +11,7 @@ import (
 	"celler"
 	"celler/java"
 	packfs "neomega-packfs"
+	"neomega-viewer/minimap"
 	"neomega-viewer/source/javaworld"
 	"neomega-viewer/viewhttp"
 )
@@ -146,7 +147,9 @@ func openJavaSource(options SourceOptions) (_ *Source, err error) {
 		}
 	}
 	if world == nil {
-		applySunrise(opened)
+		if err = applySunrise(opened); err != nil {
+			return nil, err
+		}
 	}
 	if options.Position != nil {
 		opened.Info.Position = *options.Position
@@ -155,6 +158,18 @@ func openJavaSource(options SourceOptions) (_ *Source, err error) {
 	if world != nil {
 		reader = javaworld.New(world, dimension)
 		opened.reader = reader.Reader
+		mapDimension := minimap.Overworld
+		switch dimension {
+		case java.Nether, "dimensions/minecraft/the_nether":
+			mapDimension = minimap.Nether
+		case java.End, "dimensions/minecraft/the_end":
+			mapDimension = minimap.End
+		}
+		terrain, e := minimap.NewTerrain(mapDimension)
+		if e != nil {
+			return nil, e
+		}
+		opened.minimap = &minimap.Options{Terrain: terrain, Reader: reader.Reader, Chunks: reader.Chunks}
 	}
 	return opened, nil
 }

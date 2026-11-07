@@ -90,6 +90,56 @@ body[data-scene="backdrop"] #performance {
   pointer-events: auto;
 }
 
+/* 小地图沿用面板的暖金边线，模态地图让地形保留最大的可读面积。 */
+#minimap {
+  position: fixed;
+  inset: 14px auto auto 14px;
+  margin: 0;
+  padding: 0;
+  width: 202px;
+  height: 202px;
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--night-solid);
+  box-shadow: 0 0 18px rgba(255, 164, 92, 0.13), inset 0 0 12px var(--line-soft);
+  font: 11px/1.5 var(--mono);
+}
+#minimap-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: zoom-in; }
+#minimap-scale { position: absolute; bottom: 8px; left: 10px; padding: 2px 5px; background: var(--night); pointer-events: none; }
+.minimap-hint { position: absolute; top: 9px; right: 10px; padding: 2px 5px; color: var(--ink); background: var(--night); pointer-events: none; }
+#minimap[data-expanded="false"] .minimap-expanded { display: none; }
+#minimap[data-expanded="true"] {
+  inset: 5vh 4vw;
+  width: 92vw;
+  height: 90vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+#minimap::backdrop { background: rgba(2, 4, 9, 0.8); backdrop-filter: blur(5px); }
+#minimap[data-expanded="true"] #minimap-canvas { cursor: crosshair; grid-row: 2; }
+#minimap[data-expanded="true"] .minimap-hint { display: none; }
+#minimap[data-expanded="true"] #minimap-scale { bottom: auto; top: 68px; left: auto; right: 18px; }
+#minimap header, #minimap footer, .minimap-message { display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
+#minimap header { justify-content: space-between; border-bottom: 1px solid var(--line-soft); }
+#minimap header small { margin-left: 18px; color: var(--ink-soft); }
+#minimap footer { justify-content: space-between; border-top: 1px solid var(--line-soft); }
+#minimap button { width: auto; margin: 0; flex: none; white-space: nowrap; color: var(--ink); background: var(--night); border: 1px solid var(--line); padding: 6px 14px; font: inherit; cursor: pointer; }
+#minimap button:disabled { opacity: 0.4; cursor: default; }
+#minimap button:hover:enabled { box-shadow: 0 0 10px var(--line-soft); }
+.minimap-message { padding-top: 0; color: var(--error); }
+#minimap-status:empty + button { display: none; }
+body.has-minimap #hud { top: 222px; }
+@media (max-width: 600px) {
+  #minimap { width: 164px; height: 164px; }
+  body.has-minimap #hud { top: 184px; }
+  #minimap header small { display: none; }
+  #minimap header, #minimap footer, .minimap-message { padding: 8px; gap: 8px; }
+  #minimap[data-expanded="true"] #minimap-scale { top: 56px; }
+}
+
 /* 舞台：字标站在环内的海面上，标注用引线指向三维锚点，都随镜头移动。 */
 #stage {
   position: fixed;

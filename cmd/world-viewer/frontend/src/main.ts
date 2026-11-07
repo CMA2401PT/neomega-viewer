@@ -15,6 +15,7 @@ import { createDiagnostics } from "./diagnostics.ts";
 import { Backdrop, lineArtStyle } from "./backdrop.ts";
 import { createPanelToggle } from "./panel.ts";
 import { createStage } from "./stage.ts";
+import { Minimap } from "./minimap.ts";
 import "./style.css";
 
 const element = <T extends HTMLElement>(id: string): T =>
@@ -77,6 +78,10 @@ axes.width = axes.height = 80 * Math.min(devicePixelRatio, 2);
 const forward = new THREE.Vector3(),
   right = new THREE.Vector3();
 const pressed = new Set<string>();
+const minimap = new Minimap(jump, () => {
+  pressed.clear();
+  dragging = false;
+}, () => renderer.domElement.focus());
 let atlas: THREE.Texture | undefined, book: THREE.Texture | undefined;
 let effects: EffectRegistry = new Map();
 type ColumnSection = ReturnType<typeof decodeColumn>["sections"][number];
@@ -227,14 +232,14 @@ radiusInput.addEventListener("input", () => {
   refresh();
 });
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  if (event.button !== 0 && event.button !== 2) return;
+  if (minimap.expanded || (event.button !== 0 && event.button !== 2)) return;
   renderer.domElement.focus();
   stopSway();
   dragging = true;
   renderer.domElement.setPointerCapture(event.pointerId);
 });
 renderer.domElement.addEventListener("pointermove", (event) => {
-  if (!dragging) return;
+  if (!dragging || minimap.expanded) return;
   rotation.y -= event.movementX * 0.004;
   rotation.x = THREE.MathUtils.clamp(
     rotation.x - event.movementY * 0.004,
@@ -256,6 +261,7 @@ renderer.domElement.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
+    if (minimap.expanded) return;
     stopSway();
     camera.getWorldDirection(forward);
     camera.position.addScaledVector(
@@ -267,6 +273,7 @@ renderer.domElement.addEventListener(
   { passive: false },
 );
 renderer.domElement.addEventListener("keydown", (event) => {
+  if (minimap.expanded) return;
   if (
     [
       "KeyW",
@@ -351,7 +358,7 @@ function animate(now: number): void {
   if (disposed) return;
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
-  if (pressed.size) {
+  if (pressed.size && !minimap.expanded) {
     const speed = 24 * dt;
     // 用偏航角构造水平基向量，抬头或低头不会改变 WASD 的高度和速度。
     forward.set(-Math.sin(rotation.y), 0, -Math.cos(rotation.y));
@@ -400,6 +407,7 @@ function animate(now: number): void {
     memoryDisplay.value = `网格内存 ≈ ${(geometryMemoryBytes(scene) / 1024 ** 2).toFixed(1)} MiB`;
   }
   if (now - lastHUD > 80) {
+    minimap.update(camera.position.x, camera.position.y, camera.position.z, rotation.y);
     drawAxes();
     coordinateDisplay.value = `X ${camera.position.x.toFixed(1)}　Y ${camera.position.y.toFixed(1)}　Z ${camera.position.z.toFixed(1)}`;
     lastHUD = now;
@@ -456,6 +464,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
   dragging = false;
   failure = "";
   currentWorld = info;
+  minimap.setWorld(info);
   streamStats = undefined;
   streaming = info.loaded || info.backdrop !== undefined;
   applyAtmosphere(info);
@@ -552,6 +561,7 @@ void start().catch((error: unknown) => {
 });
 window.addEventListener("pagehide", () => {
   disposed = true;
+  minimap.dispose();
   stream?.dispose();
   worldScene?.dispose();
   resize.disconnect();

@@ -12,6 +12,16 @@ import (
 	"neomega-viewer/internal/bytecache"
 )
 
+type chunkRequest struct {
+	// 列出坐标也需要独占 World，回复只含索引，不解码原始记录。
+	ctx   context.Context
+	reply chan chunkResult
+}
+type chunkResult struct {
+	positions []celler.ChunkPos
+	err       error
+}
+
 type sourceRequest struct {
 	ctx   context.Context
 	pos   celler.ChunkPos
@@ -29,6 +39,7 @@ type sourceResult struct {
 type Source struct {
 	// 一个 goroutine 独占 World 的读取与 region 缓存，worker 只共享不可变的原始字节。
 	requests chan sourceRequest
+	chunks   chan chunkRequest
 	cancel   context.CancelFunc
 	done     chan struct{}
 }
@@ -38,6 +49,7 @@ func New(world *java.World, dim java.Dimension) *Source {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Source{
 		requests: make(chan sourceRequest, 8),
+		chunks:   make(chan chunkRequest),
 		cancel:   cancel,
 		done:     make(chan struct{}),
 	}
@@ -61,6 +73,16 @@ func (s *Source) run(ctx context.Context, world *java.World, dim java.Dimension)
 		select {
 		case <-ctx.Done():
 			return
+		case request := <-s.chunks:
+			positions := make([]celler.ChunkPos, 0)
+			err := world.Scan(dim, java.Terrain, func(pos celler.ChunkPos) error {
+				if err := request.ctx.Err(); err != nil {
+					return err
+				}
+				positions = append(positions, pos)
+				return nil
+			})
+			request.reply <- chunkResult{positions: positions, err: err}
 		case request := <-s.requests:
 			if request.ctx.Err() != nil {
 				continue
@@ -126,4 +148,24 @@ func (s *Source) Close() {
 	// 此方法不关闭 World；调用方在退役相关 View 后先 Close，再关闭 World 和文件容器。
 	s.cancel()
 	<-s.done
+}
+
+func (s *Source) Chunks(ctx context.Context) ([]celler.ChunkPos, error) {
+	// 索引扫描也交给独占 World 的 goroutine，避免与原始记录读取争用 region 缓存。
+	reply := make(chan chunkResult, 1)
+	select {
+	case s.chunks <- chunkRequest{ctx: ctx, reply: reply}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.done:
+		return nil, fs.ErrClosed
+	}
+	select {
+	case result := <-reply:
+		return result.positions, result.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.done:
+		return nil, fs.ErrClosed
+	}
 }

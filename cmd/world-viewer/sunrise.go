@@ -7,6 +7,7 @@ import (
 	"neomega-blocks/ir"
 	"neomega-viewer-core/viewer/blockdata"
 	"neomega-viewer-core/viewer/dispatcher"
+	"neomega-viewer/minimap"
 	"neomega-viewer/source"
 )
 
@@ -203,10 +204,20 @@ func smoothstep(from, to, value float64) float64 {
 	return t * t * (3 - 2*t)
 }
 
-// applySunrise 让未打开存档的来源显示默认场景；它不持有句柄，Loaded 保持 false。
-func applySunrise(opened *Source) {
+func applySunrise(opened *Source) error {
+	// 三维视图与小地图共享默认场景的只读方块，Loaded 仍表示是否打开了存档。
+	terrain, err := minimap.NewTerrain(minimap.Overworld)
+	if err != nil {
+		return err
+	}
 	scene := sunrise()
 	opened.reader = func() dispatcher.SectionSource { return scene.sections }
+	opened.minimap = &minimap.Options{
+		Terrain: terrain,
+		Reader:  opened.reader,
+		Chunks:  scene.sections.Chunks,
+	}
 	opened.Info.Backdrop = &scene.backdrop
 	opened.Info.Position = [3]float64{0, sunriseCameraY, sunriseCameraZ}
+	return nil
 }
