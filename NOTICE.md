@@ -14,7 +14,9 @@ Three.js 的 MIT 原文保存在 [demo/web/public/THIRD_PARTY_NOTICES.txt](demo/
 
 子区块使用工作区根目录 `neomega-celler` 中的 `celler/layer_storage.Palette[uint32]` 存储接口。
 
-Java 状态全集和方块哈希由工作区根目录的 `neomega-blocks/presets/java/v1` 提供，状态数据来自 Mojang 官方数据报告。目标版本由该包的 `JavaTargetVersion` 定义（当前为 26.3）。历史状态兼容映射与 Bedrock 转换数据的准备使用 Amulet Team 的 PyMCTranslate，只用于接入 Java 1.21.4 及更早的状态。本地转换库记录的 build 317 对应上游 1.2.30。该版本采用 Amulet Team License 1.0.0，包含非商业、教育和非竞争等使用条款；它不是 MIT 许可。完整条款和来源见 [neomega-blocks 的声明](../../neomega-blocks/third_party/pymctranslate-notices/NOTICE.md)。
+Java 与 Bedrock 的状态全集、方块哈希、历史状态兼容映射和跨版本转换数据由工作区根目录的 `neomega-blocks` preset 提供，全部由 Amulet Team 的 PyMCTranslate 1.2.53（build 396）生成。目标版本由 `neomega-blocks/presets/java/v1.JavaTargetVersion` 定义（当前为 Java 26.3）。
+
+PyMCTranslate 需要购买授权才能使用。本项目已在 amuletmc.com 购买 Amulet 授权（2026-11-07，订单号 KBPp706mBN）。如果你还没有 Amulet 授权，也建议购买一份，支持 Amulet 的持续开发。完整条款和来源见 [neomega-blocks 的声明](../../neomega-blocks/third_party/pymctranslate-notices/NOTICE.md)。
 
 Required Notice: Copyright Amulet Team. (https://www.amuletmc.com/)
 
