@@ -137,7 +137,7 @@ func printBanner(out io.Writer, address string, colored bool) {
 	gray("  Amulet      https://www.amuletmc.com/")
 	gray("  GeyserMC    https://geysermc.org/")
 	gray("  MC-Assets   https://github.com/zardoy/mc-assets")
-	gray("此构建使用 Java 26.3 模型与状态；Wiki 贴图来源清单随程序提供。")
+	gray("为尊重 Amulet 的版权，Amulet 数据只用于 1.21 及更早的方块状态。")
 	gray("neOmega Viewer 是开源项目：https://github.com/CMA2401PT/neomega-viewer")
 	b.WriteString("\n  " + paint("1", "打开 "+address+" 以使用 WebUI") + "\n\n")
 	io.WriteString(out, b.String())

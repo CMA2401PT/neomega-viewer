@@ -131,11 +131,7 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 		Kind:      "bedrock",
 		Dimension: strconv.FormatInt(dimension, 10),
 	}
-	fallback, err := preview26Mapping()
-	if err != nil {
-		return nil, err
-	}
-	converted := adapt.NewConverted(reads.Read, adapt.Options{StateFallback: fallback}, reads.ReadActors)
+	converted := adapt.NewConverted(reads.Read, adapt.Options{}, reads.ReadActors)
 	var chunks adapt.ChunkSource = converted
 	if !options.SkipBedrockFix {
 		f, err := sharedFixer()

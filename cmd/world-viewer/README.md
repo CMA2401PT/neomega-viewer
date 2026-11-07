@@ -32,7 +32,7 @@
 
 初始位置取 `level.dat` 中的 SpawnX、SpawnY、SpawnZ，并向上偏移 12 格。Java 从 Data 内读取，Bedrock 从根读取。没有出生点时先尝试坐标 `(0,80,0)`。该位置没有区块时，定位到所选维度第一个已存区块的最高非空气 section 上方，找到后停止扫描。也可以用 `-position '128,100,-256'` 指定初始坐标。`-listen` 调整监听地址，默认只监听本机。
 
-程序支持 celler 当前的现代 Java section 格式，包括负高度。内嵌几何使用 Java 1.21.4 资源。Java 读取器保留存档原始 blockstate（方块名称及属性），渲染时拆分含水层，再按状态查找几何表。表中包含自动生成的旧状态兼容索引，例如旧 `grass` 共享 `short_grass` 的形状。同一状态采用高版本解释，不依赖存档的 DataVersion，也不保证逐版本还原历史外观。未被表覆盖的 Java 状态显示为紫色方块，面板提示数量。陶罐纹样使用存档中的 block entity NBT，附魔台带有书本动画，其他方块使用几何表中的静态外观。
+程序支持 celler 当前的现代 Java section 格式，包括负高度。内嵌几何使用 `neomega-blocks/presets/java/v1.JavaTargetVersion` 定义的目标版本资源（当前为 26.3）。Java 读取器保留存档原始 blockstate（方块名称及属性），渲染时拆分含水层，再按状态查找几何表。表中包含自动生成的旧状态兼容索引，例如旧 `grass` 共享 `short_grass` 的形状。同一状态采用高版本解释，不依赖存档的 DataVersion，也不保证逐版本还原历史外观。未被表覆盖的 Java 状态显示为紫色方块，面板提示数量。陶罐纹样使用存档中的 block entity NBT，附魔台带有书本动画，其他方块使用几何表中的静态外观。
 
 无法转换的 Bedrock 状态会变成空气，并以 `unknown_block` 按原始状态报告数量；这些方块不计入紫色缺模型数量。不支持的方块实体以 `unsupported_block_entity` 按 ID 汇总。普通展示框与发光展示框使用实体数据中的朝向和物品旋转，框体与普通静态物品共享公共图集。Java 实体从独立的 entities region 读取；Bedrock 使用转换结果中的 Entities。地形缺失或 section 没有方块时，普通实体仍可显示。物品模型按客户端的真实 items 定义选择，复杂选择树、特殊外观和 components 留下实体诊断。
 

@@ -30,7 +30,7 @@
 
 ### 三种来源的组装
 
-几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，特殊处理器自行携带固定图片。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
+几种来源共用渲染 Pipeline。几何表来自 viewer-core 的 resources 包，特殊处理器自行携带固定图片。Java 状态与资源的目标版本统一取自 `neomega-blocks/presets/java/v1.JavaTargetVersion`（当前为 26.3）。下列片段省略 import 和错误处理，完整入口见 [world-viewer](cmd/world-viewer/main.go)。
 
 ```go
 resources, err := preset.Open(preset.OpenOptions{})
@@ -167,7 +167,7 @@ go run ./demo/examples/single-block -java 'minecraft:oak_slab ["type"="bottom"]'
 go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.nvmesh
 ```
 
-网格合并与编码解决的是不同问题。以 Java 1.21.4 资源、当前 Java 状态全集、固定首候选的满石头层为例：
+网格合并与编码解决的是不同问题。以下测量使用 Java 1.21.4 资源、当时的 Java 状态全集，以及固定首候选的满石头层：
 
 | 开启的处理 | 输出四边形 | NVMS 字节数 |
 |---|---:|---:|
@@ -175,7 +175,7 @@ go run ./demo/examples/subchunk -input /tmp/solid.nvblocks -mesh /tmp/reloaded.n
 | 仅面剔除 | 1,536 | 381,152 |
 | 面剔除与合并 | 6 | 1,712 |
 
-这些是未压缩的文件大小。下面的命令在本模块目录生成表中三份文件，并输出各阶段面数：
+这些是未压缩的文件大小。下面的命令在本模块目录生成三份文件，并输出各阶段面数。复现表中数字需要上述测量资源，使用当前目标资源时以实际输出为准：
 
 ```sh
 go run ./demo/examples/subchunk -scene solid -cull=false -greedy=false -mesh /tmp/solid-raw.nvmesh
