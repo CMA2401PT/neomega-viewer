@@ -15,6 +15,8 @@ import (
 	fixedadapt "neomega-converter/adapt"
 	nbt "neomega-nbt/presets/v1"
 	"neomega-viewer-core/fixer/java-postprocess"
+	resources "neomega-viewer-core/viewer/resources"
+	"neomega-viewer/internal/previewitems"
 	"neomega-viewer/source/bedrockworld"
 	"neomega-viewer/viewhttp"
 )
@@ -135,7 +137,14 @@ func openBedrockSource(options SourceOptions) (_ *Source, err error) {
 	if err != nil {
 		return nil, err
 	}
-	converted := adapt.NewConverted(reads.Read, adapt.Options{StateFallback: fallback}, reads.ReadActors)
+	assets, err := resources.Open(resources.OpenOptions{})
+	if err != nil {
+		return nil, err
+	}
+	converted := adapt.NewConverted(reads.Read, adapt.Options{
+		StateFallback:     fallback,
+		FrameItemResolver: previewitems.Resolver(assets.Items),
+	}, reads.ReadActors)
 	var chunks adapt.ChunkSource = converted
 	if !options.SkipBedrockFix {
 		f, err := sharedFixer()
