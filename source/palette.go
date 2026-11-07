@@ -6,7 +6,7 @@ import (
 
 	"celler/layer_storage"
 	"neomega-blocks/ir"
-	java "neomega-blocks/presets/java/v1"
+	java "neomega-viewer-core/viewer/javastates"
 	"neomega-viewer-core/viewer/blockdata"
 	"neomega-viewer-core/viewer/splitlayer"
 )
