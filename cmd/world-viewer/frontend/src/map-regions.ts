@@ -1,5 +1,9 @@
 import { decodeVolume, type Volume } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/volume.ts";
 
+export const REGION_SIZE = 128;
+export const WINDOW_REGIONS = 12;
+export const WINDOW_SIZE = REGION_SIZE * WINDOW_REGIONS;
+
 export interface RegionPosition { x: number; z: number }
 export interface RegionRequest extends RegionPosition {
   key: string;
@@ -10,8 +14,11 @@ export interface RegionRequest extends RegionPosition {
 export const regionKey = ({ x, z }: RegionPosition): string => `${x}/${z}`;
 
 export function windowOrigin(x: number, z: number): RegionPosition {
-  // 八个区域的中心落在 128 的倍数上，选择离地图中心最近的中心。
-  return { x: Math.floor(x / 128 + 0.5) - 4, z: Math.floor(z / 128 + 0.5) - 4 };
+  // 按水平位置选择最近的区域中心，与视线朝向和命中的方块无关。
+  return {
+    x: Math.floor(x / REGION_SIZE + 0.5) - WINDOW_REGIONS / 2,
+    z: Math.floor(z / REGION_SIZE + 0.5) - WINDOW_REGIONS / 2,
+  };
 }
 
 export class RegionDownloads {

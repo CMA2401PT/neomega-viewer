@@ -71,3 +71,24 @@ test("砖池不足不发布区域也不消耗剩余槽位，归还后可重新�
   pool.release(full);
   assert.ok(pool.upload(volume([128,0,0])));
 });
+
+test("1536 格窗口保留最后一个区域，补齐目录不扩大实际范围", () => {
+  const gl = fakeGL();
+  const pool = new BrickmapPool(gl, 8 * 1024 ** 2);
+  const region = pool.upload(volume([1408, 0, 1408]));
+  const win = new BrickmapWindow(gl, [0, 0, 0], [1536, 128, 1536]);
+  win.install(region);
+  assert.deepEqual(win.size, [1536, 128, 1536]);
+  assert.deepEqual(win.levels[0].size, [256, 16, 256]);
+  assert.deepEqual(win.levels.at(-1).size, [1, 1, 1]);
+  const leaf = win.levels[0].cells;
+  assert.equal(leaf[176 + 256 * 16 * 176], 65536 + region.slots[0]);
+  assert.equal(leaf[192 + 256 * 16 * 176], UNKNOWN);
+  assert.equal(win.levels[4].cells[11 + 16 * 11], MIXED);
+  assert.equal(win.levels[7].cells[1 + 2], MIXED);
+  assert.equal(win.levels.at(-1).cells[0], MIXED);
+  win.rebuild([128, 0, 128], [region]);
+  assert.equal(win.levels[0].cells[160 + 256 * 16 * 160], 65536 + region.slots[0]);
+  win.remove(region);
+  assert.equal(win.levels.at(-1).cells[0], UNKNOWN);
+});

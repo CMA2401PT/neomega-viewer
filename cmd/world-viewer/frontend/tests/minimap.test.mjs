@@ -20,8 +20,8 @@ test("旋转后拖动和缩放仍以鼠标所在水平点为锚，倾角计入�
   const high = horizontalBounds({...camera,yaw:0,pitch:85},400,200,-64,448);
   const low = horizontalBounds({...camera,yaw:0,pitch:40},400,200,-64,448);
   assert.ok(low[3]-low[1] > high[3]-high[1]+400);
-  assert.deepEqual(windowOrigin(-65,63),{x:-5,z:-4});
-  assert.deepEqual(windowOrigin(-63,65),{x:-4,z:-3});
+  assert.deepEqual(windowOrigin(-65,63),{x:-7,z:-6});
+  assert.deepEqual(windowOrigin(-63,65),{x:-6,z:-5});
 });
 
 test("窗口移动保留重叠区域的迟到响应，离开的实例无法重新发布", async () => {

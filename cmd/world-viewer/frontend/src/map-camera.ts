@@ -20,7 +20,7 @@ export function mapScreen(camera: Camera, width: number, height: number, point: 
 }
 
 export function horizontalBounds(camera: Camera, width: number, height: number, minY: number, maxY: number): [number, number, number, number] {
-  // 同时投影高度范围的上下端，避免斜视时屏幕角落的射线越出数据窗口。
+  // 投影给定高度范围的上下端，供占用图枚举视野内的图块。
   const points = [minY, maxY].flatMap(y => [0, width].flatMap(x =>
     [0, height].map(screenY => mapPoint(camera, width, height, x, screenY, y))));
   return [Math.min(...points.map(p => p[0])), Math.min(...points.map(p => p[2])),

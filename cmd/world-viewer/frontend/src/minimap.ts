@@ -2,7 +2,7 @@ import type { WorldInfo } from "./picker.ts";
 import { BrickmapPool, BrickmapWindow, type GPURegion } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/gpu.ts";
 import { BrickmapRenderer, cameraRay, type Ray, type PickResult } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/renderer.ts";
 import { cameraBasis, type Camera, type Vec3 } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/volume.ts";
-import { RegionDownloads, regionKey, windowOrigin, type RegionPosition } from "./map-regions.ts";
+import { REGION_SIZE, WINDOW_REGIONS, WINDOW_SIZE, RegionDownloads, regionKey, windowOrigin, type RegionPosition } from "./map-regions.ts";
 import { MapTiles, type Tile } from "./map-tiles.ts";
 import { horizontalBounds, mapPoint, mapScreen } from "./map-camera.ts";
 
@@ -200,10 +200,15 @@ export class Minimap {
     const rect = this.canvas.getBoundingClientRect();
     const x = clientX - rect.left, y = clientY - rect.top;
     let ray = cameraRay(this.camera, rect.width, rect.height, x, y);
-    if (this.overview) {
-      this.camera.target = mapPoint(this.camera, rect.width, rect.height, x, y);
-      this.scale = 0.25;
-      ray = { origin: [...this.camera.target], direction: cameraBasis(this.camera).direction };
+    const point = mapPoint(this.camera, rect.width, rect.height, x, y);
+    const origin = windowOrigin(this.camera.target[0], this.camera.target[2]);
+    const outside = point[0] < origin.x * REGION_SIZE || point[2] < origin.z * REGION_SIZE
+      || point[0] >= origin.x * REGION_SIZE + WINDOW_SIZE || point[2] >= origin.z * REGION_SIZE + WINDOW_SIZE;
+    // 缩远后可以点到没有预览的边缘，先把数据窗口移到该水平位置再拾取。
+    if (this.overview || outside) {
+      this.camera.target = point;
+      if (this.overview) this.scale = 0.25;
+      ray = { origin: [...point], direction: cameraBasis(this.camera).direction };
     }
     const top = this.world!.minimapBounds![0] + this.world!.minimapBounds![1] + 1;
     const t = (top - ray.origin[1]) / ray.direction[1];
@@ -230,7 +235,7 @@ export class Minimap {
           const [minY, height] = this.world.minimapBounds!;
           const origin = windowOrigin(this.camera.target[0], this.camera.target[2]);
           const pool = new BrickmapPool(gl);
-          const window = new BrickmapWindow(gl, [origin.x * 128, minY, origin.z * 128], [1024, height, 1024]);
+          const window = new BrickmapWindow(gl, [origin.x * REGION_SIZE, minY, origin.z * REGION_SIZE], [WINDOW_SIZE, height, WINDOW_SIZE]);
           this.gpu = { pool, window, draw: new BrickmapRenderer(gl, pool, window), regions: new Map() };
         }
       }
@@ -245,12 +250,9 @@ export class Minimap {
       this.updateRegions();
       const rect = this.canvas.getBoundingClientRect();
       this.camera.span = rect.height * this.scale;
-      const [minY, height] = this.world!.minimapBounds!;
-      const bounds = horizontalBounds(this.camera, rect.width, rect.height, minY, minY + height);
-      const origin = this.gpu.window.origin;
       const full = [...this.downloads.entries.values()].some(entry => entry.state === "full");
-      this.overview = full || bounds[0] < origin[0] || bounds[1] < origin[2]
-        || bounds[2] > origin[0] + 1024 || bounds[3] > origin[2] + 1024;
+      // 只按缩放和显示尺寸切换，旋转时允许窗口边缘缺少体素预览。
+      this.overview = full || Math.max(rect.width, rect.height) * this.scale > WINDOW_SIZE;
       this.panel.dataset.mode = this.overview ? "overview" : "brickmap";
       if (this.pending && !full) this.pick();
       if (!this.overview) {
@@ -277,23 +279,23 @@ export class Minimap {
     // 窗口先摘除离开的引用，再回收槽位，最后安装下载完成的区域。
     const gpu = this.gpu!;
     const origin = windowOrigin(this.camera.target[0], this.camera.target[2]);
-    const inside = (position: RegionPosition): boolean => position.x >= origin.x && position.x < origin.x + 8
-      && position.z >= origin.z && position.z < origin.z + 8;
+    const inside = (position: RegionPosition): boolean => position.x >= origin.x && position.x < origin.x + WINDOW_REGIONS
+      && position.z >= origin.z && position.z < origin.z + WINDOW_REGIONS;
     const wanted: RegionPosition[] = [];
-    for (let z = origin.z; z < origin.z + 8; z++) for (let x = origin.x; x < origin.x + 8; x++) wanted.push({ x, z });
+    for (let z = origin.z; z < origin.z + WINDOW_REGIONS; z++) for (let x = origin.x; x < origin.x + WINDOW_REGIONS; x++) wanted.push({ x, z });
     const priority = (position: RegionPosition): number => {
       const key = regionKey(position);
       if (key === this.pending?.waiting) return -1;
-      return ((position.x + 0.5) * 128 - this.camera.target[0]) ** 2
-        + ((position.z + 0.5) * 128 - this.camera.target[2]) ** 2;
+      return ((position.x + 0.5) * REGION_SIZE - this.camera.target[0]) ** 2
+        + ((position.z + 0.5) * REGION_SIZE - this.camera.target[2]) ** 2;
     };
     wanted.sort((a, b) => priority(a) - priority(b));
     const keys = new Set(wanted.map(regionKey));
     const evicted = [...gpu.regions].filter(([key]) => !keys.has(key));
-    const moved = origin.x * 128 !== gpu.window.origin[0] || origin.z * 128 !== gpu.window.origin[2];
+    const moved = origin.x * REGION_SIZE !== gpu.window.origin[0] || origin.z * REGION_SIZE !== gpu.window.origin[2];
     if (moved) {
-      const retained = [...gpu.regions.values()].filter(region => inside({ x: region.origin[0] / 128, z: region.origin[2] / 128 }));
-      gpu.window.rebuild([origin.x * 128, gpu.window.origin[1], origin.z * 128], retained);
+      const retained = [...gpu.regions.values()].filter(region => inside({ x: region.origin[0] / REGION_SIZE, z: region.origin[2] / REGION_SIZE }));
+      gpu.window.rebuild([origin.x * REGION_SIZE, gpu.window.origin[1], origin.z * REGION_SIZE], retained);
     }
     for (const [key, region] of evicted) {
       gpu.pool.release(region);
@@ -320,7 +322,7 @@ export class Minimap {
     if (pending.waiting && this.downloads.entries.get(pending.waiting)?.state !== "resident") return;
     const result = this.gpu!.draw.pick(pending.ray, { openBoundary: true });
     if (result.kind === "missing") {
-      pending.waiting = regionKey({ x: Math.floor(result.position[0] / 128), z: Math.floor(result.position[2] / 128) });
+      pending.waiting = regionKey({ x: Math.floor(result.position[0] / REGION_SIZE), z: Math.floor(result.position[2] / REGION_SIZE) });
       this.camera.target[0] = result.position[0];
       this.camera.target[2] = result.position[2];
       this.readout.value = "正在载入选点所在区域…";
