@@ -1,6 +1,7 @@
 package minimap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"image/color"
@@ -21,7 +22,7 @@ type Position struct {
 
 type Index struct {
 	// 索引就绪后页面跳过空白图块；完整区块集合留在服务端用于占用图。
-	Detail   []Position `json:"detail"`
+	Regions  []Position `json:"regions"`
 	Overview []Position `json:"overview"`
 }
 
@@ -55,7 +56,7 @@ type Map struct {
 func New(options Options) *Map {
 	// 并发名额由 HTTP 层跨代共享，地图只持有本代的数据。
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Map{options: options, ctx: ctx, cancel: cancel, cache: bytecache.New[tileKey, []byte](16 << 20)}
+	return &Map{options: options, ctx: ctx, cancel: cancel, cache: bytecache.New[tileKey, []byte](64 << 20)}
 }
 
 func (m *Map) Retire() {
@@ -137,16 +138,16 @@ func (m *Map) scanIndex() {
 		m.indexErr = err
 		return
 	}
-	index := &Index{Detail: []Position{}, Overview: []Position{}}
+	index := &Index{Regions: []Position{}, Overview: []Position{}}
 	chunks := make(map[celler.ChunkPos]bool, len(positions))
-	detail, overview := map[Position]bool{}, map[Position]bool{}
+	regions, overview := map[Position]bool{}, map[Position]bool{}
 	for _, pos := range positions {
 		chunks[pos] = true
 		d := Position{X: pos.X >> 3, Z: pos.Z >> 3}
 		o := Position{X: pos.X >> 7, Z: pos.Z >> 7}
-		if !detail[d] {
-			detail[d] = true
-			index.Detail = append(index.Detail, d)
+		if !regions[d] {
+			regions[d] = true
+			index.Regions = append(index.Regions, d)
 		}
 		if !overview[o] {
 			overview[o] = true
@@ -156,19 +157,9 @@ func (m *Map) scanIndex() {
 	m.chunks, m.index = chunks, index
 }
 
-func (m *Map) Tile(ctx context.Context, kind string, pos Position) ([]byte, error) {
-	// 缓存只锁住字节查取，方块读取可以使用两个独立的小地图名额。
-	key := tileKey{Kind: kind, Position: pos}
-	m.mu.Lock()
-	data, ok := m.cache.Get(key)
-	m.mu.Unlock()
-	if ok {
-		return data, nil
-	}
-	var err error
-	if kind == "detail" {
-		data, err = m.options.Terrain.Tile(ctx, m.options.Reader, pos)
-	} else {
+func (m *Map) Tile(ctx context.Context, pos Position) ([]byte, error) {
+	// 索引只保存区块坐标，占用图不读取方块或材质。
+	return m.cached(ctx, tileKey{Kind: "overview", Position: pos}, func() ([]byte, error) {
 		if _, err := m.Index(ctx); err != nil {
 			return nil, err
 		}
@@ -180,26 +171,40 @@ func (m *Map) Tile(ctx context.Context, kind string, pos Position) ([]byte, erro
 				}
 			}
 		}
-		data, err = encode(pixels)
+		return encode(pixels)
+	})
+}
+
+func (m *Map) Region(ctx context.Context, pos Position) ([]byte, error) {
+	// Map 固定绑定一个存档代次和维度，区域坐标只在这份缓存内有意义。
+	return m.cached(ctx, tileKey{Kind: "region", Position: pos}, func() ([]byte, error) {
+		volume, err := m.options.Terrain.Region(ctx, m.options.Reader, pos)
+		if err != nil {
+			return nil, err
+		}
+		var output bytes.Buffer
+		err = volume.Write(&output)
+		return output.Bytes(), err
+	})
+}
+
+func (m *Map) cached(ctx context.Context, key tileKey, build func() ([]byte, error)) ([]byte, error) {
+	// 锁只保护缓存；不同区域可以同时读取，取消的构建不发布结果。
+	m.mu.Lock()
+	data, ok := m.cache.Get(key)
+	m.mu.Unlock()
+	if ok {
+		return data, nil
 	}
+	data, err := build()
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
 	m.cache.Put(key, data, len(data))
 	m.mu.Unlock()
 	return data, nil
-}
-
-func (m *Map) Surface(ctx context.Context, x, z int32) (*int32, error) {
-	// 与方块图使用同一个选面规则，标记和跳转不会落到另一层地表。
-	column, err := m.options.Terrain.Column(ctx, m.options.Reader(), celler.ChunkPos{X: x >> 4, Z: z >> 4})
-	if err != nil {
-		return nil, err
-	}
-	pixel := int(z&15)*16 + int(x&15)
-	if column.Pixel[pixel].A == 0 {
-		return nil, nil
-	}
-	return &column.Height[pixel], nil
 }

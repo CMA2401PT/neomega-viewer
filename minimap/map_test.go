@@ -53,7 +53,7 @@ func TestIndexSurvivesWaiterCancellation(t *testing.T) {
 		if err != nil || index == nil || cached != index || scans != 1 {
 			t.Fatal(index, cached, err, scans)
 		}
-		if len(index.Detail) != 1 || index.Detail[0] != (Position{X: -1, Z: 0}) {
+		if len(index.Regions) != 1 || index.Regions[0] != (Position{X: -1, Z: 0}) {
 			t.Fatal(index)
 		}
 	})
@@ -70,12 +70,12 @@ func TestRetireKeepsCompletedData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := m.Tile(context.Background(), "detail", Position{})
+	before, err := m.Tile(context.Background(), Position{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Retire()
-	after, err := m.Tile(context.Background(), "detail", Position{})
+	after, err := m.Tile(context.Background(), Position{})
 	if err != nil || !bytes.Equal(before, after) || m.index != index || !m.chunks[celler.ChunkPos{X: 1}] {
 		t.Fatal("退役不应清空已完成数据", err)
 	}
@@ -85,12 +85,11 @@ func TestTerrainDimensions(t *testing.T) {
 	for _, test := range []struct {
 		dimension  Dimension
 		minY, maxY int32
-		nether     bool
 	}{
-		{Overworld, -4, 19, false}, {Nether, 0, 7, true}, {End, 0, 15, false},
+		{Overworld, -4, 19}, {Nether, 0, 7}, {End, 0, 15},
 	} {
 		terrain, err := NewTerrain(test.dimension)
-		if err != nil || terrain.MinSection != test.minY || terrain.MaxSection != test.maxY || terrain.Nether != test.nether || len(terrain.Colors) == 0 {
+		if err != nil || terrain.MinSection != test.minY || terrain.MaxSection != test.maxY || terrain.Materials == nil {
 			t.Fatal(terrain, err)
 		}
 	}

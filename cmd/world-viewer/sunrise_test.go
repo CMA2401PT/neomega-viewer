@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"image/png"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func TestEmptySourceShowsSunrise(t *testing.T) {
 }
 
 func TestSunriseMinimap(t *testing.T) {
-	// 未打开存档也提供完整地图接口，海面空气保持透明，地表高度用于相同的跳转规则。
+	// 默认场景同时提供区块占用图和含透明材质的体素区域。
 	src, err := OpenSource(context.Background(), SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -71,11 +72,11 @@ func TestSunriseMinimap(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &index); err != nil {
 		t.Fatal(err)
 	}
-	if len(index.Detail) == 0 || len(index.Overview) == 0 {
+	if len(index.Regions) == 0 || len(index.Overview) == 0 {
 		t.Fatal(index)
 	}
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/tile?world=1&kind=detail&x=0&z=0", nil))
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/tile?world=1&kind=overview&x=0&z=0", nil))
 	if response.Code != 200 {
 		t.Fatal(response.Code, response.Body.String())
 	}
@@ -98,17 +99,22 @@ func TestSunriseMinimap(t *testing.T) {
 		t.Fatal("默认场景应同时含可见方块与透明空气")
 	}
 	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/surface?world=1&x=0&z=0", nil))
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/region?world=1&x=0&z=0", nil))
 	if response.Code != 200 {
 		t.Fatal(response.Code, response.Body.String())
 	}
-	var surface struct {
-		Y *int32 `json:"y"`
+	var header struct {
+		Format     string `json:"format"`
+		Origin     [3]int `json:"origin"`
+		Size       [3]int `json:"size"`
+		BrickBytes int    `json:"brickBytes"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &surface); err != nil {
+	data := response.Body.Bytes()
+	length := binary.LittleEndian.Uint32(data)
+	if err := json.Unmarshal(data[4:4+length], &header); err != nil {
 		t.Fatal(err)
 	}
-	if surface.Y == nil || *surface.Y < sunriseSeaLevel || *surface.Y > 319 {
-		t.Fatal(surface.Y)
+	if header.Format != "brickmap-2" || header.Origin != [3]int{0, -64, 0} || header.Size != [3]int{128, 512, 128} || header.BrickBytes == 0 {
+		t.Fatal(header)
 	}
 }

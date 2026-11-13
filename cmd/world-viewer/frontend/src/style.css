@@ -90,8 +90,11 @@ body[data-scene="backdrop"] #performance {
   pointer-events: auto;
 }
 
-/* 小地图沿用面板的暖金边线，模态地图让地形保留最大的可读面积。 */
+/* 透明地图区域露出共享 GL 画布，控制栏保持独立底色。 */
+#minimap[hidden] { display: none; }
+body.minimap-expanded #hud, body.minimap-expanded #stage, body.minimap-expanded #panel { visibility: hidden; pointer-events: none; }
 #minimap {
+  z-index: 20;
   position: fixed;
   inset: 14px auto auto 14px;
   margin: 0;
@@ -103,13 +106,13 @@ body[data-scene="backdrop"] #performance {
   overflow: hidden;
   border: 1px solid var(--line);
   color: var(--ink);
-  background: var(--night-solid);
+  background: transparent;
   box-shadow: 0 0 18px rgba(255, 164, 92, 0.13), inset 0 0 12px var(--line-soft);
   font: 11px/1.5 var(--mono);
 }
-#minimap-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: zoom-in; }
+#minimap-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #minimap-scale { position: absolute; bottom: 8px; left: 10px; padding: 2px 5px; background: var(--night); pointer-events: none; }
-.minimap-hint { position: absolute; top: 9px; right: 10px; padding: 2px 5px; color: var(--ink); background: var(--night); pointer-events: none; }
+.minimap-hint { position: absolute; top: 9px; right: 10px; padding: 2px 5px; color: var(--ink); background: var(--night); pointer-events: auto; }
 #minimap[data-expanded="false"] .minimap-expanded { display: none; }
 #minimap[data-expanded="true"] {
   inset: 5vh 4vw;
@@ -118,11 +121,10 @@ body[data-scene="backdrop"] #performance {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
-#minimap::backdrop { background: rgba(2, 4, 9, 0.8); backdrop-filter: blur(5px); }
 #minimap[data-expanded="true"] #minimap-canvas { cursor: crosshair; grid-row: 2; }
 #minimap[data-expanded="true"] .minimap-hint { display: none; }
 #minimap[data-expanded="true"] #minimap-scale { bottom: auto; top: 68px; left: auto; right: 18px; }
-#minimap header, #minimap footer, .minimap-message { display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
+#minimap header, #minimap footer, .minimap-message { background: var(--night-solid); display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
 #minimap header { justify-content: space-between; border-bottom: 1px solid var(--line-soft); }
 #minimap header small { margin-left: 18px; color: var(--ink-soft); }
 #minimap footer { justify-content: space-between; border-top: 1px solid var(--line-soft); }

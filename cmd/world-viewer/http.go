@@ -77,14 +77,23 @@ func Handler(options ServerOptions) http.Handler {
 		json.NewEncoder(w).Encode(info)
 	})
 
-	mux.Handle("/", viewhttp.Handler(
-		func() *viewhttp.View { return options.Worlds.view().View },
-		viewhttp.Options{
-			Assets:  options.Assets,
-			Web:     options.Web,
-			Workers: options.Workers,
-		},
-	))
+	if options.Worlds.view().Info.MinimapOnly {
+		// 隔离模式没有列调度器，旧页面的网格请求也不会触发存档读取。
+		mux.HandleFunc("GET /api/chunk", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "仅小地图模式已停用精细网格", http.StatusNotFound)
+		})
+		mux.Handle("GET /resources/", http.StripPrefix("/resources/", http.FileServerFS(options.Assets)))
+		mux.Handle("GET /", http.FileServerFS(options.Web))
+	} else {
+		mux.Handle("/", viewhttp.Handler(
+			func() *viewhttp.View { return options.Worlds.view().View },
+			viewhttp.Options{
+				Assets:  options.Assets,
+				Web:     options.Web,
+				Workers: options.Workers,
+			},
+		))
+	}
 	return http.NewCrossOriginProtection().Handler(mux)
 }
 

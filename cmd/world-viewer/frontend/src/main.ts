@@ -78,9 +78,10 @@ axes.width = axes.height = 80 * Math.min(devicePixelRatio, 2);
 const forward = new THREE.Vector3(),
   right = new THREE.Vector3();
 const pressed = new Set<string>();
-const minimap = new Minimap(jump, () => {
+const minimap = new Minimap(renderer, jump, () => {
   pressed.clear();
   dragging = false;
+  stopSway();
 }, () => renderer.domElement.focus());
 let atlas: THREE.Texture | undefined, book: THREE.Texture | undefined;
 let effects: EffectRegistry = new Map();
@@ -122,6 +123,10 @@ function updateStatus(stats?: StreamStats): void {
   status.dataset.error = String(Boolean(error));
   if (error) {
     status.textContent = error;
+    return;
+  }
+  if (currentWorld?.minimapOnly) {
+    status.textContent = "仅小地图模式 · 主视图与精细网格构建已停用";
     return;
   }
   if (!currentWorld?.loaded) {
@@ -398,16 +403,24 @@ function animate(now: number): void {
   stream?.processFrame();
   worldScene?.update(camera, now / 1000);
   camera.updateMatrixWorld();
-  if (backdrop) backdrop.render(camera, now);
-  else drawScene();
-  stage.update(camera, now);
+  if (currentWorld?.minimapOnly) {
+    // 只清除上帧地图留下的像素，不提交主场景、遮挡查询或后处理。
+    renderer.setRenderTarget(null);
+    renderer.setScissorTest(false);
+    renderer.setClearColor(worldFogColor);
+    renderer.clear();
+  } else {
+    if (backdrop) backdrop.render(camera, now);
+    else drawScene();
+    stage.update(camera, now);
+  }
   const fps = frameRate.sample(now);
   if (fps !== undefined) {
     fpsDisplay.value = `FPS ${fps.toFixed(0)}`;
     memoryDisplay.value = `网格内存 ≈ ${(geometryMemoryBytes(scene) / 1024 ** 2).toFixed(1)} MiB`;
   }
+  minimap.update(camera.position.x, camera.position.y, camera.position.z, rotation.y);
   if (now - lastHUD > 80) {
-    minimap.update(camera.position.x, camera.position.y, camera.position.z, rotation.y);
     drawAxes();
     coordinateDisplay.value = `X ${camera.position.x.toFixed(1)}　Y ${camera.position.y.toFixed(1)}　Z ${camera.position.z.toFixed(1)}`;
     lastHUD = now;
@@ -430,15 +443,16 @@ function lookAt(target: [number, number, number]): void {
 }
 /** 默认场景走线描画面；存档恢复实体绘制与明亮背景，用户调过的视距也一并还原。 */
 function applyAtmosphere(info: WorldInfo): void {
-  document.body.dataset.scene = info.backdrop ? "backdrop" : "world";
-  wireframe.checked = info.backdrop !== undefined;
+  const atmosphere = info.minimapOnly ? undefined : info.backdrop;
+  document.body.dataset.scene = atmosphere ? "backdrop" : "world";
+  wireframe.checked = atmosphere !== undefined;
   backdrop?.dispose();
   backdrop = undefined;
-  if (info.backdrop) {
+  if (atmosphere) {
     camera.position.set(...info.position);
-    camera.fov = info.backdrop.fov;
+    camera.fov = atmosphere.fov;
     camera.updateProjectionMatrix();
-    backdrop = new Backdrop(renderer, camera, info.backdrop, drawScene);
+    backdrop = new Backdrop(renderer, camera, atmosphere, drawScene);
     scene.background = null;
     radiusBeforeBackdrop ??= radiusInput.value;
     radiusInput.value = String(backdropRadius);
@@ -448,7 +462,7 @@ function applyAtmosphere(info: WorldInfo): void {
     if (radiusBeforeBackdrop !== undefined) radiusInput.value = radiusBeforeBackdrop;
     radiusBeforeBackdrop = undefined;
   }
-  stage.show(info.backdrop);
+  stage.show(atmosphere);
   element<HTMLOutputElement>("radius-label").value = radiusInput.value;
 }
 async function showWorld(info: WorldInfo): Promise<void> {
@@ -466,7 +480,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
   currentWorld = info;
   minimap.setWorld(info);
   streamStats = undefined;
-  streaming = info.loaded || info.backdrop !== undefined;
+  streaming = !info.minimapOnly && (info.loaded || info.backdrop !== undefined);
   applyAtmosphere(info);
   element<HTMLOutputElement>("world-name").value = info.loaded
     ? info.name
@@ -482,7 +496,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
     : "打开存档";
   element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
   camera.position.set(...info.position);
-  swayOrigin = info.backdrop ? camera.position.clone() : undefined;
+  swayOrigin = info.backdrop && !info.minimapOnly ? camera.position.clone() : undefined;
   if (info.backdrop) lookAt(info.backdrop.look);
   else {
     // 存档沿用一贯的初始朝向：朝北略微俯视，不继承默认场景的取景。

@@ -7,6 +7,8 @@ export interface WorldInfo {
   canOpen?: boolean;
   loaded: boolean;
   minimap?: boolean;
+  minimapOnly?: boolean;
+  minimapBounds?: [number, number];
   name: string;
   path?: string;
   kind?: string;

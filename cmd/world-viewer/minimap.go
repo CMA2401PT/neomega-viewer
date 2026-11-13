@@ -15,7 +15,7 @@ import (
 func registerMinimap(mux *http.ServeMux, worlds *Worlds) {
 	// 小地图名额独立于三维列构建，且切换存档时不额外增加并发。
 	slots := make(chan struct{}, 2)
-	for _, action := range []string{"index", "tile", "surface"} {
+	for _, action := range []string{"index", "tile", "region"} {
 		mux.HandleFunc("GET /api/minimap/"+action, func(w http.ResponseWriter, r *http.Request) {
 			query, err := parseMinimapQuery(r.URL.Query(), action)
 			if err != nil {
@@ -41,17 +41,9 @@ func registerMinimap(mux *http.ServeMux, worlds *Worlds) {
 					}
 					return json.Marshal(index)
 				case "tile":
-					return content.Minimap.Tile(ctx, query.kind, minimap.Position{X: query.x, Z: query.z})
+					return content.Minimap.Tile(ctx, minimap.Position{X: query.x, Z: query.z})
 				default:
-					y, err := content.Minimap.Surface(ctx, query.x, query.z)
-					if err != nil {
-						return nil, err
-					}
-					return json.Marshal(struct {
-						X int32  `json:"x"`
-						Z int32  `json:"z"`
-						Y *int32 `json:"y"`
-					}{X: query.x, Z: query.z, Y: y})
+					return content.Minimap.Region(ctx, minimap.Position{X: query.x, Z: query.z})
 				}
 			}
 			var data []byte
@@ -71,6 +63,8 @@ func registerMinimap(mux *http.ServeMux, worlds *Worlds) {
 			w.Header().Set("Cache-Control", "no-store")
 			if action == "tile" {
 				w.Header().Set("Content-Type", "image/png")
+			} else if action == "region" {
+				w.Header().Set("Content-Type", "application/octet-stream")
 			} else {
 				w.Header().Set("Content-Type", "application/json")
 			}
@@ -87,7 +81,7 @@ type minimapQuery struct {
 }
 
 func parseMinimapQuery(values url.Values, action string) (minimapQuery, error) {
-	// 图块坐标代表图片原点，地表坐标代表单个方块，两者按相应比例限制范围。
+	// 区域与占用图分别按 128 和 2048 格定位，负坐标采用向下取整。
 	revision, err := strconv.ParseUint(values.Get("world"), 10, 64)
 	if err != nil {
 		return minimapQuery{}, fmt.Errorf("需要合法的 world")
@@ -98,19 +92,12 @@ func parseMinimapQuery(values url.Values, action string) (minimapQuery, error) {
 	}
 	x, xErr := strconv.ParseInt(values.Get("x"), 10, 32)
 	z, zErr := strconv.ParseInt(values.Get("z"), 10, 32)
-	limit := int64(29_999_999)
-	if action == "tile" {
-		if query.kind != "detail" && query.kind != "overview" {
-			return query, fmt.Errorf("kind 需要 detail 或 overview")
-		}
-		size := int64(minimap.TileSize)
-		if query.kind == "overview" {
-			size *= 16
-		}
-		limit = (limit + size - 1) / size
+	if action == "tile" && query.kind != "overview" {
+		return query, fmt.Errorf("kind 需要 overview")
 	}
-	if xErr != nil || zErr != nil || x < -limit || x > limit || z < -limit || z > limit {
-		return query, fmt.Errorf("需要范围内的整数 x、z")
+	// 数据窗口会跨过玩家可移动的坐标边缘，范围外的 section 由来源返回空气。
+	if xErr != nil || zErr != nil {
+		return query, fmt.Errorf("需要整数 x、z")
 	}
 	query.x, query.z = int32(x), int32(z)
 	return query, nil

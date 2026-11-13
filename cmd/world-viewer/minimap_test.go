@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"celler"
 	"neomega-viewer-core/viewer/blockdata"
+	"neomega-viewer-core/viewer/brickmap"
 	"neomega-viewer-core/viewer/dispatcher"
 	"neomega-viewer/column"
 	"neomega-viewer/minimap"
@@ -17,7 +19,7 @@ import (
 )
 
 func TestMinimapRetirementBeforeSourceClose(t *testing.T) {
-	for _, action := range []string{"index", "tile"} {
+	for _, action := range []string{"index", "region"} {
 		for _, switchWorld := range []bool{false, true} {
 			t.Run(action+"/"+map[bool]string{true: "switch", false: "close"}[switchWorld], func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
@@ -45,7 +47,7 @@ func TestMinimapRetirementBeforeSourceClose(t *testing.T) {
 					worlds.current.Store(previous)
 					handler := Handler(ServerOptions{Worlds: worlds})
 					response := httptest.NewRecorder()
-					go handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/"+action+"?world=1&kind=detail&x=0&z=0", nil))
+					go handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/"+action+"?world=1&kind=overview&x=0&z=0", nil))
 					<-started
 					finished := false
 					go func() {
@@ -90,7 +92,7 @@ func TestMinimapHTTPAndIndexCache(t *testing.T) {
 		{X: -1}: &dispatcher.Section{Blocks: blockdata.Uniform(4096, "minecraft:stone []")},
 	}
 	src := &Source{minimap: &minimap.Options{
-		Terrain: minimap.Terrain{MinSection: 0, MaxSection: 0},
+		Terrain: minimap.Terrain{Materials: testMapMaterials(t), MinSection: 0, MaxSection: 0},
 		Reader:  func() dispatcher.SectionSource { return sections },
 		Chunks:  func(context.Context) ([]celler.ChunkPos, error) { scans++; return []celler.ChunkPos{{X: -1}}, nil },
 	}, close: func() {}}
@@ -101,7 +103,7 @@ func TestMinimapHTTPAndIndexCache(t *testing.T) {
 	}
 	handler := Handler(ServerOptions{Worlds: worlds})
 	firstTile := httptest.NewRecorder()
-	handler.ServeHTTP(firstTile, httptest.NewRequest("GET", "/api/minimap/tile?world=1&kind=detail&x=-1&z=0", nil))
+	handler.ServeHTTP(firstTile, httptest.NewRequest("GET", "/api/minimap/region?world=1&x=-1&z=0", nil))
 	if firstTile.Code != 200 || scans != 0 {
 		t.Fatal("近景不应等待整个世界的索引", firstTile.Code, scans)
 	}
@@ -111,30 +113,30 @@ func TestMinimapHTTPAndIndexCache(t *testing.T) {
 	}{
 		{"index?world=1", 200},
 		{"index?world=1", 200},
-		{"tile?world=1&kind=detail&x=-1&z=0", 200},
+		{"region?world=1&x=-1&z=0", 200},
 		{"tile?world=1&kind=overview&x=-1&z=0", 200},
-		{"surface?world=1&x=-1&z=0", 200},
-		{"surface?world=1&x=200&z=0", 200},
+		{"region?world=1&x=200&z=0", 200},
 		{"index?world=0", 409},
 		{"index", 400},
 		{"tile?world=1&kind=bad&x=0&z=0", 400},
-		{"surface?world=1&x=NaN&z=0", 400},
+		{"region?world=1&x=NaN&z=0", 400},
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/minimap/"+test.query, nil))
 		if response.Code != test.status {
 			t.Fatal(test, response.Code, response.Body.String())
 		}
-		if test.query == "surface?world=1&x=-1&z=0" {
-			var point struct {
-				Y *int32 `json:"y"`
+		if test.query == "region?world=1&x=-1&z=0" {
+			data := response.Body.Bytes()
+			var header struct {
+				Format string `json:"format"`
+				Origin [3]int `json:"origin"`
+				Size   [3]int `json:"size"`
 			}
-			if err := json.Unmarshal(response.Body.Bytes(), &point); err != nil || point.Y == nil || *point.Y != 15 {
-				t.Fatal(point, err)
+			length := binary.LittleEndian.Uint32(data)
+			if err := json.Unmarshal(data[4:4+length], &header); err != nil || header.Format != "brickmap-2" || header.Origin != [3]int{-128, 0, 0} || header.Size != [3]int{128, 16, 128} {
+				t.Fatal(header, err)
 			}
-		}
-		if test.query == "surface?world=1&x=200&z=0" && response.Body.String() != `{"x":200,"z":0,"y":null}` {
-			t.Fatal(response.Body.String())
 		}
 	}
 	if scans != 1 {
@@ -159,7 +161,7 @@ func TestMinimapIndexWaitersLeaveBothTileSlotsFree(t *testing.T) {
 		scans := 0
 		startedTiles := make(chan struct{}, 2)
 		m := minimap.New(minimap.Options{
-			Terrain: minimap.Terrain{MinSection: 0, MaxSection: 0},
+			Terrain: minimap.Terrain{Materials: testMapMaterials(t), MinSection: 0, MaxSection: 0},
 			Chunks:  func(context.Context) ([]celler.ChunkPos, error) { scans++; <-indexRelease; return nil, nil },
 			Reader: func() dispatcher.SectionSource {
 				return tileSlotSource{read: func() { startedTiles <- struct{}{}; <-tileRelease }}
@@ -169,7 +171,7 @@ func TestMinimapIndexWaitersLeaveBothTileSlotsFree(t *testing.T) {
 		worlds.current.Store(&openedContent{Info: Info{Description: viewhttp.Description{Revision: 1}}, Minimap: m})
 		handler := Handler(ServerOptions{Worlds: worlds})
 		responses := make([]*httptest.ResponseRecorder, 4)
-		for i, path := range []string{"index?world=1", "index?world=1", "tile?world=1&kind=detail&x=0&z=0", "tile?world=1&kind=detail&x=1&z=0"} {
+		for i, path := range []string{"index?world=1", "index?world=1", "region?world=1&x=0&z=0", "region?world=1&x=1&z=0"} {
 			responses[i] = httptest.NewRecorder()
 			go handler.ServeHTTP(responses[i], httptest.NewRequest("GET", "/api/minimap/"+path, nil))
 		}
@@ -199,4 +201,13 @@ func (s tileSlotSource) Section(ctx context.Context, pos dispatcher.SectionPos) 
 		s.read()
 	}
 	return &dispatcher.Section{Blocks: blockdata.Uniform(4096, "minecraft:stone []")}, nil
+}
+
+func testMapMaterials(t *testing.T) *brickmap.MaterialSource {
+	t.Helper()
+	materials, err := brickmap.OpenMaterialSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return materials
 }

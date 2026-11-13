@@ -24,23 +24,29 @@ func newContent(source *Source, revision uint64, pipeline *dispatcher.Pipeline) 
 	info := source.Info
 	info.Revision = revision
 	info.Version = version
+	info.MinimapOnly = pipeline == nil
 	var mapView *minimap.Map
 	if source.minimap != nil {
 		mapView = minimap.New(*source.minimap)
+		info.MinimapBounds = source.minimap.Terrain.Bounds()
 	}
 	info.Minimap = mapView != nil
-	return &openedContent{
-		Info:    info,
-		Minimap: mapView,
-		View: viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
+	var view *viewhttp.View
+	if pipeline != nil {
+		view = viewhttp.NewView(revision, func(ctx context.Context, key column.Key) ([]byte, error) {
 			return column.BuildColumn(
 				ctx,
 				pipeline,
 				source.Reader(),
 				key,
 			)
-		}),
-		close: source.Close,
+		})
+	}
+	return &openedContent{
+		Info:    info,
+		Minimap: mapView,
+		View:    view,
+		close:   source.Close,
 	}
 }
 
@@ -52,6 +58,7 @@ type Worlds struct {
 }
 
 func NewWorlds(source *Source, pipeline *dispatcher.Pipeline) *Worlds {
+	// pipeline 为 nil 时只提供小地图，精细网格不创建构建代次。
 	w := &Worlds{pipeline: pipeline}
 	w.current.Store(newContent(source, 1, pipeline))
 	return w
@@ -75,7 +82,9 @@ func (w *Worlds) Open(ctx context.Context, options SourceOptions) (Info, error) 
 	previous := w.view()
 	current := newContent(source, previous.Info.Revision+1, w.pipeline)
 	w.current.Store(current)
-	previous.View.Retire()
+	if previous.View != nil {
+		previous.View.Retire()
+	}
 	if previous.Minimap != nil {
 		previous.Minimap.Retire()
 	}
@@ -86,7 +95,9 @@ func (w *Worlds) Close() {
 	w.switchMu.Lock()
 	defer w.switchMu.Unlock()
 	current := w.view()
-	current.View.Retire()
+	if current.View != nil {
+		current.View.Retire()
+	}
 	if current.Minimap != nil {
 		current.Minimap.Retire()
 	}

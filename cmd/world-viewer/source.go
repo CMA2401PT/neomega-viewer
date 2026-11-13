@@ -16,6 +16,8 @@ import (
 type Info struct {
 	// 场景描述复用页面契约，存档选择器需要的路径和格式由程序补充。
 	viewhttp.Description
+	MinimapOnly       bool     `json:"minimapOnly"`
+	MinimapBounds     [2]int   `json:"minimapBounds"`
 	Minimap           bool     `json:"minimap"`
 	Version           string   `json:"version"`
 	Path              string   `json:"path"`

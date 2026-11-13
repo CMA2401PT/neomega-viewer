@@ -1,59 +1,81 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapPoint, visibleTiles, MapTiles } from "../src/minimap.ts";
+import { mapPoint, mapScreen, horizontalBounds } from "../src/map-camera.ts";
+import { RegionDownloads, windowOrigin } from "../src/map-regions.ts";
+import { MapTiles } from "../src/map-tiles.ts";
 
-const tick = () => new Promise((resolve) => setImmediate(resolve));
-const tile = (x, kind = "detail") => ({ x, z: 0, kind, key: `${kind}/${x}/0` });
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const tile = x => ({ x, z: 0, kind: "overview", key: `overview/${x}/0` });
 
-test("地图采用北上坐标，负坐标图块按向下取整定位，近中心优先", () => {
-  assert.deepEqual(mapPoint({ x: -128, z: 0 }, 2, 200, 100, 0, 0), { x: -328, z: -100 });
-  const index = { detail: [{ x: -2, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 0 }], overview: [{ x: -1, z: 0 }] };
-  assert.deepEqual(visibleTiles({ x: -1, z: 1 }, 1, 100, 100, index).map((entry) => entry.x), [-1, 0]);
-  assert.equal(visibleTiles({ x: -1, z: 1 }, 1, 100, 100).length, 4);
-  assert.deepEqual(visibleTiles({ x: 0, z: 0 }, 8, 100, 100), []);
-  assert.equal(visibleTiles({ x: 0, z: 0 }, 8, 100, 100, index)[0].kind, "overview");
-  assert.equal(visibleTiles({ x: 0, z: 0 }, 4, 1200, 800, index)[0].kind, "overview");
+test("旋转后拖动和缩放仍以鼠标所在水平点为锚，倾角计入窗口覆盖范围", () => {
+  const camera = { target: [-200, 80, 50], yaw: 35, pitch: 65, span: 200 };
+  const point = mapPoint(camera, 400, 200, 37, 62);
+  const screen = mapScreen(camera, 400, 200, point);
+  assert.ok(Math.abs(screen[0] - 37) < 1e-9 && Math.abs(screen[1] - 62) < 1e-9);
+  const zoomed = { ...camera, target: [...camera.target], span: 100 };
+  const shifted = mapPoint(zoomed, 400, 200, 37, 62);
+  zoomed.target = zoomed.target.map((n, i) => n + point[i] - shifted[i]);
+  const anchored = mapPoint(zoomed, 400, 200, 37, 62);
+  assert.ok(anchored.every((n, i) => Math.abs(n - point[i]) < 1e-9));
+  const high = horizontalBounds({...camera,yaw:0,pitch:85},400,200,-64,448);
+  const low = horizontalBounds({...camera,yaw:0,pitch:40},400,200,-64,448);
+  assert.ok(low[3]-low[1] > high[3]-high[1]+400);
+  assert.deepEqual(windowOrigin(-65,63),{x:-5,z:-4});
+  assert.deepEqual(windowOrigin(-63,65),{x:-4,z:-3});
 });
 
-test("平移取消离开视口的下载，收起与展开复用已加载图片", async () => {
-  const pending = [];
-  const cache = new MapTiles((entry, signal) => new Promise((resolve) => pending.push({ entry, signal, resolve })), () => {}, assert.fail);
-  cache.update([tile(0), tile(1), tile(2)]);
-  assert.equal(pending.length, 2);
-  cache.update([tile(1), tile(2)]);
-  assert.equal(pending[0].signal.aborted, true);
-  let released = 0;
-  pending[0].resolve({ close() { released++; } });
-  pending[1].resolve({ close() { released++; } });
+test("窗口移动保留重叠区域的迟到响应，离开的实例无法重新发布", async () => {
+  const pending=[];
+  const queue=new RegionDownloads(assert.fail,(revision,position,signal)=>new Promise(resolve=>pending.push({revision,position,signal,resolve})));
+  queue.reset(7);
+  queue.update([{x:0,z:0},{x:1,z:0}]);
+  const kept=queue.entries.get("1/0");
+  queue.update([{x:1,z:0},{x:2,z:0}]);
+  assert.equal(pending[0].signal.aborted,true);
+  assert.equal(pending.length,2);
+  pending[0].resolve({old:true});
+  pending[1].resolve({kept:true});
   await tick();
-  assert.equal(released, 1);
-  assert.equal(pending.length, 3);
-  cache.update([tile(1)]);
-  assert.equal(pending[2].signal.aborted, true);
-  pending[2].resolve({ close() { released++; } });
-  await tick();
-  cache.update([tile(1)]);
-  assert.equal(pending.length, 3);
-  assert.equal(cache.images.size, 1);
-  cache.reset();
-  assert.equal(released, 3);
+  queue.update([{x:1,z:0},{x:2,z:0}]);
+  assert.equal(pending.length,3);
+  assert.equal(queue.entries.get("1/0"),kept);
+  assert.deepEqual(kept.volume,{kept:true});
+  assert.equal(queue.entries.has("0/0"),false);
 });
 
-test("切换存档释放缓存并丢弃迟到图片，同名图块的新请求不受旧 finally 影响", async () => {
-  const pending = [];
-  let released = 0;
-  const cache = new MapTiles((entry, signal) => new Promise((resolve) => pending.push({ signal, resolve })), () => {}, assert.fail);
+test("切换存档后同坐标使用新实例，旧请求退出前仍占下载名额", async () => {
+  const pending=[];
+  const queue=new RegionDownloads(assert.fail,(revision,position,signal)=>new Promise(resolve=>pending.push({revision,signal,resolve})));
+  queue.reset(1);
+  queue.update([{x:0,z:0},{x:1,z:0}]);
+  queue.reset(2);
+  queue.update([{x:0,z:0}]);
+  assert.equal(pending.length,2);
+  pending[0].resolve({old:true});
+  pending[1].resolve({old:true});
+  await tick();
+  queue.update([{x:0,z:0}]);
+  assert.equal(pending[2].revision,2);
+  assert.equal(queue.entries.get("0/0").volume,undefined);
+  pending[2].resolve({new:true});
+  await tick();
+  assert.deepEqual(queue.entries.get("0/0").volume,{new:true});
+});
+
+test("占用图切换代次释放旧图片，同名旧请求完成后才能补入新请求", async () => {
+  const pending=[];
+  let released=0;
+  const cache=new MapTiles((entry,signal)=>new Promise(resolve=>pending.push({signal,resolve})),assert.fail);
   cache.update([tile(0)]);
   cache.reset();
   cache.update([tile(0)]);
-  assert.equal(pending[0].signal.aborted, true);
-  pending[0].resolve({ close() { released++; } });
+  assert.equal(pending[0].signal.aborted,true);
+  pending[0].resolve({close(){released++;}});
   await tick();
-  assert.equal(cache.images.size, 0);
-  pending[1].resolve({ close() { released++; } });
+  assert.equal(cache.images.size,0);
+  pending[1].resolve({close(){released++;}});
   await tick();
-  assert.equal(cache.images.size, 1);
-  assert.equal(released, 1);
+  assert.equal(cache.images.size,1);
   cache.reset();
-  assert.equal(released, 2);
+  assert.equal(released,2);
 });
