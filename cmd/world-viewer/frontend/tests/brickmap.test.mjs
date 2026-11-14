@@ -73,6 +73,34 @@ test("砖池不足不发布区域也不消耗剩余槽位，归还后可重新�
   assert.ok(pool.upload(volume([128,0,0])));
 });
 
+test("跨区域移动回收连续砖后仍批量上传，两个窗口复用映射目录", () => {
+  const gl = fakeGL();
+  const pool = new BrickmapPool(gl, 8 * 1024 ** 2);
+  const source = volume([0,0,0]);
+  source.levels[0].cells.set(Uint32Array.from({length:4096}, (_, i) => 65536+i));
+  mergeParents(source.levels, 1);
+  source.bricks = new Uint16Array(4096*512).fill(1);
+  source.bricks[0] = 2;
+  const first = pool.upload(source);
+  pool.release(first);
+  gl.writes.length = 0;
+  const next = pool.upload(source);
+  const uploads = gl.writes.filter(args => args[0] === gl.TEXTURE_2D_ARRAY);
+  assert.equal(uploads.length, 1);
+  assert.deepEqual(next.slots, first.slots);
+  assert.equal(uploads[0].at(-1)[0], next.materials[2]);
+  assert.equal(uploads[0].at(-1)[1], next.materials[1]);
+  const mapped = next.mappedLevels.map(level => level.cells.slice());
+  const a = new BrickmapWindow(gl, [0,0,0], [1536,128,1536]);
+  const b = new BrickmapWindow(gl, [-128,0,0], [1536,128,1536]);
+  a.install(next);
+  b.install(next);
+  a.rebuild([-128,0,0], [next]);
+  assert.deepEqual(a.levels, b.levels);
+  assert.deepEqual(next.mappedLevels.map(level => level.cells), mapped);
+  assert.equal(next.levels[0].cells[0], 65536);
+});
+
 test("1536 格窗口保留最后一个区域，补齐目录不扩大实际范围", () => {
   const gl = fakeGL();
   const pool = new BrickmapPool(gl, 8 * 1024 ** 2);
