@@ -23,7 +23,4 @@ export interface BackdropInfo {
   radius: number;
   seaLevel: number;
   seaEnd: number;
-  twist: [number, number, number];
-  lanterns: number;
-  glass: number;
 }

@@ -20,7 +20,7 @@ func TestEmptySourceShowsSunrise(t *testing.T) {
 	}
 	defer source.Close()
 	backdrop := source.Info.Backdrop
-	if source.Info.Loaded || backdrop == nil || backdrop.Lanterns == 0 || backdrop.Glass == 0 {
+	if source.Info.Loaded || backdrop == nil {
 		t.Fatalf("empty source: %+v", source.Info)
 	}
 	states := map[string]int{}

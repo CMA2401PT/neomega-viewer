@@ -16,24 +16,26 @@ interface Listing {
   entries: Entry[];
 }
 
-/** 浏览服务所在电脑的文件系统，路径原样交回 Go，保留盘符与 UNC 路径语义。 */
+/** 浏览服务所在电脑的文件系统，路径原样交回 Go，保留盘符与 UNC 路径语义。返回打开选择框的函数。 */
 export function createWorldPicker(
   opened: (info: WorldInfo) => void,
   current: () => WorldInfo | undefined,
-): void {
+): () => void {
   const element = <T extends HTMLElement>(id: string): T =>
     document.getElementById(id) as T;
   const dialog = element<HTMLDialogElement>("world-picker");
-  const controls = element<HTMLFieldSetElement>("picker-controls");
   const address = element<HTMLInputElement>("picker-path");
   const roots = element<HTMLSelectElement>("picker-roots");
   const files = element<HTMLDivElement>("picker-files");
   const error = element<HTMLOutputElement>("picker-error");
   const selection = element<HTMLOutputElement>("picker-selection");
   const up = element<HTMLButtonElement>("picker-up");
+  const openButton = element<HTMLButtonElement>("picker-open");
   const progressPanel = element<HTMLDivElement>("picker-progress");
   const progressBar = element<HTMLProgressElement>("picker-progress-bar");
   const progressText = element<HTMLOutputElement>("picker-progress-text");
+  // 当前目录的条目与对应按钮，方向键在其中移动选中项。
+  let rows: { entry: Entry; button: HTMLButtonElement }[] = [];
   let selected = "",
     parent = "",
     switching = false;
@@ -42,14 +44,23 @@ export function createWorldPicker(
   function select(path: string): void {
     selected = path;
     selection.value = path;
-    for (const button of files.querySelectorAll<HTMLButtonElement>("button"))
-      button.setAttribute("aria-pressed", String(button.dataset.path === path));
+    for (const { entry, button } of rows) {
+      const active = entry.path === path;
+      button.setAttribute("aria-selected", String(active));
+      if (active) button.scrollIntoView({ block: "nearest" });
+    }
+  }
+  function activate(entry: Entry): void {
+    select(entry.path);
+    if (entry.directory) void browse(entry.path);
+    else void open();
   }
   async function browse(path: string): Promise<void> {
     browsing?.abort();
     const controller = new AbortController();
     browsing = controller;
-    error.value = "读取目录…";
+    error.value = "";
+    files.dataset.loading = "";
     try {
       const response = await fetch(
         `/api/files?${new URLSearchParams({ path })}`,
@@ -62,51 +73,43 @@ export function createWorldPicker(
       parent = listing.parent;
       up.disabled = parent === listing.path;
       roots.replaceChildren(
-        new Option("位置…", ""),
+        new Option("位置", ""),
         ...listing.roots.map((entry) => new Option(entry.name, entry.path)),
       );
-      files.replaceChildren();
-      for (const entry of listing.entries) {
+      rows = listing.entries.map((entry) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.dataset.path = entry.path;
+        button.role = "option";
+        button.tabIndex = -1;
+        const appearance = fileAppearance(entry.kind, entry.directory);
         const name = document.createElement("span");
+        name.className = "file-name";
         name.textContent = entry.name;
         const kind = document.createElement("small");
-        const appearance = fileAppearance(entry.kind, entry.directory);
-        name.className = "file-name";
         kind.textContent = appearance.label;
-        button.title = `${entry.name} · ${appearance.label}`;
+        button.title = entry.name;
+        button.dataset.kind = appearance.icon;
         button.append(fileIcon(appearance.icon), name, kind);
         button.addEventListener("click", () => select(entry.path));
-        button.addEventListener("dblclick", () => {
-          if (entry.directory) void browse(entry.path);
-          else void open();
-        });
-        button.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            select(entry.path);
-            if (entry.directory) void browse(entry.path);
-            else void open();
-          }
-        });
-        files.append(button);
-      }
-      if (!listing.entries.length) files.textContent = "空文件夹";
+        button.addEventListener("dblclick", () => activate(entry));
+        return { entry, button };
+      });
+      files.replaceChildren(...rows.map((row) => row.button));
+      if (!rows.length) files.textContent = "空文件夹";
       select(listing.selected || listing.path);
-      error.value = "";
     } catch (failure) {
       if (!controller.signal.aborted)
-        error.value =
-          failure instanceof Error ? failure.message : String(failure);
+        error.value = failure instanceof Error ? failure.message : String(failure);
+    } finally {
+      if (browsing === controller) delete files.dataset.loading;
     }
   }
   async function open(): Promise<void> {
     if (switching) return;
     browsing?.abort();
     switching = true;
-    controls.disabled = true;
+    dialog.dataset.busy = "";
+    openButton.disabled = true;
     error.value = "";
     progressPanel.hidden = false;
     const started = performance.now();
@@ -137,36 +140,49 @@ export function createWorldPicker(
       window.clearInterval(timer);
       progressPanel.hidden = true;
       switching = false;
-      controls.disabled = false;
+      delete dialog.dataset.busy;
+      openButton.disabled = false;
     }
   }
-  for (const button of document.querySelectorAll("[data-open-world]"))
-    button.addEventListener("click", () => {
-      dialog.showModal();
-      void browse(current()?.path ?? "");
-    });
-  element<HTMLFormElement>("browse-path").addEventListener(
-    "submit",
-    (event) => {
+  dialog.addEventListener("keydown", (event) => {
+    if (switching) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      void browse(address.value);
-    },
-  );
+      const index = rows.findIndex((row) => row.entry.path === selected);
+      const next = event.key === "ArrowDown"
+        ? Math.min(index + 1, rows.length - 1)
+        : Math.max(index - 1, 0);
+      if (rows[next]) select(rows[next].entry.path);
+      return;
+    }
+    if (event.key !== "Enter" || event.target === address) return;
+    event.preventDefault();
+    const row = rows.find((candidate) => candidate.entry.path === selected);
+    if (row) activate(row.entry);
+    else void open();
+  });
+  element<HTMLFormElement>("browse-path").addEventListener("submit", (event) => {
+    // 地址栏回车：改过路径就转到该路径；没改过且已用方向键选中条目，就打开该条目。
+    event.preventDefault();
+    if (switching) return;
+    const row = rows.find((candidate) => candidate.entry.path === selected);
+    if (row && selected !== address.value) activate(row.entry);
+    else void browse(address.value);
+  });
   address.addEventListener("input", () => select(""));
   roots.addEventListener("change", () => {
     if (roots.value) void browse(roots.value);
   });
-  up.addEventListener("click", () => {
-    void browse(parent);
-  });
-  element<HTMLButtonElement>("picker-open").addEventListener("click", () => {
-    void open();
-  });
-  element<HTMLButtonElement>("picker-cancel").addEventListener("click", () =>
-    dialog.close(),
-  );
+  up.addEventListener("click", () => void browse(parent));
+  openButton.addEventListener("click", () => void open());
+  element<HTMLButtonElement>("picker-cancel").addEventListener("click", () => dialog.close());
   dialog.addEventListener("cancel", (event) => {
     if (switching) event.preventDefault();
   });
   dialog.addEventListener("close", () => browsing?.abort());
+  return () => {
+    dialog.showModal();
+    address.focus();
+    void browse(current()?.path ?? "");
+  };
 }

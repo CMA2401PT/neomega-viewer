@@ -7,32 +7,48 @@ import { HUD } from "../ui/hud.ts";
 import { createWorldPicker } from "../ui/picker.ts";
 import type { WorldInfo } from "../api/world-info.ts";
 import { createDiagnostics } from "../ui/diagnostics.ts";
+import { fileAppearance } from "../ui/file-kind.ts";
+import { mountDock } from "../ui/dock.ts";
+import { bindMovePad } from "../ui/movepad.ts";
+import { anchorPopovers, closePopovers } from "../ui/popover.ts";
+import { showToast } from "../ui/toast.ts";
 import { lineArtStyle } from "../welcome/backdrop.ts";
-import { createPanelToggle } from "../ui/panel.ts";
 import { Intro } from "../welcome/intro.ts";
 import { BrickmapWorld } from "../terrain/brickmap-world.ts";
 import { FarView, FAR_FOG } from "../terrain/far-view.ts";
 import { WINDOW_SIZE } from "../terrain/map-regions.ts";
 import { Minimap } from "../minimap/minimap.ts";
 
+const SOURCE_KINDS: Record<string, string> = {
+  directory: "Java 存档",
+  pack: "Java PackFS 存档",
+  bedrock: "基岩存档",
+};
+// Java 维度是存档内相对目录，基岩维度是编号；其他自定义维度原样显示。
+const DIMENSIONS: Record<string, string> = {
+  ".": "主世界",
+  "DIM-1": "下界",
+  "DIM1": "末地",
+  "0": "主世界",
+  "1": "下界",
+  "2": "末地",
+};
 
 export function startViewer(): void {
   // 这里组装各视图，并保持“上传、远景、精细网格、小地图”的帧内顺序。
   const element = <T extends HTMLElement>(id: string): T =>
     document.getElementById(id) as T;
   const host = element<HTMLDivElement>("scene");
-  const status = element<HTMLOutputElement>("status");
-  const hud = new HUD();
+  const loading = element<HTMLOutputElement>("loading");
   const diagnostics = createDiagnostics(
     element<HTMLOutputElement>("issue-count"),
     element<HTMLUListElement>("issue-list"),
     element<HTMLParagraphElement>("issue-empty"),
   );
-  const fields = ["x", "y", "z"].map((id) => element<HTMLInputElement>(id));
   const radiusInput = element<HTMLInputElement>("radius");
   const wireframe = element<HTMLInputElement>("wireframe");
   const farEnabled = element<HTMLInputElement>("far-view");
-  const farStatus = element<HTMLOutputElement>("far-status");
+  const farStatus = element<HTMLParagraphElement>("far-status");
   const resolution = element<HTMLSelectElement>("resolution");
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -85,27 +101,45 @@ export function startViewer(): void {
     controls.cancel();
     intro.stopSway();
   }, () => renderer.domElement.focus());
-  let streaming = false,
-    disposed = false;
+  const hud = new HUD(jump);
+  let disposed = false;
   let lastTime = performance.now(),
-    lastHUD = 0;
-  let failure = "";
+    lastStatus = 0;
   let currentWorld: WorldInfo | undefined;
   let worldEpoch = 0;
-  function updateStatus(stats?: StreamStats): void {
-    const error = failure || stats?.error;
-    status.dataset.error = String(Boolean(error));
-    if (error) {
-      status.textContent = error;
-      return;
-    }
-    if (!currentWorld?.loaded) {
-      status.textContent = "未打开存档";
-      return;
-    }
-    if (!stats) return;
+  let lastError = "";
+
+  function showStats(stats: StreamStats): void {
+    // 顶部读数只在还有区块排队时出现；累计数字和缺模型数量留在场景信息里。
+    loading.hidden = !stats.pending;
+    loading.value = `载入中 ${stats.loaded} / ${stats.wanted}`;
     const unknown = meshes?.unknown ?? 0;
-    status.textContent = `${stats.loaded} / ${stats.wanted} 子区块${stats.pending ? " · 载入中" : ""}${unknown ? ` · ${unknown} 个方块缺少模型（紫色）` : ""}`;
+    element("info-loaded").textContent =
+      `${stats.loaded} / ${stats.wanted} 个子区块${unknown ? ` · ${unknown} 个方块缺少模型（紫色）` : ""}`;
+    if (stats.error && stats.error !== lastError) showToast(stats.error);
+    lastError = stats.error;
+  }
+  function showWorldInfo(info: WorldInfo): void {
+    const name = info.backdrop ? "Glass Sea" : info.loaded ? info.name : "未打开存档";
+    element("scene-name").textContent = name;
+    element("info-name").textContent = name;
+    element("info-kind").textContent = info.backdrop
+      ? "打开文件或存档后替换"
+      : [
+        SOURCE_KINDS[info.kind ?? ""] ?? (info.kind ? fileAppearance(info.kind, false).label : ""),
+        info.dimension ? DIMENSIONS[info.dimension] ?? info.dimension : "",
+      ].filter(Boolean).join(" · ");
+    const path = element("info-path");
+    path.textContent = info.path ?? "";
+    path.hidden = !info.path;
+    const conversion = element("info-conversion");
+    conversion.hidden = info.conversionSeconds === undefined && !info.reusedStructure;
+    conversion.lastElementChild!.textContent = info.conversionSeconds !== undefined
+      ? `用时 ${info.conversionSeconds.toFixed(1)} 秒`
+      : "已复用同名存档，无需转换";
+    element("info-loaded").textContent = "—";
+    element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
+    element<HTMLButtonElement>("map-open").disabled = !info.minimap;
   }
   function refresh(): void {
     controls.clamp();
@@ -119,18 +153,12 @@ export function startViewer(): void {
         : new THREE.Fog(worldFogColor, Math.max(16, (radius - 0.6) * 16), camera.far);
     // 默认场景是有限的一片，加载中心钉在环上，走到哪里都看得到全貌。
     const anchor = intro.backdrop ? new THREE.Vector3(...intro.backdrop.info.center) : camera.position;
-    if (streaming)
-      meshes?.stream.update(
-        Math.floor(anchor.x / 16),
-        Math.floor(anchor.z / 16),
-        Math.max(-128, Math.min(127, Math.floor(anchor.y / 16))),
-        radius,
-      );
-  }
-  function syncFields(): void {
-    camera.position.toArray().forEach((value, i) => {
-      fields[i].value = value.toFixed(1);
-    });
+    meshes?.stream.update(
+      Math.floor(anchor.x / 16),
+      Math.floor(anchor.z / 16),
+      Math.max(-128, Math.min(127, Math.floor(anchor.y / 16))),
+      radius,
+    );
   }
   function jump(position: [number, number, number]): void {
     if (
@@ -140,23 +168,15 @@ export function startViewer(): void {
       position[1] < -2048 ||
       position[1] >= 2048
     ) {
-      failure = "坐标超出范围";
-      updateStatus();
+      showToast("坐标超出范围");
       return;
     }
-    failure = "";
     intro.stopSway();
     camera.position.set(...position);
-    syncFields();
     refresh();
     renderer.domElement.focus();
   }
-  element<HTMLFormElement>("teleport").addEventListener("submit", (event) => {
-    event.preventDefault();
-    jump(fields.map((field) => Number(field.value)) as [number, number, number]);
-  });
   wireframe.addEventListener("change", () => {
-    wireframe.dataset.tried = "";
     if (intro.backdrop) intro.backdrop.setLineArt(wireframe.checked);
     else meshes?.scene.setWireframe(wireframe.checked);
   });
@@ -208,18 +228,17 @@ export function startViewer(): void {
       farView.dispose();
       drawScene();
     }
-    intro.stage.update(camera, now);
     hud.update(now, camera, scene);
     minimap.render();
-    if (now - lastHUD > 80) {
+    if (now - lastStatus > 250) {
       farStatus.hidden = !distantEnabled;
       if (distantEnabled) {
         const pending = terrain.pending(terrain.far);
-        farStatus.value = terrain.full(terrain.far) ? "远景显存已满，部分区域暂缺"
+        farStatus.textContent = terrain.full(terrain.far) ? "远景显存已满，部分区域暂缺"
           : terrain.error ? `远景：${terrain.error}`
-            : pending ? `远景 · ${pending} 区域待载入` : "远景 · brickmap";
+            : pending ? `远景 · ${pending} 个区域待载入` : "远景已就绪";
       }
-      lastHUD = now;
+      lastStatus = now;
     }
     requestAnimationFrame(animate);
   }
@@ -232,31 +251,17 @@ export function startViewer(): void {
     meshes = undefined;
     hud.clearMemory();
     controls.cancel();
-    failure = "";
+    lastError = "";
     currentWorld = info;
     terrain.setWorld(info);
     minimap.setWorld(info);
-    streaming = info.loaded || info.backdrop !== undefined;
     intro.show(info);
     element<HTMLOutputElement>("radius-label").value = radiusInput.value;
-    element<HTMLOutputElement>("world-name").value = info.loaded
-      ? info.name
-      : "未打开存档";
-    element<HTMLOutputElement>("world-name").title = info.path ?? "";
-    const conversion = element<HTMLOutputElement>("conversion-summary");
-    conversion.hidden = info.conversionSeconds === undefined && !info.reusedStructure;
-    conversion.value = info.conversionSeconds !== undefined
-      ? `转换完成 · 用时 ${info.conversionSeconds.toFixed(1)} 秒`
-      : info.reusedStructure ? "已复用同名存档，无需转换" : "";
-    element<HTMLElement>("open-world-label").textContent = info.loaded
-      ? "切换存档"
-      : "打开存档";
-    element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
-    syncFields();
+    showWorldInfo(info);
     refresh();
-    updateStatus();
-    if (!streaming) return;
-    if (info.loaded) status.textContent = "载入材质…";
+    if (!info.loaded && !info.backdrop) return;
+    loading.value = "载入材质";
+    loading.hidden = false;
     await assets.load();
     if (disposed || epoch !== worldEpoch) return;
     meshes = new MeshWorld({
@@ -267,23 +272,49 @@ export function startViewer(): void {
       revision: info.revision,
       issues: diagnostics.add,
       changed: (stats) => {
-        updateStatus(stats);
+        showStats(stats);
         intro.loading(stats);
       },
     });
     meshes.scene.setWireframe(wireframe.checked && !info.backdrop);
     refresh();
   }
-  createPanelToggle();
-  createWorldPicker(
+
+  // 界面外壳：两个梯形底座、弹出面板、移动按钮、隐藏开关。
+  const hudElement = element("hud");
+  mountDock(hudElement);
+  mountDock(element("map-dock"));
+  anchorPopovers(hudElement);
+  bindMovePad(element("movepad"), controls);
+  const eye = element<HTMLButtonElement>("eye");
+  eye.addEventListener("click", () => {
+    const hidden = document.body.toggleAttribute("data-chrome-hidden");
+    const label = hidden ? "显示界面" : "隐藏界面";
+    eye.setAttribute("aria-pressed", String(hidden));
+    eye.setAttribute("aria-label", label);
+    eye.title = label;
+    minimap.concealed = hidden;
+    // 隐藏时手指可能还按在移动按钮上，按钮不可见后收不到松开事件。
+    controls.cancel();
+    if (hidden) closePopovers();
+  });
+  element("map-open").addEventListener("click", () => {
+    closePopovers();
+    minimap.setExpanded(true);
+  });
+  const openPicker = createWorldPicker(
     (info) => {
       void showWorld(info).catch(showError);
     },
     () => currentWorld,
   );
+  element("open-world").addEventListener("click", () => {
+    closePopovers();
+    openPicker();
+  });
   function showError(error: unknown): void {
-    failure = error instanceof Error ? error.message : String(error);
-    updateStatus();
+    loading.hidden = true;
+    showToast(error instanceof Error ? error.message : String(error));
   }
   async function start(): Promise<void> {
     const response = await fetch("/api/world", { cache: "no-store" });
@@ -292,10 +323,7 @@ export function startViewer(): void {
     element<HTMLOutputElement>("version").value = info.version;
     await showWorld(info);
   }
-  void start().catch((error: unknown) => {
-    failure = error instanceof Error ? error.message : String(error);
-    updateStatus();
-  });
+  void start().catch(showError);
   window.addEventListener("pagehide", () => {
     disposed = true;
     minimap.dispose();

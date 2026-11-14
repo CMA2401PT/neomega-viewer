@@ -13,14 +13,31 @@ interface SharedRenderer {
   resetState(): void;
 }
 interface PendingSelection { ray: Ray; waiting?: string }
+type Point = [number, number];
+/** 一次手势开始时的地图相机和各手指位置；手指数变化时从当前位置重新开始，换手不会跳。 */
+interface Gesture {
+  button: number;
+  camera: Camera;
+  scale: number;
+  start: Map<number, Point>;
+  now: Map<number, Point>;
+  moved: boolean;
+}
+
+// 地图底色与页面浅色界面一致；体素空隙和占用图背景都用它。
+const BACKGROUND: Vec3 = [0.925, 0.933, 0.945];
+const BACKGROUND_CSS = "#eceef1";
+const MIN_SCALE = 0.125, MAX_SCALE = 128;
+const FACES = ["西面", "东面", "底面", "顶面", "北面", "南面"];
+const IDLE_READOUT = "点选地图上的方块";
 
 export class Minimap {
   private readonly panel = document.getElementById("minimap") as HTMLElement;
   private readonly canvas = document.getElementById("minimap-canvas") as HTMLCanvasElement;
   private readonly context = this.canvas.getContext("2d")!;
   private readonly readout = document.getElementById("minimap-selection") as HTMLOutputElement;
-  private readonly status = document.getElementById("minimap-status") as HTMLOutputElement;
-  private readonly scaleLabel = document.getElementById("minimap-scale") as HTMLOutputElement;
+  private readonly status = document.getElementById("minimap-status") as HTMLParagraphElement;
+  private readonly zoom = document.getElementById("minimap-zoom") as HTMLInputElement;
   private readonly go = document.getElementById("minimap-jump") as HTMLButtonElement;
   private readonly tiles: MapTiles<ImageBitmap>;
   private readonly shared: SharedRenderer;
@@ -37,10 +54,10 @@ export class Minimap {
   private selection?: Extract<PickResult, { kind: "hit" }>;
   private pending?: PendingSelection;
   private overview = false;
-  private pointer?: {
-    id: number; button: number; x: number; y: number; camera: Camera; anchor: Vec3; moved: boolean;
-  };
+  private gesture?: Gesture;
   expanded = false;
+  /** 用户隐藏界面时为 true。小地图画在共享 GL 画布上，CSS 隐藏不了，要靠它停画。 */
+  concealed = false;
 
   constructor(
     shared: SharedRenderer,
@@ -49,7 +66,8 @@ export class Minimap {
     inputChanged: () => void,
     focusScene: () => void,
   ) {
-    // DOM 画布承接输入、标记和占用图；体素画在底下的共享 WebGL 画布中。
+    // DOM 画布承接输入和标记；体素画在底下的共享 WebGL 画布中。
+    // 收起时点一下只打开全屏地图，拖动、缩放和选点都在全屏地图里进行。
     this.shared = shared;
     this.jump = jump;
     this.inputChanged = inputChanged;
@@ -60,13 +78,12 @@ export class Minimap {
       if (!response.ok) throw new Error((await response.text()).trim());
       return createImageBitmap(await response.blob());
     }, error => this.showError(error));
-    document.getElementById("minimap-expand")!.addEventListener("click", () => this.setExpanded(true));
     document.getElementById("minimap-close")!.addEventListener("click", () => this.setExpanded(false));
     document.getElementById("minimap-retry")!.addEventListener("click", () => {
       this.terrain.downloads.retry();
       this.terrain.error = "";
       this.tiles.failed.clear();
-      this.status.value = "";
+      this.status.hidden = true;
       if (!this.index) this.loadIndex();
     });
     this.go.addEventListener("click", () => {
@@ -74,69 +91,127 @@ export class Minimap {
       this.setExpanded(false);
       this.jump([x, y + 2, z]);
     });
+    this.zoom.addEventListener("input", () => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.zoomAt(rect.width / 2, rect.height / 2, 2 ** -Number(this.zoom.value));
+    });
     this.panel.addEventListener("keydown", event => {
-      if (event.key === "Escape") { event.preventDefault(); this.setExpanded(false); }
-      if (event.target === this.canvas && (event.key === "Enter" || event.key === " ")) {
-        event.preventDefault(); this.setExpanded(!this.expanded);
-      }
+      if (event.key === "Escape" && this.expanded) { event.preventDefault(); this.setExpanded(false); }
+    });
+    this.canvas.addEventListener("click", () => {
+      if (!this.expanded) this.setExpanded(true);
     });
     this.canvas.addEventListener("contextmenu", event => event.preventDefault());
     this.canvas.addEventListener("pointerdown", event => {
-      if (event.button !== 0 && event.button !== 2) return;
+      if (!this.expanded || (event.button !== 0 && event.button !== 2)) return;
       event.preventDefault();
       this.inputChanged();
       this.canvas.focus();
-      const rect = this.canvas.getBoundingClientRect();
-      this.pointer = {
-        id: event.pointerId, button: event.button, x: event.clientX, y: event.clientY,
-        camera: { ...this.camera, target: [...this.camera.target] },
-        anchor: mapPoint(this.camera, rect.width, rect.height, event.clientX - rect.left, event.clientY - rect.top),
-        moved: false,
-      };
       this.canvas.setPointerCapture(event.pointerId);
+      const points = new Map(this.gesture?.now);
+      points.set(event.pointerId, [event.clientX, event.clientY]);
+      this.beginGesture(points, event.button, points.size > 1);
     });
     this.canvas.addEventListener("pointermove", event => {
-      const pointer = this.pointer;
-      if (!pointer || pointer.id !== event.pointerId) return;
-      const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
-      pointer.moved ||= Math.hypot(dx, dy) > 4;
-      if (!pointer.moved) return;
-      if (this.pending) {
-        this.pending = undefined;
-        this.readout.value = "点选地图查看方块坐标";
-      }
-      if (pointer.button === 2) {
-        this.camera.yaw = pointer.camera.yaw - dx * 0.3;
-        this.camera.pitch = Math.max(40, Math.min(85, pointer.camera.pitch + dy * 0.25));
-      } else {
-        const rect = this.canvas.getBoundingClientRect();
-        const current = mapPoint(pointer.camera, rect.width, rect.height, event.clientX - rect.left, event.clientY - rect.top);
-        this.camera.target = pointer.camera.target.map((n, i) => n + pointer.anchor[i] - current[i]) as Vec3;
-      }
+      const gesture = this.gesture;
+      if (!gesture?.now.has(event.pointerId)) return;
+      gesture.now.set(event.pointerId, [event.clientX, event.clientY]);
+      const [startX, startY] = gesture.start.get(event.pointerId)!;
+      gesture.moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4;
+      if (!gesture.moved) return;
+      this.cancelPending();
+      this.applyGesture(gesture);
     });
-    this.canvas.addEventListener("pointerup", event => {
-      const pointer = this.pointer;
-      this.pointer = undefined;
-      if (!pointer || pointer.id !== event.pointerId) return;
+    const release = (event: PointerEvent): void => {
+      const gesture = this.gesture;
+      if (!gesture?.now.has(event.pointerId)) return;
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
-      if (!pointer.moved && pointer.button === 0) this.select(event.clientX, event.clientY);
-    });
-    this.canvas.addEventListener("pointercancel", () => { this.pointer = undefined; });
+      const tapped = event.type === "pointerup" && !gesture.moved && gesture.now.size === 1 && gesture.button === 0;
+      gesture.now.delete(event.pointerId);
+      this.gesture = undefined;
+      if (gesture.now.size) this.beginGesture(gesture.now, gesture.button, true);
+      if (tapped) this.select(event.clientX, event.clientY);
+    };
+    this.canvas.addEventListener("pointerup", release);
+    this.canvas.addEventListener("pointercancel", release);
     this.canvas.addEventListener("wheel", event => {
       event.preventDefault();
+      if (!this.expanded) return;
       this.inputChanged();
       const rect = this.canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left, y = event.clientY - rect.top;
-      const anchor = mapPoint(this.camera, rect.width, rect.height, x, y);
-      this.scale = Math.max(0.125, Math.min(128, this.scale * Math.exp(Math.max(-1, Math.min(1, event.deltaY * 0.002)))));
-      this.camera.span = rect.height * this.scale;
-      const current = mapPoint(this.camera, rect.width, rect.height, x, y);
-      this.camera.target = this.camera.target.map((n, i) => n + anchor[i] - current[i]) as Vec3;
-      if (this.pending) {
-        this.pending = undefined;
-        this.readout.value = "点选地图查看方块坐标";
-      }
+      this.zoomAt(event.clientX - rect.left, event.clientY - rect.top,
+        this.scale * Math.exp(Math.max(-1, Math.min(1, event.deltaY * 0.002))));
     }, { passive: false });
+  }
+
+  private beginGesture(points: Map<number, Point>, button: number, moved: boolean): void {
+    this.gesture = {
+      button,
+      camera: { ...this.camera, target: [...this.camera.target] },
+      scale: this.scale,
+      start: new Map(points),
+      now: new Map(points),
+      moved,
+    };
+  }
+
+  private applyGesture(gesture: Gesture): void {
+    // 单指或左键平移，右键旋转；两指同时旋转、缩放，并让两指中点下的地面跟住手指。
+    const rect = this.canvas.getBoundingClientRect();
+    const local = ([x, y]: Point): Point => [x - rect.left, y - rect.top];
+    const { start, now } = gesture;
+    const ids = [...start.keys()];
+    if (ids.length === 1 && gesture.button === 2) {
+      const [x0, y0] = start.get(ids[0])!, [x, y] = now.get(ids[0])!;
+      this.camera.yaw = gesture.camera.yaw - (x - x0) * 0.3;
+      this.camera.pitch = Math.max(40, Math.min(85, gesture.camera.pitch + (y - y0) * 0.25));
+      return;
+    }
+    let from = local(start.get(ids[0])!), to = local(now.get(ids[0])!);
+    this.camera.yaw = gesture.camera.yaw;
+    this.scale = gesture.scale;
+    if (ids.length > 1) {
+      const a0 = local(start.get(ids[0])!), b0 = local(start.get(ids[1])!);
+      const a = local(now.get(ids[0])!), b = local(now.get(ids[1])!);
+      const angle = (p: Point, q: Point): number => Math.atan2(q[1] - p[1], q[0] - p[0]);
+      this.camera.yaw = gesture.camera.yaw + (angle(a, b) - angle(a0, b0)) * 180 / Math.PI;
+      this.scale = this.clampScale(gesture.scale * Math.hypot(b0[0] - a0[0], b0[1] - a0[1]) / Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1])));
+      from = [(a0[0] + b0[0]) / 2, (a0[1] + b0[1]) / 2];
+      to = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    }
+    this.camera.span = rect.height * this.scale;
+    const anchor = mapPoint(gesture.camera, rect.width, rect.height, ...from);
+    this.camera.target = [...gesture.camera.target];
+    const moved = mapPoint(this.camera, rect.width, rect.height, ...to);
+    this.camera.target = gesture.camera.target.map((n, i) => n + anchor[i] - moved[i]) as Vec3;
+    this.syncZoom();
+  }
+
+  private clampScale(scale: number): number {
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+  }
+
+  private zoomAt(x: number, y: number, scale: number): void {
+    // 缩放时光标（或滑条缩放时的画面中心）下的地面保持不动。
+    const rect = this.canvas.getBoundingClientRect();
+    const anchor = mapPoint(this.camera, rect.width, rect.height, x, y);
+    this.scale = this.clampScale(scale);
+    this.camera.span = rect.height * this.scale;
+    const current = mapPoint(this.camera, rect.width, rect.height, x, y);
+    this.camera.target = this.camera.target.map((n, i) => n + anchor[i] - current[i]) as Vec3;
+    this.cancelPending();
+    this.syncZoom();
+  }
+
+  private syncZoom(): void {
+    // 滑条向右是放大，所以取每像素方块数的负对数。
+    this.zoom.value = String(-Math.log2(this.scale));
+  }
+
+  private cancelPending(): void {
+    if (!this.pending) return;
+    this.pending = undefined;
+    this.readout.value = IDLE_READOUT;
   }
 
   setWorld(world: WorldInfo): void {
@@ -151,14 +226,14 @@ export class Minimap {
     this.camera.yaw = 0;
     this.camera.pitch = 70;
     this.scale = 0.75;
+    this.syncZoom();
     this.selection = undefined;
     this.pending = undefined;
-    this.pointer = undefined;
-    this.status.value = "";
-    this.readout.value = "点选地图查看方块坐标";
+    this.gesture = undefined;
+    this.status.hidden = true;
+    this.readout.value = IDLE_READOUT;
     this.go.disabled = true;
     this.panel.hidden = !world.minimap;
-    document.body.classList.toggle("has-minimap", Boolean(world.minimap));
     if (world.minimap) this.loadIndex();
   }
 
@@ -174,12 +249,13 @@ export class Minimap {
       }).catch((error: unknown) => { if (!controller.signal.aborted) this.showError(error); });
   }
 
-  private setExpanded(expanded: boolean): void {
-    // 普通覆盖层留出透明地图区域，主画布不会被 dialog 顶层遮罩压暗。
+  /** 打开或关闭全屏地图。打开时三维操作暂停，关闭后小地图重新跟随玩家。 */
+  setExpanded(expanded: boolean): void {
+    if (expanded && this.panel.hidden) return;
     this.expanded = expanded;
     this.panel.dataset.expanded = String(expanded);
     document.body.classList.toggle("minimap-expanded", expanded);
-    this.pointer = undefined;
+    this.gesture = undefined;
     this.inputChanged();
     if (expanded) this.canvas.focus();
     else this.focusScene();
@@ -197,7 +273,10 @@ export class Minimap {
     // 缩远后可以点到没有预览的边缘，先把数据窗口移到该水平位置再拾取。
     if (this.overview || outside) {
       this.camera.target = point;
-      if (this.overview) this.scale = 0.25;
+      if (this.overview) {
+        this.scale = 0.25;
+        this.syncZoom();
+      }
       ray = { origin: [...point], direction: cameraBasis(this.camera).direction };
     }
     const top = this.world!.minimapBounds![0] + this.world!.minimapBounds![1] + 1;
@@ -206,17 +285,17 @@ export class Minimap {
     this.pending = { ray };
     this.selection = undefined;
     this.go.disabled = true;
-    this.readout.value = "正在定位方块…";
-    this.setExpanded(true);
+    this.readout.value = "正在定位…";
   }
 
   private showError(error: unknown): void {
-    this.status.value = `地图加载失败：${error instanceof Error ? error.message : String(error)}。可重试。`;
+    this.status.firstElementChild!.textContent = `地图加载失败：${error instanceof Error ? error.message : String(error)}`;
+    this.status.hidden = false;
   }
 
   update(x: number, y: number, z: number, yaw: number): void {
     // 先确定地图中心，两个窗口的上传统一由主帧循环调度。
-    if (!this.expanded && !this.pointer && !this.pending && (x !== this.player[0] || z !== this.player[2])) {
+    if (!this.expanded && !this.pending && (x !== this.player[0] || z !== this.player[2])) {
       this.camera.target[0] = x;
       this.camera.target[2] = z;
     }
@@ -229,14 +308,13 @@ export class Minimap {
   render(): void {
     // 主场景清屏后每帧重画小地图，绘制和拾取共享已发布的窗口目录。
     const gpu = this.terrain.map.gpu;
-    if (!gpu || this.panel.hidden) return;
+    if (!gpu || this.panel.hidden || (this.concealed && !this.expanded)) return;
     try {
       const rect = this.canvas.getBoundingClientRect();
       this.camera.span = rect.height * this.scale;
       const full = this.terrain.full(this.terrain.map);
       // 只按缩放和显示尺寸切换，旋转时允许窗口边缘缺少体素预览。
       this.overview = full || Math.max(rect.width, rect.height) * this.scale > WINDOW_SIZE;
-      this.panel.dataset.mode = this.overview ? "overview" : "brickmap";
       if (this.pending && !full) this.pick();
       if (!this.overview) {
         const canvasRect = this.shared.domElement.getBoundingClientRect();
@@ -246,14 +324,19 @@ export class Minimap {
         const bottom = Math.round((canvasRect.bottom - rect.bottom) * ry);
         const right = Math.round((rect.right - canvasRect.left) * rx);
         const top = Math.round((canvasRect.bottom - rect.top) * ry);
-        gpu.draw.draw(this.camera, { viewport: [left, bottom, right - left, top - bottom], openBoundary: true, timing: false });
+        gpu.draw.draw(this.camera, {
+          viewport: [left, bottom, right - left, top - bottom],
+          openBoundary: true,
+          timing: false,
+          background: BACKGROUND,
+        });
       }
       this.drawOverlay(rect.width, rect.height);
-      const queued = this.terrain.pending(this.terrain.map);
       if (this.terrain.error) this.showError(this.terrain.error);
-      const mode = this.overview ? "区块分布" : `${this.scale.toFixed(2)} 方块 / px`;
-      this.scaleLabel.value = `${mode}${queued ? ` · ${queued} 区域待载入` : ""}`;
-      if (full) this.status.value = "体素显存预算已满，显示区块分布；移动到较简单的区域后可重试。";
+      else if (full) {
+        this.status.firstElementChild!.textContent = "体素显存已满，暂时显示区块分布；移动到较简单的区域后可重试。";
+        this.status.hidden = false;
+      }
     } finally {
       this.shared.resetState();
     }
@@ -273,12 +356,12 @@ export class Minimap {
     }
     this.pending = undefined;
     if (result.kind === "miss") {
-      this.readout.value = "这条射线没有命中方块";
+      this.readout.value = "这里没有方块";
       return;
     }
     this.selection = result;
     const [x, y, z] = result.position;
-    this.readout.value = `X ${x} · Y ${y} · Z ${z} · ${["西面", "东面", "底面", "顶面", "北面", "南面"][result.face]}`;
+    this.readout.value = `X ${x}  Y ${y}  Z ${z} · ${FACES[result.face]}`;
     this.go.disabled = false;
   }
 
@@ -291,7 +374,7 @@ export class Minimap {
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
     if (this.overview) {
-      ctx.fillStyle = "#0c1018";
+      ctx.fillStyle = BACKGROUND_CSS;
       ctx.fillRect(0, 0, width, height);
       const bounds = horizontalBounds(this.camera, width, height, this.camera.target[1], this.camera.target[1]);
       const tiles: Tile[] = (this.index?.overview ?? [])
@@ -310,9 +393,9 @@ export class Minimap {
       }
       ctx.restore();
     } else this.tiles.update([]);
-    if (this.selection) {
+    if (this.selection && this.expanded) {
       const [sx, sy] = mapScreen(this.camera, width, height, this.selection.position.map(n => n + 0.5) as Vec3);
-      ctx.strokeStyle = "#ffc98a";
+      ctx.strokeStyle = "#1d1f23";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(sx, sy, 8, 0, Math.PI * 2);
@@ -325,11 +408,9 @@ export class Minimap {
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate(Math.atan2(ahead[0] - px, py - ahead[1]));
-    ctx.fillStyle = "#f7e8d2"; ctx.strokeStyle = "#2b2119"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(6, 7); ctx.lineTo(0, 4); ctx.lineTo(-6, 7); ctx.closePath();
-    ctx.stroke(); ctx.fill(); ctx.restore();
-    ctx.fillStyle = "#f7e8d2"; ctx.font = "11px ui-monospace, monospace";
-    ctx.fillText(`N · ${Math.round(((this.camera.yaw % 360) + 360) % 360)}°`, 10, 18);
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#1d1f23"; ctx.lineWidth = 1.5; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 4); ctx.lineTo(-6, 7); ctx.closePath();
+    ctx.fill(); ctx.stroke(); ctx.restore();
   }
 
   dispose(): void {

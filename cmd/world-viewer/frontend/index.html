@@ -2,152 +2,162 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>neOmega Viewer</title>
   </head>
   <body>
+    <svg id="icons" aria-hidden="true">
+      <!-- 有内部区域的形状带 fill 类，用淡色填满轮廓；开放线条只描边。 -->
+      <symbol id="i-eye" viewBox="0 0 24 24"><path class="fill" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle class="fill" cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path class="fill" d="M3.5 6.5 9 4.5l6 2 5.5-2v13l-5.5 2-6-2-5.5 2Z" /><path d="M9 4.5v13M15 6.5v13" /></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path class="fill" d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4.2l2 2.2H19A1.5 1.5 0 0 1 20.5 9.2v8.3A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5Z" /><path d="M3.5 10h17" /></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.8v.1" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path class="fill" d="M9.63 5.09L10.09 2.59A9.6 9.6 0 0 1 13.91 2.59L14.37 5.09A7.3 7.3 0 0 1 15.21 5.44L17.30 4.00A9.6 9.6 0 0 1 20.00 6.70L18.56 8.79A7.3 7.3 0 0 1 18.91 9.63L21.41 10.09A9.6 9.6 0 0 1 21.41 13.91L18.91 14.37A7.3 7.3 0 0 1 18.56 15.21L20.00 17.30A9.6 9.6 0 0 1 17.30 20.00L15.21 18.56A7.3 7.3 0 0 1 14.37 18.91L13.91 21.41A9.6 9.6 0 0 1 10.09 21.41L9.63 18.91A7.3 7.3 0 0 1 8.79 18.56L6.70 20.00A9.6 9.6 0 0 1 4.00 17.30L5.44 15.21A7.3 7.3 0 0 1 5.09 14.37L2.59 13.91A9.6 9.6 0 0 1 2.59 10.09L5.09 9.63A7.3 7.3 0 0 1 5.44 8.79L4.00 6.70A9.6 9.6 0 0 1 6.70 4.00L8.79 5.44A7.3 7.3 0 0 1 9.63 5.09Z" /><circle class="fill" cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path class="fill" d="M12 7.5 18 15H6Z" /></symbol>
+      <symbol id="i-rise" viewBox="0 0 24 24"><path d="M6 4.5h12M12 19v-6" /><path class="fill" d="M12 8 16.5 13h-9Z" /></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M6 12h12M12 6v12" /></symbol>
+      <symbol id="i-parent" viewBox="0 0 24 24"><path d="M12 19V6M6.5 11.5 12 6l5.5 5.5" /></symbol>
+    </svg>
+
     <main id="scene" aria-label="方块三维场景"></main>
-    <section id="minimap" aria-label="体素地图" data-expanded="false" hidden>
-      <header class="minimap-expanded"><span>地形图 <small>左拖平移 · 右拖旋转 · 滚轮缩放 · 点选定位</small></span><button id="minimap-close" type="button" aria-label="收起地图">关闭 · Esc</button></header>
-      <canvas id="minimap-canvas" tabindex="0" aria-label="小地图，左拖平移，右拖旋转，滚轮缩放，点击选点"></canvas>
-      <output id="minimap-scale"></output>
-      <footer class="minimap-expanded"><output id="minimap-selection">点选地图查看坐标</output><button id="minimap-jump" type="button" disabled>跳转</button></footer>
-      <div class="minimap-expanded minimap-message"><output id="minimap-status"></output><button id="minimap-retry" type="button">重试加载</button></div>
-      <button id="minimap-expand" class="minimap-hint" type="button">展开</button>
+    <output id="loading" role="status" aria-live="polite" hidden></output>
+
+    <section id="minimap" aria-label="地图" data-expanded="false" hidden>
+      <canvas id="minimap-canvas" tabindex="-1" aria-label="地图，收起时点击打开全屏地图"></canvas>
+      <aside id="map-help" class="map-only">
+        <p data-input="mouse">左键拖动平移 · 右键拖动旋转 · 滚轮缩放 · 单击选点</p>
+        <p data-input="touch">单指拖动平移 · 双指旋转和缩放 · 轻点选点</p>
+        <p id="minimap-status" hidden><span></span><button id="minimap-retry" class="text-button" type="button">重试</button></p>
+      </aside>
+      <footer id="map-dock" class="dock map-only">
+        <output id="minimap-selection"></output>
+        <i class="divider"></i>
+        <label class="zoom" title="缩放">
+          <svg class="icon-glyph"><use href="#i-minus" /></svg>
+          <input id="minimap-zoom" type="range" min="-7" max="3" step="0.01" aria-label="地图缩放" />
+          <svg class="icon-glyph"><use href="#i-plus" /></svg>
+        </label>
+        <i class="divider"></i>
+        <button id="minimap-jump" class="text-button" type="button" disabled>跳转</button>
+        <button id="minimap-close" class="text-button" type="button">关闭</button>
+      </footer>
     </section>
-    <div id="hud" aria-hidden="true">
-      <canvas id="axes" width="80" height="80"></canvas
-      ><output id="coordinates">X 0.0　Y 80.0　Z 0.0</output>
-      <div id="performance">
-        <output id="far-status" hidden></output>
-        <output id="fps" title="最近约一秒的平均帧率">FPS —</output>
-        <output id="memory" title="已加载网格的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制预留空间。不含纹理、浏览器自身和加载中的临时数据。">网格内存 ≈ 0.0 MiB</output>
+
+    <canvas id="axes" class="chrome" aria-hidden="true"></canvas>
+
+    <button id="eye" class="floating" type="button" aria-pressed="false" aria-label="隐藏界面" title="隐藏界面">
+      <svg><use href="#i-eye" /></svg>
+    </button>
+
+    <div id="movepad" class="chrome">
+      <div class="pad-rise">
+        <button type="button" data-move="up" aria-label="沿 Y 上升"><svg><use href="#i-rise" /></svg></button>
+        <button type="button" data-move="down" aria-label="沿 Y 下降"><svg class="flip"><use href="#i-rise" /></svg></button>
+      </div>
+      <div class="pad-cross">
+        <button type="button" data-move="forward" aria-label="向前"><svg><use href="#i-up" /></svg></button>
+        <button type="button" data-move="left" aria-label="向左"><svg class="turn-left"><use href="#i-up" /></svg></button>
+        <button type="button" data-move="right" aria-label="向右"><svg class="turn-right"><use href="#i-up" /></svg></button>
+        <button type="button" data-move="back" aria-label="向后"><svg class="flip"><use href="#i-up" /></svg></button>
       </div>
     </div>
-    <section id="stage" aria-label="neOmega Viewer" hidden>
-      <div id="stage-title">
-        <h1>ne<em>O</em>mega</h1>
-        <p>VIEWER</p>
-        <button id="stage-open" type="button" data-open-world>打开存档</button>
-      </div>
-      <svg id="stage-lines" aria-hidden="true"><path id="stage-leader-ring" /><path id="stage-leader-sea" /></svg>
-      <div class="note" id="note-ring"><b>MÖBIUS</b><span></span></div>
-      <div class="note" id="note-sea"><b>GLASS SEA</b><span></span></div>
-    </section>
-    <aside id="panel" aria-label="控制面板">
-      <button
-        id="panel-tip"
-        type="button"
-        aria-expanded="true"
-        aria-controls="panel-body"
-        aria-label="控制面板"
-        title="收起控制面板"
-      ></button>
-      <div id="panel-body">
-        <header id="brand">
-          <span>neOmega Viewer</span><output id="version"></output>
-        </header>
-        <section>
-          <h2><i>01</i>存档</h2>
-          <button id="open-world" type="button" data-open-world>
-            <svg viewBox="0 0 280 72" preserveAspectRatio="none" aria-hidden="true">
-              <path class="arc" d="M96 62a44 44 0 0 1 88 0" vector-effect="non-scaling-stroke" />
-              <path class="sea" d="M0 62h280" vector-effect="non-scaling-stroke" />
-            </svg>
-            <strong id="open-world-label">打开存档</strong>
-            <small>Java · 基岩 · 结构文件</small>
-          </button>
-          <output id="world-name">未打开存档</output>
-          <output id="conversion-summary" hidden></output>
-        </section>
-        <section>
-          <h2><i>02</i>定位</h2>
-          <form id="teleport">
-            <div class="coordinates">
-              <label
-                >X<input id="x" type="number" step="any" value="0" required
-              /></label>
-              <label
-                >Y<input id="y" type="number" step="any" value="80" required
-              /></label>
-              <label
-                >Z<input id="z" type="number" step="any" value="0" required
-              /></label>
-              <button type="submit" aria-label="移动到坐标" title="移动到坐标">→</button>
-            </div>
-          </form>
-        </section>
-        <section>
-          <h2><i>03</i>绘制</h2>
-          <label class="row"
-            ><span>线框</span><input id="wireframe" type="checkbox"
-          /></label>
-          <label class="row"><span>体素远景</span><input id="far-view" type="checkbox" checked /></label>
-          <label class="row range"
-            ><span>视距</span
-            ><input
-              id="radius"
-              type="range"
-              min="1"
-              max="30"
-              value="8"
-              aria-label="视距，单位区块"
-            /><output id="radius-label">8</output></label
-          >
-          <label class="row" for="resolution">
-            <span>分辨率</span>
-            <select id="resolution" aria-describedby="resolution-help">
-              <option value="auto">自动（最高 1.5×）</option>
-              <option value="native">屏幕原生</option>
-              <option value="1">标准（1×）</option>
-              <option value="0.75">流畅（0.75×）</option>
-              <option value="0.5">低分辨率（0.5×）</option>
-            </select>
-          </label>
-          <p id="resolution-help" hidden>降低分辨率可提升流畅度，不改变视距。</p>
-        </section>
-        <footer>
-          <output id="status" role="status" aria-live="polite">未打开存档</output>
-          <p>拖动转向 · WASD 移动 · 空格上升 · Shift 下降 · 滚轮前后</p>
-          <details id="render-issues">
-            <summary>渲染异常 <output id="issue-count">0</output></summary>
-            <p>记录已浏览区域的缺失模型、方块实体和普通实体异常。同一 blockstate 只保留首次坐标，普通实体按坐标记录，无法定位的异常按区块记录。切换存档时清空。</p>
-            <p id="issue-empty">尚未发现渲染异常。</p>
-            <ul id="issue-list"></ul>
-          </details>
-        </footer>
-      </div>
-    </aside>
-    <dialog id="world-picker" aria-labelledby="picker-title">
-      <h2 id="picker-title">打开存档</h2>
-      <p>选择此电脑上的 Java／基岩存档目录、level.dat、PackFS 文件，或以下结构文件：<br /><strong>.schem · .schematic · .litematic · .nbt · .mcstructure · .mcworld</strong><br />结构文件首次打开会在旁边生成同名存档文件夹；已有存档直接复用。</p>
-      <fieldset id="picker-controls">
-        <form id="browse-path" class="path-row">
-          <select id="picker-roots" aria-label="位置"></select>
-          <button id="picker-up" type="button" aria-label="上一级">
-            上一级
-          </button>
-          <input
-            id="picker-path"
-            type="text"
-            aria-label="路径"
-            spellcheck="false"
-            autocomplete="off"
-          />
-          <button type="submit">转到</button>
-        </form>
-        <div id="picker-files" role="group" aria-label="目录内容"></div>
-        <output id="picker-selection"></output>
-        <div class="dialog-actions">
-          <button id="picker-cancel" type="button">取消</button>
-          <button id="picker-open" type="button">打开</button>
-        </div>
-      </fieldset>
+
+    <footer id="hud" class="dock chrome">
+      <button id="map-open" class="icon-button" type="button" aria-label="全屏地图" title="全屏地图" disabled>
+        <svg><use href="#i-map" /></svg>
+      </button>
+      <i class="divider"></i>
+      <form id="teleport" title="点击坐标可编辑">
+        <label>X<input id="x" inputmode="text" enterkeyhint="go" spellcheck="false" autocomplete="off" /></label>
+        <label>Y<input id="y" inputmode="text" enterkeyhint="go" spellcheck="false" autocomplete="off" /></label>
+        <label>Z<input id="z" inputmode="text" enterkeyhint="go" spellcheck="false" autocomplete="off" /></label>
+        <button id="teleport-go" class="icon-button" type="submit" aria-label="跳转到坐标" title="跳转到坐标" disabled>
+          <svg><use href="#i-arrow" /></svg>
+        </button>
+      </form>
+      <i class="divider"></i>
+      <button id="scene-name" class="text-button" type="button" popovertarget="info-popover" title="场景信息"></button>
+      <button id="scene-info" class="icon-button" type="button" popovertarget="info-popover" aria-label="场景信息" title="场景信息">
+        <svg><use href="#i-info" /></svg>
+      </button>
+      <button id="open-world" class="text-button" type="button" title="打开文件或存档">
+        <svg><use href="#i-folder" /></svg><span>打开</span>
+      </button>
+      <i class="divider"></i>
+      <button id="settings-open" class="icon-button" type="button" popovertarget="settings-popover" aria-label="设置" title="设置">
+        <svg><use href="#i-settings" /></svg>
+      </button>
+    </footer>
+
+    <div id="info-popover" class="popover" popover>
+      <header>
+        <strong id="info-name"></strong>
+        <small id="info-kind"></small>
+      </header>
+      <p id="info-path"></p>
+      <dl>
+        <div><dt>已载入</dt><dd id="info-loaded">—</dd></div>
+        <div id="info-conversion" hidden><dt>转换</dt><dd></dd></div>
+      </dl>
+      <section id="render-issues">
+        <h3>渲染问题 <output id="issue-count">0</output></h3>
+        <p class="hint">只统计已浏览的区域。同一方块状态只记首次坐标，普通实体按坐标记录，无法定位的按区块记录。</p>
+        <p id="issue-empty">尚未发现渲染问题。</p>
+        <ul id="issue-list"></ul>
+      </section>
+    </div>
+
+    <div id="settings-popover" class="popover" popover>
+      <label class="row"><span>线框</span><input id="wireframe" class="switch" type="checkbox" /></label>
+      <label class="row"><span>体素远景</span><input id="far-view" class="switch" type="checkbox" checked /></label>
+      <label class="row">
+        <span>视距</span>
+        <input id="radius" type="range" min="1" max="30" value="8" aria-label="视距，单位区块" />
+        <output id="radius-label">8</output>
+      </label>
+      <label class="row">
+        <span>分辨率</span>
+        <select id="resolution" title="降低分辨率可提升流畅度，不改变视距">
+          <option value="auto">自动（最高 1.5×）</option>
+          <option value="native">屏幕原生</option>
+          <option value="1">标准（1×）</option>
+          <option value="0.75">流畅（0.75×）</option>
+          <option value="0.5">低（0.5×）</option>
+        </select>
+      </label>
+      <footer>
+        <p><output id="fps">FPS —</output><output id="memory" title="已加载网格的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制预留空间，不含纹理与加载中的临时数据">网格 0.0 MiB</output></p>
+        <p id="far-status" hidden></p>
+        <p data-input="mouse">拖动转向 · WASD 移动 · 空格／Shift 升降 · 滚轮前后</p>
+        <p data-input="touch">单指拖动转向 · 用屏幕按钮移动</p>
+        <p>neOmega Viewer <output id="version"></output></p>
+      </footer>
+    </div>
+
+    <output id="toast" role="status" aria-live="polite" hidden></output>
+
+    <dialog id="world-picker" aria-label="打开文件或存档">
+      <form id="browse-path" class="picker-bar">
+        <select id="picker-roots" aria-label="位置"></select>
+        <button id="picker-up" class="icon-button" type="button" aria-label="上一级" title="上一级">
+          <svg><use href="#i-parent" /></svg>
+        </button>
+        <input id="picker-path" type="text" aria-label="路径" spellcheck="false" autocomplete="off" />
+      </form>
+      <p class="picker-hint">Java／基岩存档目录、level.dat、PackFS，或 .schem .schematic .litematic .nbt .mcstructure .mcworld。结构文件首次打开会在旁边生成同名存档文件夹。</p>
+      <div id="picker-files" role="listbox" aria-label="目录内容"></div>
       <div id="picker-progress" hidden>
-        <output id="picker-progress-text" role="status" aria-live="polite"></output>
         <progress id="picker-progress-bar" max="1" aria-label="当前转换阶段进度"></progress>
+        <output id="picker-progress-text" role="status" aria-live="polite"></output>
       </div>
       <output id="picker-error" role="status"></output>
+      <footer class="picker-actions">
+        <output id="picker-selection"></output>
+        <button id="picker-cancel" class="text-button" type="button">取消 <kbd>esc</kbd></button>
+        <button id="picker-open" class="text-button" type="button">打开 <kbd>↵</kbd></button>
+      </footer>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>

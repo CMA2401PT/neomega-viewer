@@ -25,9 +25,10 @@ const (
 	sunriseCameraZ = 340.0
 	sunriseFov     = 28.0
 	// 海面是一片椭圆，外缘逐格消散成空气，椭圆中心偏向相机。
+	// 海面远大于默认取景，飞离默认视点后脚下仍是海，默认场景看起来和存档一样没有边。
 	sunriseSeaCenterZ = 92.0
-	sunriseSeaRadiusX = 190.0
-	sunriseSeaRadiusZ = 170.0
+	sunriseSeaRadiusX = 570.0
+	sunriseSeaRadiusZ = 510.0
 )
 
 // Backdrop 告诉页面如何取景以及场景的几何锚点；初始位置仍由 Info.Position 给出。
@@ -38,15 +39,11 @@ type Backdrop struct {
 	Radius   float64    `json:"radius"`
 	SeaLevel float64    `json:"seaLevel"`
 	SeaEnd   float64    `json:"seaEnd"`
-	Twist    [3]float64 `json:"twist"`
-	Lanterns int        `json:"lanterns"`
-	Glass    int        `json:"glass"`
 }
 
 // sunriseCanvas 累积方块，最后一次性写成 section。
 type sunriseCanvas struct {
 	sections map[dispatcher.SectionPos]*blockdata.Blocks
-	cells    map[[3]int32]struct{}
 }
 
 func (c *sunriseCanvas) set(x, y, z int32, state ir.IRBlock) {
@@ -58,7 +55,6 @@ func (c *sunriseCanvas) set(x, y, z int32, state ir.IRBlock) {
 	}
 	// 与 cube.Layout 一致的 X-Z-Y 顺序。
 	blocks.Set(int(x&15)<<8|int(z&15)<<4|int(y&15), state)
-	c.cells[[3]int32{x, y, z}] = struct{}{}
 }
 
 type Scene struct {
@@ -72,10 +68,8 @@ type Scene struct {
 var Default = sync.OnceValue(func() Scene {
 	canvas := &sunriseCanvas{
 		sections: map[dispatcher.SectionPos]*blockdata.Blocks{},
-		cells:    map[[3]int32]struct{}{},
 	}
 	paintSea(canvas)
-	glass := len(canvas.cells)
 	paintMobiusRing(canvas)
 	sections := make(source.MemorySections, len(canvas.sections))
 	for pos, blocks := range canvas.sections {
@@ -91,13 +85,6 @@ var Default = sync.OnceValue(func() Scene {
 			Radius:   sunriseRingR,
 			SeaLevel: sunriseSeaLevel,
 			SeaEnd:   sunriseSeaCenterZ - sunriseSeaRadiusZ,
-			Twist: [3]float64{
-				sunriseRingR * math.Cos(sunriseTwistAngle),
-				sunriseRingY + sunriseRingR*math.Sin(sunriseTwistAngle),
-				0,
-			},
-			Lanterns: len(canvas.cells) - glass,
-			Glass:    glass,
 		},
 	}
 })

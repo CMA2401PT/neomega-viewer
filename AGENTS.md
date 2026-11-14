@@ -10,7 +10,7 @@
 
 `internal/filebrowse` 只负责目录项和平台路径，`internal/startscene` 提供只读默认场景，`internal/desktop` 负责终端开场及系统浏览器。`internal/worldview` 将这些能力与已有的 `source`、`column`、`minimap`、`viewhttp` 组合；这些底层包不依赖程序入口。发布版本仍通过 `main.version` 注入，由入口显式传给服务和终端。
 
-前端由 `frontend/src/app/start.ts` 组装各模块。`scene` 持有相机输入、精细网格和共享贴图；`terrain` 管理共用砖池的远景与地图窗口；`minimap` 负责地图交互和占用图；`welcome` 管理默认场景；`ui` 负责面板与状态显示；`api` 定义页面协议。网络协议类型保持独立，数据模块不从 UI 或绘制模块导入类型。模块边界和释放顺序见 [前端说明](cmd/world-viewer/frontend/README.md)。
+前端由 `frontend/src/app/start.ts` 组装各模块。`scene` 持有相机输入、精细网格和共享贴图；`terrain` 管理共用砖池的远景与地图窗口；`minimap` 负责地图交互和占用图；`welcome` 管理默认场景；`ui` 负责底部工具栏、弹出面板与状态显示；`api` 定义页面协议。网络协议类型保持独立，数据模块不从 UI 或绘制模块导入类型。模块边界和释放顺序见 [前端说明](cmd/world-viewer/frontend/README.md)。
 
 网格生成和共享 Web 绘制放在 viewer-core，转换规则放在 converter-core，邻接修复通过 converter 组合。基础库与 core 不反向依赖本应用。需要讲解核心 API 时，把最小示例留在相应核心库；本应用保留实际浏览器和复杂演示。
 

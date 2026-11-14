@@ -6,14 +6,29 @@ interface FlightOptions {
   changed(): void;
 }
 
+/** 相对相机朝向的水平移动，以及沿世界 Y 轴的升降。 */
+export type Move = "forward" | "back" | "left" | "right" | "up" | "down";
+
+const KEY_MOVES: Record<string, Move> = {
+  KeyW: "forward",
+  KeyS: "back",
+  KeyA: "left",
+  KeyD: "right",
+  Space: "up",
+  ShiftLeft: "down",
+  ShiftRight: "down",
+};
+
 export class FlightControls {
   // 输入状态只属于主相机，小地图展开时由宿主暂停并清空。
   readonly rotation = new THREE.Euler(-0.35, 0, 0, "YXZ");
-  private readonly pressed = new Set<string>();
+  // 键码或屏幕按钮 → 方向；同一方向可以被几个来源同时按住，松开一个不影响另一个。
+  private readonly held = new Map<string, Move>();
   private readonly events = new AbortController();
   private readonly forward = new THREE.Vector3();
   private readonly right = new THREE.Vector3();
-  private dragging = false;
+  // 只跟随第一根按下的手指或鼠标，另一根手指可以同时按住移动按钮。
+  private drag?: { id: number; x: number; y: number };
   private readonly camera: THREE.PerspectiveCamera;
   private readonly options: FlightOptions;
 
@@ -27,32 +42,31 @@ export class FlightControls {
     camera.quaternion.setFromEuler(this.rotation);
     const signal = this.events.signal;
     canvas.addEventListener("pointerdown", (event) => {
-      if (options.paused() || (event.button !== 0 && event.button !== 2)) return;
+      if (options.paused() || this.drag || (event.button !== 0 && event.button !== 2)) return;
       canvas.focus();
       options.interaction();
-      this.dragging = true;
+      this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
       canvas.setPointerCapture(event.pointerId);
     }, { signal });
     canvas.addEventListener("pointermove", (event) => {
-      if (!this.dragging || options.paused()) return;
-      this.rotation.y -= event.movementX * 0.004;
+      const drag = this.drag;
+      if (!drag || drag.id !== event.pointerId || options.paused()) return;
+      this.rotation.y -= (event.clientX - drag.x) * 0.004;
       this.rotation.x = THREE.MathUtils.clamp(
-        this.rotation.x - event.movementY * 0.004,
+        this.rotation.x - (event.clientY - drag.y) * 0.004,
         -Math.PI / 2 + 0.01,
         Math.PI / 2 - 0.01,
       );
+      drag.x = event.clientX;
+      drag.y = event.clientY;
       camera.quaternion.setFromEuler(this.rotation);
     }, { signal });
-    canvas.addEventListener("pointerup", () => {
-      this.dragging = false;
-    }, { signal });
-    canvas.addEventListener("pointercancel", () => {
-      this.dragging = false;
-    }, { signal });
-    canvas.addEventListener("contextmenu", (event) =>
-      event.preventDefault(),
-      { signal },
-    );
+    const release = (event: PointerEvent): void => {
+      if (this.drag?.id === event.pointerId) this.drag = undefined;
+    };
+    canvas.addEventListener("pointerup", release, { signal });
+    canvas.addEventListener("pointercancel", release, { signal });
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault(), { signal });
     canvas.addEventListener(
       "wheel",
       (event) => {
@@ -69,29 +83,28 @@ export class FlightControls {
       { passive: false, signal },
     );
     canvas.addEventListener("keydown", (event) => {
-      if (options.paused()) return;
-      if (
-        [
-          "KeyW",
-          "KeyA",
-          "KeyS",
-          "KeyD",
-          "Space",
-          "ShiftLeft",
-          "ShiftRight",
-        ].includes(event.code)
-      ) {
-        event.preventDefault();
-        options.interaction();
-        this.pressed.add(event.code);
-      }
+      const move = KEY_MOVES[event.code];
+      if (options.paused() || !move) return;
+      event.preventDefault();
+      options.interaction();
+      this.held.set(event.code, move);
     }, { signal });
-    window.addEventListener("keyup", (event) => this.pressed.delete(event.code), { signal });
-    canvas.addEventListener("blur", () => this.pressed.clear(), { signal });
-    window.addEventListener("blur", () => {
-      this.pressed.clear();
-      this.dragging = false;
+    window.addEventListener("keyup", (event) => this.held.delete(event.code), { signal });
+    canvas.addEventListener("blur", () => {
+      for (const code of Object.keys(KEY_MOVES)) this.held.delete(code);
     }, { signal });
+    window.addEventListener("blur", () => this.cancel(), { signal });
+  }
+
+  /** 屏幕移动按钮按下和松开时调用，按住期间与对应的键盘按键效果相同。 */
+  hold(move: Move, down: boolean): void {
+    if (!down) {
+      this.held.delete(`pad:${move}`);
+      return;
+    }
+    if (this.options.paused()) return;
+    this.options.interaction();
+    this.held.set(`pad:${move}`, move);
   }
 
   clamp(): void {
@@ -110,22 +123,16 @@ export class FlightControls {
 
   update(dt: number): void {
     // 水平移动只取偏航角，抬头和低头不会改变移动高度。
-    if (!this.pressed.size || this.options.paused()) return;
+    if (!this.held.size || this.options.paused()) return;
+    const moves = new Set(this.held.values());
+    const axis = (plus: Move, minus: Move): number => Number(moves.has(plus)) - Number(moves.has(minus));
     const speed = 24 * dt;
     const camera = this.camera;
     this.forward.set(-Math.sin(this.rotation.y), 0, -Math.cos(this.rotation.y));
     this.right.set(Math.cos(this.rotation.y), 0, -Math.sin(this.rotation.y));
-    camera.position.addScaledVector(
-      this.forward,
-      (Number(this.pressed.has("KeyW")) - Number(this.pressed.has("KeyS"))) * speed,
-    );
-    camera.position.addScaledVector(
-      this.right,
-      (Number(this.pressed.has("KeyD")) - Number(this.pressed.has("KeyA"))) * speed,
-    );
-    camera.position.y +=
-      (Number(this.pressed.has("Space")) -
-        Number(this.pressed.has("ShiftLeft") || this.pressed.has("ShiftRight"))) * speed;
+    camera.position.addScaledVector(this.forward, axis("forward", "back") * speed);
+    camera.position.addScaledVector(this.right, axis("right", "left") * speed);
+    camera.position.y += axis("up", "down") * speed;
     this.clamp();
     this.options.changed();
   }
@@ -143,8 +150,8 @@ export class FlightControls {
   }
 
   cancel(): void {
-    this.pressed.clear();
-    this.dragging = false;
+    this.held.clear();
+    this.drag = undefined;
   }
 
   dispose(): void {

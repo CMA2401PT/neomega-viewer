@@ -3,7 +3,6 @@ import type { WorldInfo } from "../api/world-info.ts";
 import type { StreamStats } from "../scene/stream.ts";
 import type { FlightControls } from "../scene/flight.ts";
 import { Backdrop } from "./backdrop.ts";
-import { createStage } from "./stage.ts";
 
 interface IntroOptions {
   renderer: THREE.WebGLRenderer;
@@ -18,7 +17,6 @@ interface IntroOptions {
 
 export class Intro {
   // 默认场景的取景、漂移和点亮时机一起进入和退出，存档加载只提供进度。
-  readonly stage = createStage();
   backdrop?: Backdrop;
   private radiusBefore?: string;
   private swayOrigin?: THREE.Vector3;
@@ -59,7 +57,6 @@ export class Intro {
       if (this.radiusBefore !== undefined) radius.value = this.radiusBefore;
       this.radiusBefore = undefined;
     }
-    this.stage.show(atmosphere);
     controls.reset(info.position, atmosphere?.look);
     this.swayOrigin = atmosphere ? camera.position.clone() : undefined;
   }
