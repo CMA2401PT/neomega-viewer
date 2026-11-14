@@ -16,8 +16,17 @@ import (
 	"time"
 
 	preset "neomega-viewer-core/viewer/resources"
+	"neomega-viewer/internal/desktop"
+	"neomega-viewer/internal/worldview"
 	"neomega-viewer/viewassets"
 )
+
+// version 显示在终端开场和网页面板上，由发布标签在编译时注入：
+//
+//	go build -ldflags "-X main.version=v0.0.10"
+//
+// 直接 go build 时保持 dev，避免本地构建冒充某个已发布的版本。
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -52,7 +61,7 @@ func run() error {
 	}
 	// 这一组选项同时给首次打开和页面里的打开请求用，所以两边共用同一个值。
 	skipFix := !*bedrockFix
-	options := SourceOptions{
+	options := worldview.SourceOptions{
 		StructureMemoryMiB: *structureMemory,
 		StructureWorkers:   *structureWorkers,
 		Pack:               *pack,
@@ -60,7 +69,7 @@ func run() error {
 		SkipBedrockFix:     skipFix,
 	}
 	if *directory != "" {
-		parsed, err := sourceAtPath(*directory)
+		parsed, err := worldview.SourceAtPath(*directory)
 		if err != nil {
 			return err
 		}
@@ -90,7 +99,7 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	source, err := OpenSource(ctx, options)
+	source, err := worldview.OpenSource(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -105,16 +114,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	pipeline, err := newPipeline(resources)
+	pipeline, err := worldview.NewPipeline(resources)
 	if err != nil {
 		return err
 	}
-	worlds := NewWorlds(source, pipeline)
+	worlds := worldview.NewWorlds(source, pipeline, version)
 	owned = false
 	defer worlds.Close()
 	server := &http.Server{
 		Addr: *listen,
-		Handler: Handler(ServerOptions{
+		Handler: worldview.Handler(worldview.ServerOptions{
 			StructureMemoryMiB: options.StructureMemoryMiB,
 			StructureWorkers:   options.StructureWorkers,
 			Worlds:             worlds,
@@ -133,10 +142,10 @@ func run() error {
 	}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	address := browserAddress(listener.Addr())
-	printBanner(os.Stdout, address, terminalColors())
+	address := desktop.BrowserAddress(listener.Addr())
+	desktop.PrintBanner(os.Stdout, address, version, desktop.TerminalColors())
 	if *browser {
-		openBrowser(address)
+		desktop.OpenBrowser(address)
 	}
 	select {
 	case err := <-done:

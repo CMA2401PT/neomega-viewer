@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapPoint, mapScreen, horizontalBounds } from "../src/map-camera.ts";
-import { RegionDownloads, windowOrigin } from "../src/map-regions.ts";
-import { MapTiles } from "../src/map-tiles.ts";
+import { mapPoint, mapScreen, horizontalBounds } from "../src/minimap/map-camera.ts";
+import { RegionDownloads, windowOrigin } from "../src/terrain/map-regions.ts";
+import { MapTiles } from "../src/minimap/map-tiles.ts";
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const tile = x => ({ x, z: 0, kind: "overview", key: `overview/${x}/0` });

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDiagnostics } from "../src/diagnostics.ts";
-import { decodeColumn } from "../src/packet.ts";
+import { createDiagnostics } from "../src/ui/diagnostics.ts";
+import { decodeColumn } from "../src/api/packet.ts";
 
 // 只实现面板使用的 DOM 操作，让断言落在显示条目与计数上。
 class Element {

@@ -6,7 +6,11 @@
 
 ## 维护边界
 
-`cmd/world-viewer` 负责打开、切换存档和页面接口；`source` 适配数据来源；`column` 编码列响应；`viewhttp` 管理 HTTP 调度与缓存。`minimap` 从相同的 section 来源生成 brickmap 区域，管理每代的索引、区域及占用图缓存和退役等待。`demo` 负责方块搜索、场景检查及上传预览。
+`cmd/world-viewer` 负责命令行参数、进程退出与服务组装；`internal/worldview` 负责打开来源、切换存档和页面接口；`source` 适配数据来源；`column` 编码列响应；`viewhttp` 管理 HTTP 调度与缓存。`minimap` 从相同的 section 来源生成 brickmap 区域，管理每代的索引、区域及占用图缓存和退役等待。`demo` 负责方块搜索、场景检查及上传预览。
+
+`internal/filebrowse` 只负责目录项和平台路径，`internal/startscene` 提供只读默认场景，`internal/desktop` 负责终端开场及系统浏览器。`internal/worldview` 将这些能力与已有的 `source`、`column`、`minimap`、`viewhttp` 组合；这些底层包不依赖程序入口。发布版本仍通过 `main.version` 注入，由入口显式传给服务和终端。
+
+前端由 `frontend/src/app/start.ts` 组装各模块。`scene` 持有相机输入、精细网格和共享贴图；`terrain` 管理共用砖池的远景与地图窗口；`minimap` 负责地图交互和占用图；`welcome` 管理默认场景；`ui` 负责面板与状态显示；`api` 定义页面协议。网络协议类型保持独立，数据模块不从 UI 或绘制模块导入类型。模块边界和释放顺序见 [前端说明](cmd/world-viewer/frontend/README.md)。
 
 网格生成和共享 Web 绘制放在 viewer-core，转换规则放在 converter-core，邻接修复通过 converter 组合。基础库与 core 不反向依赖本应用。需要讲解核心 API 时，把最小示例留在相应核心库；本应用保留实际浏览器和复杂演示。
 
@@ -38,7 +42,7 @@ resources, err := preset.Open(preset.OpenOptions{})
 pipeline, err := javapreset.NewPipeline(cube.New(16), resources.Tables, resources.Items, nil)
 ```
 
-Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `cmd/world-viewer` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
+Java 存档需要先打开世界并选好维度。路径识别、默认维度、出生点和初始落点由 `internal/worldview` 完成。`javaworld.New` 接收已经准备好的句柄，之后调用方把该句柄的独占访问权交给来源：
 
 ```go
 world, err := java.OpenDirectory(directory, java.Options{
@@ -58,7 +62,7 @@ Bedrock 需要先把状态转换为 Java 表达。`neomega-converter-core/be2je/
 
 以下 `adapt` 来自 converter-core，`fixedadapt` 来自 converter；`renderresources` 来自 viewer-core/viewer/resources。
 
-下面的 `read` 是组装方提供的 `adapt.ReadChunk`，绑定已经只读打开的 `bedrock.World` 和维度编号。它在访问句柄前登记在途读取，并在返回时注销。完整的打开与等待实现见 [bedrock.go](cmd/world-viewer/bedrock.go)。
+下面的 `read` 是组装方提供的 `adapt.ReadChunk`，绑定已经只读打开的 `bedrock.World` 和维度编号。它在访问句柄前登记在途读取，并在返回时注销。完整的打开与等待实现见 [bedrock.go](internal/worldview/bedrock.go)。
 
 ```go
 converted := adapt.NewConverted(read, adapt.Options{})
@@ -128,7 +132,7 @@ mux.Handle("GET /api/world", viewhttp.DescriptionHandler(viewhttp.Description{
 
 `world-viewer` 的 `Info` 嵌入同一个描述类型，再补充路径、存档格式和维度。它设置 `CanOpen: true`，由程序提供打开存档的 POST 和文件浏览接口。
 
-需要切换时，程序把描述、View 和来源关闭函数放在同一个对象里原子替换。revision 是该代内容的编号，每次发布都分配新值。打开失败保留原对象。成功切换的顺序如下，具体实现在 [worlds.go](cmd/world-viewer/worlds.go)：
+需要切换时，程序把描述、View 和来源关闭函数放在同一个对象里原子替换。revision 是该代内容的编号，每次发布都分配新值。打开失败保留原对象。成功切换的顺序如下，具体实现在 [worlds.go](internal/worldview/worlds.go)：
 
 ```go
 current.Store(next)     // next 已经包含描述、新 View 和来源关闭函数。

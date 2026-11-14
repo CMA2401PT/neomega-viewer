@@ -14,7 +14,7 @@
 
 终端先画出开场图，列出版本、数据来源致谢和项目地址，最后用粗体给出网页地址，并请系统用默认浏览器打开它。在没有图形界面的机器上，加 `-browser=false` 跳过这一步。
 
-没有指定存档时，网页显示默认场景：一片玻璃海上升起海晶灯砌成的莫比乌斯环，四分之三在海面上。它和存档一样是一组方块，由 [sunrise.go](sunrise.go) 生成，走同一条区块加载与绘制路径。页面为它换上线描着色、夜空、辉光和缓慢的镜头漂移，倒影按当前视线在着色器里实时算出。场景加载完后，一道光从环根部沿海面扩散，把线逐一点亮；鼠标移到页面上时，近处加载到四分之一就提前点亮。拖动、滚轮或按键时漂移停下，字标和标注留在原处，跟着镜头移动。“线框”开关在默认场景下切换线描与方块原貌，切换过一次之前会轻轻闪烁作为提示。打开存档后，这些效果全部撤下，场景恢复实体绘制，视距回到进入默认场景前的值。
+没有指定存档时，网页显示默认场景：一片玻璃海上升起海晶灯砌成的莫比乌斯环，四分之三在海面上。它和存档一样是一组方块，由 [默认场景](../../internal/startscene/scene.go) 生成，走同一条区块加载与绘制路径。页面为它换上线描着色、夜空、辉光和缓慢的镜头漂移，倒影按当前视线在着色器里实时算出。场景加载完后，一道光从环根部沿海面扩散，把线逐一点亮；鼠标移到页面上时，近处加载到四分之一就提前点亮。拖动、滚轮或按键时漂移停下，字标和标注留在原处，跟着镜头移动。“线框”开关在默认场景下切换线描与方块原貌，切换过一次之前会轻轻闪烁作为提示。打开存档后，这些效果全部撤下，场景恢复实体绘制，视距回到进入默认场景前的值。
 
 点击环下方或面板里的“打开存档”。对话框列出 Go 服务所在电脑上的目录和文件。双击文件夹进入，使用“上一级”返回；选中世界目录、`level.dat`、Java PackFS 文件，或 `.schem`、`.schematic`、`.litematic`、`.nbt`、`.mcstructure`、`.mcworld` 后点击“打开”。当前目录本身也可以直接打开。包含 `db/` 子目录的世界目录按 Bedrock 打开，即使没有 `level.dat` 也可以使用。选中 `level.dat` 时打开它所在的世界目录。存档数据由 Go 按路径读取，浏览器不上传整个文件。
 
@@ -99,7 +99,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
 
 ## 独立前端与资源更新
 
-`frontend/` 负责页面、NVWC 列响应和加载调度。为了复用绘制与 section 场景，它通过 `file:../../../../../neomega-viewer-core/viewer/web` 依赖独立包 `@neomega/viewer`，从 `@neomega/viewer/render` 导入绘制接口。Vite 配置使用 `resolve.dedupe: ["three"]` 让应用与共享包使用同一份 Three.js。前端开发需要 Node.js 24 或以上。在 `apps/neomega-viewer` 目录进入前端工程，按锁文件安装依赖并链接共享包：
+`frontend/` 负责页面、NVWC 列响应和加载调度，内部按应用组装、精细场景、体素窗口、地图交互、界面和协议划分模块，见 [前端维护说明](frontend/README.md)。为了复用绘制与 section 场景，它通过 `file:../../../../../neomega-viewer-core/viewer/web` 依赖独立包 `@neomega/viewer`，从 `@neomega/viewer/render` 导入绘制接口。Vite 配置使用 `resolve.dedupe: ["three"]` 让应用与共享包使用同一份 Three.js。前端开发需要 Node.js 24 或以上。在 `apps/neomega-viewer` 目录进入前端工程，按锁文件安装依赖并链接共享包：
 
 ```sh
 cd cmd/world-viewer/frontend
@@ -124,7 +124,7 @@ go build -o cmd/world-viewer/world-viewer ./cmd/world-viewer
 
 ## 读取与传输
 
-程序负责打开存档、选择维度、确定初始落点和切换内容。Java 来源通过 `source/javaworld` 串行读取原始记录，各次列请求分别解码。Bedrock 由 converter 的 adapt 层按坐标转换并缓存，`source/bedrockworld` 将转换结果适配为相同的 section 输入。`column` 调用共享 Pipeline 读取六向邻居与四个水平邻居上方的 section 并构建快照，再编码成 NVWC 响应。`viewhttp` 管理并发、响应缓存和静态资源。各块的边界及组装方法见[模块说明](../../README.md#用-section-来源组装浏览服务)。
+命令入口负责参数与服务启动，`internal/worldview` 负责打开存档、选择维度、确定初始落点和切换内容。Java 来源通过 `source/javaworld` 串行读取原始记录，各次列请求分别解码。Bedrock 由 converter 的 adapt 层按坐标转换并缓存，`source/bedrockworld` 将转换结果适配为相同的 section 输入。`column` 调用共享 Pipeline 读取六向邻居与四个水平邻居上方的 section 并构建快照，再编码成 NVWC 响应。`viewhttp` 管理并发、响应缓存和静态资源。各块的边界及组装方法见[模块说明](../../README.md#用-section-来源组装浏览服务)。
 
 小地图与三维视图共用 Java 状态 section 来源，所以 Bedrock 同样按坐标即时转换。小地图读取未修复的转换层，与三维视图共享转换缓存。服务端把 128×128 水平范围内的所有 section 转成带局部调色板的 brickmap 体积。主世界从 Y -64 开始，实际 384 格补齐为 512；下界为 128 格，末地为 256 格。补齐部分为空气。
 

@@ -1,0 +1,30 @@
+package worldview
+
+import (
+	"fmt"
+
+	"neomega-blocks/ir"
+	"neomega-viewer-core/viewer/cube"
+	"neomega-viewer-core/viewer/dispatcher"
+	core "neomega-viewer-core/viewer/geometry"
+	"neomega-viewer-core/viewer/javapreset"
+	preset "neomega-viewer-core/viewer/resources"
+)
+
+func NewPipeline(resources *preset.Preset) (*dispatcher.Pipeline, error) {
+	// 浏览未知状态时仍保留占位几何，让页面报告缺失模型而不中断整个区块。
+	tables := resources.Tables
+	// 占位只持有石头形状的独立副本，不改变共享几何表的 ID 空间。
+	stone, err := tables.ModelIDs(ir.IRBlock("minecraft:stone []").Hash())
+	if err != nil || len(stone) == 0 {
+		return nil, fmt.Errorf("geometry table requires stone for missing-state marker")
+	}
+	shape := tables.Shapes[stone[0]]
+	shape.Quads = append([]core.Quad(nil), shape.Quads...)
+	shape.CullGroup = 0
+	for i := range shape.Quads {
+		shape.Quads[i].Surface.Unlit = true
+		shape.Quads[i].Color = [3]float32{1, 0, 1}
+	}
+	return javapreset.NewPipeline(cube.New(16), tables, resources.Items, &shape)
+}

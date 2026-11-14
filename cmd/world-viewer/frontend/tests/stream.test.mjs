@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { ChunkStream, nearby, keyID, MAX_RADIUS } from "../src/stream.ts";
-import { decodeColumn } from "../src/packet.ts";
+import { ChunkStream, nearby, keyID, MAX_RADIUS } from "../src/scene/stream.ts";
+import { decodeColumn } from "../src/api/packet.ts";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 

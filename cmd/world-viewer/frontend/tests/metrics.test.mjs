@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { FrameRate, geometryMemoryBytes } from "../src/metrics.ts";
+import { FrameRate, geometryMemoryBytes } from "../src/scene/metrics.ts";
 
 test("memory includes reserved storage without double-counting shared CPU and GPU buffers", () => {
   const storage = new Float32Array(48);

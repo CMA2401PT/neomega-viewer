@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fileAppearance } from "../src/file-kind.ts";
-import { openWorld, progressLabel } from "../src/open-world.ts";
+import { fileAppearance } from "../src/ui/file-kind.ts";
+import { openWorld, progressLabel } from "../src/api/open-world.ts";
 
 test("文件夹、已识别格式和未知后缀使用不同图标", () => {
   assert.equal(fileAppearance("unknown", true).icon, "folder");

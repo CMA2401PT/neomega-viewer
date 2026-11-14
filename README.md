@@ -105,6 +105,8 @@ go run ./demo/cmd/neomega-viewer \
 
 来源数据、调色板和实体 NBT 应保持只读。内容改变时创建新的 View，切换后先等待旧构建及底层读取退出，再关闭存档句柄。调用取消不代表底层读取已经结束。具体组装、来源所有权和生命周期见 [开发说明](AGENTS.md#用-section-来源组装浏览服务)。
 
+维护存档浏览程序时，Go 组装逻辑从 [internal/worldview](internal/worldview/README.md) 开始，命令入口只处理启动参数与进程生命周期。前端模块、共享资源的归属和帧内绘制顺序见 [前端说明](cmd/world-viewer/frontend/README.md)。
+
 只需要网格生成或 Web 绘制接口时，从 [neomega-viewer-core](../../neomega-viewer-core/README.md) 开始。维护入口、前端构建、资源更新与验收命令见 [AGENTS.md](AGENTS.md)。程序与素材的来源见 [NOTICE.md](NOTICE.md)。
 
 ### 基岩展示框物品预览
