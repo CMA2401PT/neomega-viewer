@@ -19,6 +19,7 @@
       <canvas id="axes" width="80" height="80"></canvas
       ><output id="coordinates">X 0.0　Y 80.0　Z 0.0</output>
       <div id="performance">
+        <output id="far-status" hidden></output>
         <output id="fps" title="最近约一秒的平均帧率">FPS —</output>
         <output id="memory" title="已加载网格的 CPU 缓冲与同尺寸 GPU 副本估算，包含批绘制预留空间。不含纹理、浏览器自身和加载中的临时数据。">网格内存 ≈ 0.0 MiB</output>
       </div>
@@ -81,9 +82,7 @@
           <label class="row"
             ><span>线框</span><input id="wireframe" type="checkbox"
           /></label>
-          <label class="row" title="跳过被不透明地形完全遮住的区域。原地转头可沿用结果，移动后重新判断；线框模式下暂停。"
-            ><span>遮挡剔除</span><input id="occlusion" type="checkbox" checked
-          /></label>
+          <label class="row"><span>体素远景</span><input id="far-view" type="checkbox" checked /></label>
           <label class="row range"
             ><span>视距</span
             ><input

@@ -15,13 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"neomega-viewer-core/viewer/dispatcher"
 	preset "neomega-viewer-core/viewer/resources"
 	"neomega-viewer/viewassets"
 )
-
-// 测试构建可用链接参数默认启用隔离模式，普通构建仍显示完整场景。
-var defaultMinimapOnly = "false"
 
 func main() {
 	if err := run(); err != nil {
@@ -38,7 +34,6 @@ func run() error {
 	workers := flag.Int("workers", 4, "concurrent column builds (1..8)")
 	structureMemory := flag.Int("structure-memory-mib", 512, "结构转换工作内存预算（MiB，至少 64）")
 	structureWorkers := flag.Int("structure-workers", 0, "结构转换写出并发数上限，0 自动选择")
-	minimapOnly := flag.Bool("minimap-only", defaultMinimapOnly == "true", "仅运行小地图，停用精细网格构建与主视图绘制")
 	browser := flag.Bool("browser", true, "启动后用默认浏览器打开页面")
 	showVersion := flag.Bool("version", false, "打印版本号后退出")
 	flag.Parse()
@@ -106,18 +101,13 @@ func run() error {
 			source.Close()
 		}
 	}()
-	var pipeline *dispatcher.Pipeline
-	var resourceVersion string
-	if !*minimapOnly {
-		resources, err := preset.Open(preset.OpenOptions{})
-		if err != nil {
-			return err
-		}
-		pipeline, err = newPipeline(resources)
-		if err != nil {
-			return err
-		}
-		resourceVersion = resources.Metadata.Version
+	resources, err := preset.Open(preset.OpenOptions{})
+	if err != nil {
+		return err
+	}
+	pipeline, err := newPipeline(resources)
+	if err != nil {
+		return err
 	}
 	worlds := NewWorlds(source, pipeline)
 	owned = false
@@ -130,7 +120,7 @@ func run() error {
 			Worlds:             worlds,
 			Assets:             preset.Resources(),
 			Web:                viewassets.Web(),
-			ResourceVersion:    resourceVersion,
+			ResourceVersion:    resources.Metadata.Version,
 			Workers:            *workers,
 			SkipBedrockFix:     options.SkipBedrockFix,
 		}),

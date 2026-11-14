@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { BrickmapCoverage } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/coverage.ts";
 import { BrickmapPool, BrickmapWindow, directoryLevels, mergeParents, UNKNOWN, MIXED } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/gpu.ts";
 
 function fakeGL() {
@@ -91,4 +92,20 @@ test("1536 格窗口保留最后一个区域，补齐目录不扩大实际范围
   assert.equal(win.levels[0].cells[160 + 256 * 16 * 160], 65536 + region.slots[0]);
   win.remove(region);
   assert.equal(win.levels.at(-1).cells[0], UNKNOWN);
+});
+
+test("精细覆盖按世界 section 定位，卸载后取消远景避让", () => {
+  const gl = fakeGL();
+  const coverage = new BrickmapCoverage(gl, [1536, 512, 1536]);
+  coverage.update([-768, -64, -768], [{x:-48,y:-4,z:-48}, {x:47,y:27,z:47}, {x:48,y:0,z:0}]);
+  const cells = gl.writes.at(-1).at(-1);
+  assert.equal(cells[0], 1);
+  assert.equal(cells.at(-1), 1);
+  assert.equal(cells.reduce((a,b) => a+b, 0), 2);
+  assert.deepEqual(coverage.min, [0,0,0]);
+  assert.deepEqual(coverage.max, [1536,512,1536]);
+  coverage.update([-768,-64,-768], []);
+  assert.ok(gl.writes.at(-1).at(-1).every(n => n === 0));
+  assert.deepEqual(coverage.min, [0,0,0]);
+  assert.deepEqual(coverage.max, [0,0,0]);
 });

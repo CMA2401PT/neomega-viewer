@@ -15,6 +15,9 @@ import { createDiagnostics } from "./diagnostics.ts";
 import { Backdrop, lineArtStyle } from "./backdrop.ts";
 import { createPanelToggle } from "./panel.ts";
 import { createStage } from "./stage.ts";
+import { BrickmapWorld } from "./brickmap-world.ts";
+import { FarView, FAR_FOG } from "./far-view.ts";
+import { WINDOW_SIZE } from "./map-regions.ts";
 import { Minimap } from "./minimap.ts";
 import "./style.css";
 
@@ -40,7 +43,8 @@ document.addEventListener("visibilitychange", resetFrameRate);
 const fields = ["x", "y", "z"].map((id) => element<HTMLInputElement>(id));
 const radiusInput = element<HTMLInputElement>("radius");
 const wireframe = element<HTMLInputElement>("wireframe");
-const occlusion = element<HTMLInputElement>("occlusion");
+const farEnabled = element<HTMLInputElement>("far-view");
+const farStatus = element<HTMLOutputElement>("far-status");
 const resolution = element<HTMLSelectElement>("resolution");
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
@@ -78,7 +82,11 @@ axes.width = axes.height = 80 * Math.min(devicePixelRatio, 2);
 const forward = new THREE.Vector3(),
   right = new THREE.Vector3();
 const pressed = new Set<string>();
-const minimap = new Minimap(renderer, jump, () => {
+const terrain = new BrickmapWorld(renderer.getContext() as WebGL2RenderingContext);
+const farView = new FarView(renderer, terrain);
+let meshRevision = 0;
+let distantEnabled = false;
+const minimap = new Minimap(renderer, terrain, jump, () => {
   pressed.clear();
   dragging = false;
   stopSway();
@@ -123,10 +131,6 @@ function updateStatus(stats?: StreamStats): void {
   status.dataset.error = String(Boolean(error));
   if (error) {
     status.textContent = error;
-    return;
-  }
-  if (currentWorld?.minimapOnly) {
-    status.textContent = "仅小地图模式 · 主视图与精细网格构建已停用";
     return;
   }
   if (!currentWorld?.loaded) {
@@ -183,11 +187,13 @@ function clampPosition(): void {
 function refresh(): void {
   clampPosition();
   const radius = Number(radiusInput.value);
-  camera.far = backdrop ? 2400 : (radius + 2) * 16 * 1.7;
+  distantEnabled = Boolean(currentWorld?.loaded && currentWorld.minimap && farEnabled.checked);
+  camera.far = backdrop ? 2400 : distantEnabled ? WINDOW_SIZE : (radius + 2) * 16 * 1.7;
   camera.updateProjectionMatrix();
   scene.fog = backdrop
     ? null
-    : new THREE.Fog(worldFogColor, Math.max(16, (radius - 0.6) * 16), camera.far);
+    : distantEnabled ? new THREE.Fog(worldFogColor, ...FAR_FOG)
+      : new THREE.Fog(worldFogColor, Math.max(16, (radius - 0.6) * 16), camera.far);
   // 默认场景是有限的一片，加载中心钉在环上，走到哪里都看得到全貌。
   const anchor = backdrop ? new THREE.Vector3(...backdrop.info.center) : camera.position;
   if (streaming)
@@ -231,7 +237,7 @@ wireframe.addEventListener("change", () => {
   if (backdrop) backdrop.setLineArt(wireframe.checked);
   else worldScene?.setWireframe(wireframe.checked);
 });
-occlusion.addEventListener("change", () => worldScene?.setOcclusion(occlusion.checked));
+farEnabled.addEventListener("change", refresh);
 radiusInput.addEventListener("input", () => {
   element<HTMLOutputElement>("radius-label").value = radiusInput.value;
   refresh();
@@ -339,8 +345,7 @@ function drawAxes(): void {
   }
 }
 function drawScene(): void {
-  if (worldScene) worldScene.render(renderer, camera);
-  else renderer.render(scene, camera);
+  renderer.render(scene, camera);
 }
 /** 加载按距离由近到远，四分之一时环和近处的海已经齐了，可以点亮。 */
 function tryReveal(): void {
@@ -403,15 +408,32 @@ function animate(now: number): void {
   stream?.processFrame();
   worldScene?.update(camera, now / 1000);
   camera.updateMatrixWorld();
-  if (currentWorld?.minimapOnly) {
-    // 只清除上帧地图留下的像素，不提交主场景、遮挡查询或后处理。
-    renderer.setRenderTarget(null);
-    renderer.setScissorTest(false);
-    renderer.setClearColor(worldFogColor);
-    renderer.clear();
-  } else {
+  minimap.update(camera.position.x, camera.position.y, camera.position.z, rotation.y);
+  terrain.far.enabled = distantEnabled;
+  terrain.far.center = [camera.position.x, camera.position.z];
+  terrain.update();
+  renderer.resetState();
+  {
     if (backdrop) backdrop.render(camera, now);
-    else drawScene();
+    else if (distantEnabled && terrain.far.gpu) {
+      renderer.setRenderTarget(null);
+      renderer.setScissorTest(false);
+      renderer.setClearColor(worldFogColor);
+      renderer.clear();
+      farView.draw(camera, meshRevision, function* () {
+        for (const value of stream?.loaded.values() ?? []) yield value.section.key;
+      });
+      // scene.background 为颜色时 three 会强制清屏，远景之后显式保留颜色和深度。
+      const background = scene.background;
+      const autoClear = renderer.autoClear;
+      scene.background = null;
+      renderer.autoClear = false;
+      try { drawScene(); }
+      finally { scene.background = background; renderer.autoClear = autoClear; }
+    } else {
+      farView.dispose();
+      drawScene();
+    }
     stage.update(camera, now);
   }
   const fps = frameRate.sample(now);
@@ -419,8 +441,15 @@ function animate(now: number): void {
     fpsDisplay.value = `FPS ${fps.toFixed(0)}`;
     memoryDisplay.value = `网格内存 ≈ ${(geometryMemoryBytes(scene) / 1024 ** 2).toFixed(1)} MiB`;
   }
-  minimap.update(camera.position.x, camera.position.y, camera.position.z, rotation.y);
+  minimap.render();
   if (now - lastHUD > 80) {
+    farStatus.hidden = !distantEnabled;
+    if (distantEnabled) {
+      const pending = terrain.pending(terrain.far);
+      farStatus.value = terrain.full(terrain.far) ? "远景显存已满，部分区域暂缺"
+        : terrain.error ? `远景：${terrain.error}`
+          : pending ? `远景 · ${pending} 区域待载入` : "远景 · brickmap";
+    }
     drawAxes();
     coordinateDisplay.value = `X ${camera.position.x.toFixed(1)}　Y ${camera.position.y.toFixed(1)}　Z ${camera.position.z.toFixed(1)}`;
     lastHUD = now;
@@ -443,7 +472,7 @@ function lookAt(target: [number, number, number]): void {
 }
 /** 默认场景走线描画面；存档恢复实体绘制与明亮背景，用户调过的视距也一并还原。 */
 function applyAtmosphere(info: WorldInfo): void {
-  const atmosphere = info.minimapOnly ? undefined : info.backdrop;
+  const atmosphere = info.backdrop;
   document.body.dataset.scene = atmosphere ? "backdrop" : "world";
   wireframe.checked = atmosphere !== undefined;
   backdrop?.dispose();
@@ -478,9 +507,10 @@ async function showWorld(info: WorldInfo): Promise<void> {
   dragging = false;
   failure = "";
   currentWorld = info;
+  terrain.setWorld(info);
   minimap.setWorld(info);
   streamStats = undefined;
-  streaming = !info.minimapOnly && (info.loaded || info.backdrop !== undefined);
+  streaming = info.loaded || info.backdrop !== undefined;
   applyAtmosphere(info);
   element<HTMLOutputElement>("world-name").value = info.loaded
     ? info.name
@@ -496,7 +526,7 @@ async function showWorld(info: WorldInfo): Promise<void> {
     : "打开存档";
   element<HTMLButtonElement>("open-world").hidden = info.canOpen === false;
   camera.position.set(...info.position);
-  swayOrigin = info.backdrop && !info.minimapOnly ? camera.position.clone() : undefined;
+  swayOrigin = info.backdrop ? camera.position.clone() : undefined;
   if (info.backdrop) lookAt(info.backdrop.look);
   else {
     // 存档沿用一贯的初始朝向：朝北略微俯视，不继承默认场景的取景。
@@ -518,12 +548,10 @@ async function showWorld(info: WorldInfo): Promise<void> {
     scene,
     atlas!,
     effects,
-    renderer,
     16,
     info.backdrop ? lineArtStyle : undefined,
   );
   draw.setWireframe(wireframe.checked && !info.backdrop);
-  draw.setOcclusion(occlusion.checked && !info.backdrop);
   worldScene = draw;
   stream = new ChunkStream({
     load: (keys, signal) => fetchColumn(keys, signal, info.revision),
@@ -539,10 +567,10 @@ async function showWorld(info: WorldInfo): Promise<void> {
         section: object,
         unknown: section?.unknown ?? 0,
         bytes: object.bytes,
-        dispose: () => object.dispose(),
+        dispose: () => { object.dispose(); meshRevision++; },
       };
     },
-    attach: (_key, value) => draw.add(value.section),
+    attach: (_key, value) => { draw.add(value.section); meshRevision++; },
     changed: (stats) => {
       updateStatus(stats);
       streamStats = stats;
@@ -576,6 +604,8 @@ void start().catch((error: unknown) => {
 window.addEventListener("pagehide", () => {
   disposed = true;
   minimap.dispose();
+  farView.dispose();
+  terrain.dispose();
   stream?.dispose();
   worldScene?.dispose();
   resize.disconnect();

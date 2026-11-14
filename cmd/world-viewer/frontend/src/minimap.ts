@@ -1,8 +1,8 @@
 import type { WorldInfo } from "./picker.ts";
-import { BrickmapPool, BrickmapWindow, type GPURegion } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/gpu.ts";
-import { BrickmapRenderer, cameraRay, type Ray, type PickResult } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/renderer.ts";
+import { cameraRay, type Ray, type PickResult } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/renderer.ts";
 import { cameraBasis, type Camera, type Vec3 } from "../../../../../../neomega-viewer-core/viewer/brickmap/web/volume.ts";
-import { REGION_SIZE, WINDOW_REGIONS, WINDOW_SIZE, RegionDownloads, regionKey, windowOrigin, type RegionPosition } from "./map-regions.ts";
+import { REGION_SIZE, WINDOW_SIZE, regionKey, windowOrigin, type RegionPosition } from "./map-regions.ts";
+import type { BrickmapWorld } from "./brickmap-world.ts";
 import { MapTiles, type Tile } from "./map-tiles.ts";
 import { horizontalBounds, mapPoint, mapScreen } from "./map-camera.ts";
 
@@ -13,12 +13,6 @@ interface SharedRenderer {
   resetState(): void;
 }
 interface PendingSelection { ray: Ray; waiting?: string }
-interface GPUMap {
-  pool: BrickmapPool;
-  window: BrickmapWindow;
-  draw: BrickmapRenderer;
-  regions: Map<string, GPURegion>;
-}
 
 export class Minimap {
   private readonly panel = document.getElementById("minimap") as HTMLElement;
@@ -29,7 +23,6 @@ export class Minimap {
   private readonly scaleLabel = document.getElementById("minimap-scale") as HTMLOutputElement;
   private readonly go = document.getElementById("minimap-jump") as HTMLButtonElement;
   private readonly tiles: MapTiles<ImageBitmap>;
-  private readonly downloads: RegionDownloads;
   private readonly shared: SharedRenderer;
   private readonly jump: (position: Vec3) => void;
   private readonly inputChanged: () => void;
@@ -37,8 +30,6 @@ export class Minimap {
   private world?: WorldInfo;
   private index?: MapIndex;
   private indexRequest?: AbortController;
-  private gpu?: GPUMap;
-  private replaceGPU = false;
   private scale = 0.75;
   private readonly camera: Camera = { target: [0, 80, 0], yaw: 0, pitch: 70, span: 150 };
   private player: Vec3 = [0, 80, 0];
@@ -53,6 +44,7 @@ export class Minimap {
 
   constructor(
     shared: SharedRenderer,
+    private readonly terrain: BrickmapWorld,
     jump: (position: Vec3) => void,
     inputChanged: () => void,
     focusScene: () => void,
@@ -62,7 +54,6 @@ export class Minimap {
     this.jump = jump;
     this.inputChanged = inputChanged;
     this.focusScene = focusScene;
-    this.downloads = new RegionDownloads(error => this.showError(error));
     this.tiles = new MapTiles(async (tile, signal) => {
       const query = new URLSearchParams({ world: String(this.world!.revision), kind: "overview", x: String(tile.x), z: String(tile.z) });
       const response = await fetch(`/api/minimap/tile?${query}`, { signal, cache: "no-store" });
@@ -72,7 +63,8 @@ export class Minimap {
     document.getElementById("minimap-expand")!.addEventListener("click", () => this.setExpanded(true));
     document.getElementById("minimap-close")!.addEventListener("click", () => this.setExpanded(false));
     document.getElementById("minimap-retry")!.addEventListener("click", () => {
-      this.downloads.retry();
+      this.terrain.downloads.retry();
+      this.terrain.error = "";
       this.tiles.failed.clear();
       this.status.value = "";
       if (!this.index) this.loadIndex();
@@ -153,9 +145,7 @@ export class Minimap {
     this.world = world;
     this.indexRequest?.abort();
     this.index = undefined;
-    this.downloads.reset(world.revision);
     this.tiles.reset();
-    this.replaceGPU = true;
     this.player = [...world.position];
     this.camera.target = [...world.position];
     this.camera.yaw = 0;
@@ -225,48 +215,42 @@ export class Minimap {
   }
 
   update(x: number, y: number, z: number, yaw: number): void {
-    // 必须在主场景之后每帧调用，主场景清屏会覆盖上一帧的小地图。
+    // 先确定地图中心，两个窗口的上传统一由主帧循环调度。
+    if (!this.expanded && !this.pointer && !this.pending && (x !== this.player[0] || z !== this.player[2])) {
+      this.camera.target[0] = x;
+      this.camera.target[2] = z;
+    }
+    this.player = [x, y, z];
+    this.yaw = yaw;
+    this.camera.target[1] = y;
+    this.terrain.map.center = [this.camera.target[0], this.camera.target[2]];
+  }
+
+  render(): void {
+    // 主场景清屏后每帧重画小地图，绘制和拾取共享已发布的窗口目录。
+    const gpu = this.terrain.map.gpu;
+    if (!gpu || this.panel.hidden) return;
     try {
-      if (this.replaceGPU) {
-        this.disposeGPU();
-        this.replaceGPU = false;
-        if (this.world?.minimap) {
-          const gl = this.shared.getContext() as WebGL2RenderingContext;
-          const [minY, height] = this.world.minimapBounds!;
-          const origin = windowOrigin(this.camera.target[0], this.camera.target[2]);
-          const pool = new BrickmapPool(gl);
-          const window = new BrickmapWindow(gl, [origin.x * REGION_SIZE, minY, origin.z * REGION_SIZE], [WINDOW_SIZE, height, WINDOW_SIZE]);
-          this.gpu = { pool, window, draw: new BrickmapRenderer(gl, pool, window), regions: new Map() };
-        }
-      }
-      if (!this.gpu || this.panel.hidden) return;
-      if (!this.expanded && !this.pointer && !this.pending && (x !== this.player[0] || z !== this.player[2])) {
-        this.camera.target[0] = x;
-        this.camera.target[2] = z;
-      }
-      this.player = [x, y, z];
-      this.yaw = yaw;
-      this.camera.target[1] = y;
-      this.updateRegions();
       const rect = this.canvas.getBoundingClientRect();
       this.camera.span = rect.height * this.scale;
-      const full = [...this.downloads.entries.values()].some(entry => entry.state === "full");
+      const full = this.terrain.full(this.terrain.map);
       // 只按缩放和显示尺寸切换，旋转时允许窗口边缘缺少体素预览。
       this.overview = full || Math.max(rect.width, rect.height) * this.scale > WINDOW_SIZE;
       this.panel.dataset.mode = this.overview ? "overview" : "brickmap";
       if (this.pending && !full) this.pick();
       if (!this.overview) {
         const canvasRect = this.shared.domElement.getBoundingClientRect();
-        const gl = this.gpu.draw.gl;
+        const gl = gpu.draw.gl;
         const rx = gl.drawingBufferWidth / canvasRect.width, ry = gl.drawingBufferHeight / canvasRect.height;
         const left = Math.round((rect.left - canvasRect.left) * rx);
         const bottom = Math.round((canvasRect.bottom - rect.bottom) * ry);
         const right = Math.round((rect.right - canvasRect.left) * rx);
         const top = Math.round((canvasRect.bottom - rect.top) * ry);
-        this.gpu.draw.draw(this.camera, { viewport: [left, bottom, right - left, top - bottom], openBoundary: true, timing: false });
+        gpu.draw.draw(this.camera, { viewport: [left, bottom, right - left, top - bottom], openBoundary: true, timing: false });
       }
       this.drawOverlay(rect.width, rect.height);
-      const queued = [...this.downloads.entries.values()].filter(entry => entry.state !== "resident").length;
+      const queued = this.terrain.pending(this.terrain.map);
+      if (this.terrain.error) this.showError(this.terrain.error);
       const mode = this.overview ? "区块分布" : `${this.scale.toFixed(2)} 方块 / px`;
       this.scaleLabel.value = `${mode}${queued ? ` · ${queued} 区域待载入` : ""}`;
       if (full) this.status.value = "体素显存预算已满，显示区块分布；移动到较简单的区域后可重试。";
@@ -275,52 +259,11 @@ export class Minimap {
     }
   }
 
-  private updateRegions(): void {
-    // 窗口先摘除离开的引用，再回收槽位，最后安装下载完成的区域。
-    const gpu = this.gpu!;
-    const origin = windowOrigin(this.camera.target[0], this.camera.target[2]);
-    const inside = (position: RegionPosition): boolean => position.x >= origin.x && position.x < origin.x + WINDOW_REGIONS
-      && position.z >= origin.z && position.z < origin.z + WINDOW_REGIONS;
-    const wanted: RegionPosition[] = [];
-    for (let z = origin.z; z < origin.z + WINDOW_REGIONS; z++) for (let x = origin.x; x < origin.x + WINDOW_REGIONS; x++) wanted.push({ x, z });
-    const priority = (position: RegionPosition): number => {
-      const key = regionKey(position);
-      if (key === this.pending?.waiting) return -1;
-      return ((position.x + 0.5) * REGION_SIZE - this.camera.target[0]) ** 2
-        + ((position.z + 0.5) * REGION_SIZE - this.camera.target[2]) ** 2;
-    };
-    wanted.sort((a, b) => priority(a) - priority(b));
-    const keys = new Set(wanted.map(regionKey));
-    const evicted = [...gpu.regions].filter(([key]) => !keys.has(key));
-    const moved = origin.x * REGION_SIZE !== gpu.window.origin[0] || origin.z * REGION_SIZE !== gpu.window.origin[2];
-    if (moved) {
-      const retained = [...gpu.regions.values()].filter(region => inside({ x: region.origin[0] / REGION_SIZE, z: region.origin[2] / REGION_SIZE }));
-      gpu.window.rebuild([origin.x * REGION_SIZE, gpu.window.origin[1], origin.z * REGION_SIZE], retained);
-    }
-    for (const [key, region] of evicted) {
-      gpu.pool.release(region);
-      gpu.regions.delete(key);
-    }
-    this.downloads.update(wanted);
-    // 每帧只处理一个区域，响应积压不会在一次动画帧中连续上传整片窗口。
-    const request = wanted.map(p => this.downloads.entries.get(regionKey(p))!).find(entry => entry.state === "ready");
-    if (request) {
-      const region = gpu.pool.upload(request.volume!);
-      request.volume = undefined;
-      request.state = region ? "resident" : "full";
-      if (region) {
-        gpu.regions.set(request.key, region);
-        if (inside(request)) gpu.window.install(region);
-      }
-    }
-
-  }
-
   private pick(): void {
     // 遇到未知区域就继续等待，只有走完已知体积的射线才报告未命中。
     const pending = this.pending!;
-    if (pending.waiting && this.downloads.entries.get(pending.waiting)?.state !== "resident") return;
-    const result = this.gpu!.draw.pick(pending.ray, { openBoundary: true });
+    if (pending.waiting && this.terrain.downloads.entries.get(pending.waiting)?.state !== "resident") return;
+    const result = this.terrain.map.gpu!.draw.pick(pending.ray, { openBoundary: true });
     if (result.kind === "missing") {
       pending.waiting = regionKey({ x: Math.floor(result.position[0] / REGION_SIZE), z: Math.floor(result.position[2] / REGION_SIZE) });
       this.camera.target[0] = result.position[0];
@@ -389,20 +332,9 @@ export class Minimap {
     ctx.fillText(`N · ${Math.round(((this.camera.yaw % 360) + 360) % 360)}°`, 10, 18);
   }
 
-  private disposeGPU(): void {
-    // 所有目录和绘制器结束使用后，一次释放共享纹理。
-    if (!this.gpu) return;
-    this.gpu.draw.dispose();
-    this.gpu.window.dispose();
-    this.gpu.pool.dispose();
-    this.gpu = undefined;
-  }
-
   dispose(): void {
     this.indexRequest?.abort();
-    this.downloads.reset(0);
     this.tiles.reset();
-    this.disposeGPU();
     this.panel.hidden = true;
   }
 }
