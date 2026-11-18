@@ -1,3 +1,6 @@
+# 该项目已归档，请考虑使用 neOmega Viewer R2
+[neOmega Viewer R2](https://github.com/CMA2401PT/neomega-viewer-r2) 在我们关心的大部分使用场景（静态、建筑、大地形）下，有更好的性能、两档光影支持、统一的主视图实现和小地图实现、且需要的数据量更少，支持更多功能和手机等移动设备，且整合了导出能力。其核心是射线渲染器 [neOmega R2](https://github.com/CMA2401PT/neomega-r2) 。本项目相比 [neOmega Viewer R2](https://github.com/CMA2401PT/neomega-viewer-r2) 只剩小区域的高分辨率下有性能优势，其它方面基本都是劣势。因此本项目归档，并推荐使用 [neOmega Viewer R2](https://github.com/CMA2401PT/neomega-viewer-r2)。
+
 # neomega-viewer
 
 `neomega-viewer` 提供 Java／Bedrock 存档浏览器，以及检查方块外形和子区块网格的演示页面。Go 服务按相机位置读取区块，必要时把 Bedrock 状态转换为 Java 状态，再由渲染核心生成网格，浏览器负责显示和交互。
